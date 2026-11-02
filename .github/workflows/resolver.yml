@@ -1,0 +1,70 @@
+name: Resolver username ou ID (MTProto)
+
+on:
+  workflow_dispatch:
+    inputs:
+      alvo:
+        description: "Username (sem @) a resolver"
+        required: true
+      healthcheck:
+        description: "Somente validar o dispatch; não acessa Telegram"
+        type: boolean
+        required: false
+        default: false
+      chat:
+        description: "ID do chat que recebe a resposta (vazio: só mostra no log)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  resolver:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      API_ID: ${{ secrets.API_ID }}
+      API_HASH: ${{ secrets.API_HASH }}
+      BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+      ALVO: ${{ inputs.alvo }}
+      CHAT_ID: ${{ inputs.chat }}
+    steps:
+      - name: Healthcheck do dispatch
+        if: ${{ inputs.healthcheck }}
+        run: echo "workflow_dispatch aceito"
+
+      - uses: actions/checkout@v4
+        if: ${{ !inputs.healthcheck }}
+      - name: Verificar secrets
+        if: ${{ !inputs.healthcheck }}
+        run: |
+          faltando=""
+          for nome in API_ID API_HASH BOT_TOKEN; do
+            if [ -z "${!nome}" ]; then faltando="$faltando $nome"; fi
+          done
+          if [ -n "$faltando" ]; then
+            echo "::error::Secrets ausentes:$faltando"
+            exit 1
+          fi
+      - uses: actions/setup-python@v5
+        if: ${{ !inputs.healthcheck }}
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: scripts/resolver-requirements.txt
+      - if: ${{ !inputs.healthcheck }}
+        run: pip install -r scripts/resolver-requirements.txt
+      - if: ${{ !inputs.healthcheck }}
+        run: python scripts/resolver.py
+      - name: Avisar o chat se a busca falhou sem resposta
+        if: ${{ !inputs.healthcheck && (failure() || cancelled()) }}
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -f "$RUNNER_TEMP/notificado" ]; then exit 0; fi
+          if [ -z "$BOT_TOKEN" ] || [ -z "$CHAT_ID" ]; then exit 0; fi
+          curl -sS -m 20 --fail-with-body \
+            --data-urlencode "chat_id=$CHAT_ID" \
+            --data-urlencode "text=A busca por @${ALVO} falhou antes de dar resultado. Log: $RUN_URL" \
+            "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage"
