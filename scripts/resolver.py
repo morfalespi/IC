@@ -185,12 +185,12 @@ def botao_completo(alvo):
 
 def enviar_documento_md(chat, conteudo, id_entidade, indice, total):
     limite = uuid.uuid4().hex
-    filename = "infocard_" + str(id_entidade).replace("-", "n") + "_completo"
+    filename = "infocard_" + str(id_entidade).replace("-", "n") + "_dados_coletados"
     if total > 1:
         filename += f"_parte_{indice}_de_{total}"
     filename += ".md"
     resumo_hash = hashlib.sha256(conteudo).hexdigest()
-    campos = {"chat_id": str(int(chat)), "caption": "📄 Relatório MTProto completo" +
+    campos = {"chat_id": str(int(chat)), "caption": "📄 Dados coletados nesta consulta" +
               (f" · parte {indice}/{total}" if total > 1 else "") +
               "\nSHA-256: " + resumo_hash}
     if ORIGEM_ID:
@@ -237,6 +237,15 @@ def registrar_midia(dados, categoria, nome, caminho=None, status="downloaded", e
         item["sha256"] = resumo.hexdigest()
     dados.setdefault("midias", []).append(item)
     return item
+
+
+def registrar_paginacao_incompleta(dados, metodo, esperado, recebido):
+    if isinstance(esperado, int) and recebido < esperado:
+        entrada = {"method": metodo, "expected": esperado, "received": recebido}
+        dados.setdefault("coletas_incompletas", []).append(entrada)
+        dados.setdefault("notas", []).append(
+            f"{metodo}: paginação incompleta ({recebido}/{esperado})."
+        )
 
 
 async def bot_api_leitura(dados, metodo, parametros):
@@ -362,6 +371,7 @@ async def coletar_bot_api(dados, entidade, info):
             ("getUserProfileAudios", "audios", "audio_perfil_bot_api"),
         ):
             offset = 0
+            total = None
             while True:
                 resposta = await bot_api_leitura(
                     dados, metodo, {"user_id": entidade.id, "offset": offset, "limit": 100}
@@ -369,7 +379,12 @@ async def coletar_bot_api(dados, entidade, info):
                 if not resposta.get("ok"):
                     break
                 resultado = resposta.get("result") or {}
+                contagem = resultado.get("total_count")
+                if isinstance(contagem, int):
+                    total = contagem if total is None else max(total, contagem)
                 itens = resultado.get(lista_chave) or []
+                if not itens:
+                    break
                 for item in itens:
                     if metodo == "getUserProfilePhotos":
                         if not item:
@@ -382,9 +397,12 @@ async def coletar_bot_api(dados, entidade, info):
                         dados, item.get("file_id"), categoria, item.get("file_unique_id")
                     )
                 offset += len(itens)
-                total = resultado.get("total_count")
-                if not itens or len(itens) < 100 or (isinstance(total, int) and offset >= total):
+                if total is not None:
+                    if offset >= total:
+                        break
+                elif len(itens) < 100:
                     break
+            registrar_paginacao_incompleta(dados, metodo, total, offset)
         mensagens = await bot_api_leitura(
             dados, "getUserPersonalChatMessages", {"user_id": entidade.id, "limit": 20}
         )
@@ -463,7 +481,7 @@ def enviar_documento_jsonl(chat, conteudo, id_entidade, indice, total):
         filename += f"_parte_{indice}_de_{total}"
     filename += ".jsonl"
     resumo_hash = hashlib.sha256(conteudo).hexdigest()
-    campos = {"chat_id": str(int(chat)), "caption": "🧾 Dados Telegram completos (JSONL)" +
+    campos = {"chat_id": str(int(chat)), "caption": "🧾 Respostas Telegram coletadas (JSONL)" +
               (f" · parte {indice}/{total}" if total > 1 else "") +
               "\nSHA-256: " + resumo_hash}
     if ORIGEM_ID:
@@ -639,6 +657,7 @@ def registros_telegram(dados, alvo, info):
     objetos = {
         "metadados": metadados,
         "respostas_bot_api": dados.get("respostas_bot_api", {}),
+        "coletas_incompletas": dados.get("coletas_incompletas", []),
         "chats_relacionados_bot_api": dados.get("chats_relacionados_bot_api", []),
         "falhas_bot_api": dados.get("falhas_bot_api", []),
         "entidade": dados.get("entidade"),
@@ -741,7 +760,7 @@ async def coletar(alvo):
     try:
         await com_espera(lambda: cliente.start(bot_token=os.environ["BOT_TOKEN"]))
         entidade, origem, resposta_resolucao = await resolver_alvo(cliente, alvo)
-        dados = {"entidade": entidade, "completo": None, "resposta_completa": None, "resposta_resolucao": resposta_resolucao, "foto": None, "notas": [origem], "fotos_info": None, "musicas_info": None, "fotos_mtproto": [], "musicas_mtproto": [], "participantes_mtproto": [], "midias": [], "pacotes_midias": [], "falhas_coleta": [], "respostas_bot_api": {}, "falhas_bot_api": [], "mensagens_fixadas_mtproto": [], "midias_dir": tempfile.mkdtemp(prefix="infocard_telegram_") if MODO == "completo" and CHAT_DESTINO else None}
+        dados = {"entidade": entidade, "completo": None, "resposta_completa": None, "resposta_resolucao": resposta_resolucao, "foto": None, "notas": [origem], "fotos_info": None, "musicas_info": None, "fotos_mtproto": [], "musicas_mtproto": [], "participantes_mtproto": [], "midias": [], "pacotes_midias": [], "falhas_coleta": [], "coletas_incompletas": [], "respostas_bot_api": {}, "falhas_bot_api": [], "mensagens_fixadas_mtproto": [], "midias_dir": tempfile.mkdtemp(prefix="infocard_telegram_") if MODO == "completo" and CHAT_DESTINO else None}
         if dados["midias_dir"]:
             atexit.register(shutil.rmtree, dados["midias_dir"], ignore_errors=True)
         atualizar_status("1/2 · Identificação confirmada; buscando campos adicionais", entidade)
@@ -776,6 +795,7 @@ async def coletar(alvo):
             if MODO == "completo" and isinstance(entidade, Channel):
                 try:
                     offset_participantes = 0
+                    total_participantes = None
                     while True:
                         pagina_participantes = await com_espera(
                             lambda offset=offset_participantes: cliente(GetParticipantsRequest(
@@ -787,12 +807,18 @@ async def coletar(alvo):
                             ))
                         )
                         dados["participantes_mtproto"].append(pagina_participantes)
+                        contagem = getattr(pagina_participantes, "count", None)
+                        if isinstance(contagem, int):
+                            total_participantes = contagem if total_participantes is None else max(total_participantes, contagem)
                         lista_participantes = getattr(pagina_participantes, "participants", []) or []
                         if not lista_participantes:
                             break
                         offset_participantes += len(lista_participantes)
-                        if len(lista_participantes) < 100:
+                        if total_participantes is not None and offset_participantes >= total_participantes:
                             break
+                    registrar_paginacao_incompleta(
+                        dados, "channels.getParticipants", total_participantes, offset_participantes
+                    )
                 except Exception as erro_participantes:
                     dados["falhas_coleta"].append({"method": "channels.getParticipants", "error": type(erro_participantes).__name__})
                     dados["notas"].append(f"Participantes indisponíveis: {type(erro_participantes).__name__}")
@@ -822,14 +848,18 @@ async def coletar(alvo):
                     dados["fotos_mtproto"].append(fotos)
                     lista_fotos = getattr(fotos, "photos", []) or []
                     contagem = getattr(fotos, "count", None)
-                    if total is None and isinstance(contagem, int):
-                        total = contagem
+                    if isinstance(contagem, int):
+                        total = contagem if total is None else max(total, contagem)
                     if not lista_fotos:
                         break
                     offset += len(lista_fotos)
-                    if MODO != "completo" or len(lista_fotos) < 100 or (total is not None and offset >= total):
+                    if MODO != "completo":
+                        break
+                    if total is not None and offset >= total:
                         break
                 obtidas = sum(len(getattr(pagina, "photos", []) or []) for pagina in dados["fotos_mtproto"])
+                if MODO == "completo":
+                    registrar_paginacao_incompleta(dados, "photos.getUserPhotos", total, obtidas)
                 if dados["midias_dir"]:
                     fotos_itens = [
                         foto
@@ -861,14 +891,18 @@ async def coletar(alvo):
                     dados["musicas_mtproto"].append(musicas)
                     documentos = getattr(musicas, "documents", []) or []
                     contagem = getattr(musicas, "count", None)
-                    if total is None and isinstance(contagem, int):
-                        total = contagem
+                    if isinstance(contagem, int):
+                        total = contagem if total is None else max(total, contagem)
                     if not documentos:
                         break
                     offset += len(documentos)
-                    if MODO != "completo" or len(documentos) < 100 or (total is not None and offset >= total):
+                    if MODO != "completo":
+                        break
+                    if total is not None and offset >= total:
                         break
                 obtidas = sum(len(getattr(pagina, "documents", []) or []) for pagina in dados["musicas_mtproto"])
+                if MODO == "completo":
+                    registrar_paginacao_incompleta(dados, "users.getSavedMusic", total, obtidas)
                 if dados["midias_dir"]:
                     musicas_itens = [
                         documento
@@ -901,7 +935,7 @@ async def coletar(alvo):
                     "description": type(erro_api).__name__,
                 })
                 dados["notas"].append(f"Leituras Bot API incompletas: {type(erro_api).__name__}")
-        atualizar_status("2/2 · Dados aprofundados processados; consolidando ficha", entidade)
+        atualizar_status("2/2 · Tentativas de coleta encerradas; consolidando ficha", entidade)
         return dados
     finally:
         await cliente.disconnect()
@@ -1041,8 +1075,6 @@ def descrever(entidade, completo_, alvo):
             add("Contas banidas", getattr(completo_, "banned_count", None), zero=True)
             add("Solicitações pendentes", getattr(completo_, "requests_pending", None), zero=True)
             add("Mensagem fixada", getattr(completo_, "pinned_msg_id", None))
-            add("Pedidos de ingresso pendentes", getattr(completo_, "requests_pending", None), zero=True)
-            add("Limite de reações", getattr(completo_, "reactions_limit", None), zero=True)
             add("Tema do chat", getattr(completo_, "theme_emoticon", None))
             add("Tempo de autodestruição", getattr(completo_, "ttl_period", None))
             add("Agendamento de mensagens", "disponível" if getattr(completo_, "has_scheduled", False) else None)
@@ -1306,11 +1338,11 @@ async def principal():
                     midias_entregues == midias_previstas
                 )
             )
-            cobertura_ok = not dados.get("falhas_coleta") and not dados.get("falhas_bot_api") and falhas_midias == 0
-            sucesso_final = entrega_ok and (not completo or cobertura_ok)
-            if sucesso_final:
+            coleta_sem_falhas = not dados.get("falhas_coleta") and not dados.get("falhas_bot_api") and not dados.get("coletas_incompletas") and falhas_midias == 0
+            relatorio_aceito = entrega_ok and (not completo or coleta_sem_falhas)
+            if relatorio_aceito:
                 marcar_notificado()
-                print("RELATÓRIO ENTREGUE:", len(info["campos"]), "campos,",
+                print("ENVIOS DO RELATÓRIO ACEITOS PELO TELEGRAM:", len(info["campos"]), "campos,",
                       entregues_ricos, "/", total_ricos, "páginas ricas,",
                       entregues_html, "/", total_html, "páginas HTML,",
                       arquivos_entregues, "/", arquivos_previstos, "arquivos Markdown,",
@@ -1328,14 +1360,18 @@ async def principal():
                         f"Arquivos JSONL: {json_entregues}/{json_previstos}.",
                         f"Pacotes de mídia enviados: {midias_entregues}/{midias_previstas}.",
                     ])
-                if completo and not cobertura_ok:
+                if completo and not coleta_sem_falhas:
                     if entrega_ok:
                         linhas_aviso.append("<b>⚠️ Resultado parcial enviado</b>")
-                    linhas_aviso.append("Alguns dados disponíveis não puderam ser incluídos nesta consulta.")
+                    linhas_aviso.append("Algumas leituras tentadas falharam, ficaram abaixo da contagem informada ou tiveram mídia indisponível.")
                     if falhas_midias:
                         linhas_aviso.append(f"Itens de mídia indisponíveis: {falhas_midias}.")
                     if dados.get("falhas_bot_api"):
-                        linhas_aviso.append(f"Leituras Bot API indisponíveis: {len(dados['falhas_bot_api'])}.")
+                        linhas_aviso.append(f"Chamadas Bot API com erro: {len(dados['falhas_bot_api'])}.")
+                    if dados.get("falhas_coleta"):
+                        linhas_aviso.append(f"Chamadas MTProto com erro: {len(dados['falhas_coleta'])}.")
+                    if dados.get("coletas_incompletas"):
+                        linhas_aviso.append(f"Paginação abaixo do total informado: {len(dados['coletas_incompletas'])} método(s).")
                 linhas_aviso.append("As observações no relatório indicam os dados que faltaram.")
                 enviar(chat, "\n".join(linhas_aviso))
                 codigo = 1
