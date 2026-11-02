@@ -14,7 +14,7 @@ O Infocard recebe uma referência de Telegram no privado e solicita um resolver 
 | Escolher usuário/canal/grupo | Recebe o ID e dados opcionais fornecidos pelo seletor oficial |
 | Encaminhar mensagem, contato, menção | Usa somente as referências disponibilizadas pelo Telegram |
 | Atualizar | Faz nova busca e edita o cartão, quando possível |
-| Obter Markdown completo | Faz nova busca, envia páginas ricas e arquivo .md por sendDocument |
+| Exportação completa | Faz nova busca e envia páginas legíveis, Markdown, JSONL bruto e arquivos de mídia ZIP quando acessíveis |
 | Modo inline | Exibe convite para pesquisar no privado; não lê perfis no outro chat |
 
 Não existem comandos /buscar, /completo ou /download. O repositório não configura setMyCommands; o menu do BotFather pode divergir dos handlers.
@@ -28,19 +28,19 @@ O formato ID @username é convenção de entrada **deste bot**. Não utilizar o 
 3. **Obter Markdown completo:** ação opcional que faz uma nova consulta, repete as informações na tela em páginas ricas e envia o anexo .md em UTF-8. Se a API recusar Rich Messages, tenta HTML convencional paginado; se recusar a mídia embutida, tenta foto separada.
 4. **Falhas:** mensagem de erro e possibilidade de nova pesquisa. Quando o Telegram/GitHub estiver indisponível, a notificação não é garantida.
 
-**A cobertura atual não inclui todos os campos e recursos acessíveis ao MTProto.** O trabalho ativo é ampliar a extração e entrega, guiado por Partners e pelas especificações oficiais. A autenticação permanece como bot: o Telegram reserva messages.getHistory e stories.getPeerStories a contas de usuário; a leitura de participantes de canais pode exigir privilégios de administrador. Campo ausente não equivale a inexistência. Consulte [a matriz de cobertura e os critérios](docs/partners-mtproto-coverage.md).
+**A cobertura atual não inclui todos os campos e recursos acessíveis ao MTProto.** O trabalho ativo é inventariar e implementar os métodos de leitura relevantes, guiado por Partners e pelas especificações oficiais. A autenticação permanece como bot: o Telegram reserva messages.getHistory e stories.getPeerStories a contas de usuário; a leitura de participantes de canais pode exigir privilégios de administrador. Campo ausente não equivale a inexistência. Consulte [a matriz de cobertura e os critérios](docs/partners-mtproto-coverage.md).
 
 Os dados opcionais compartilhados no seletor podem ser mostrados no cartão inicial, mas não são preservados em armazenamento temporário independente; uma edição posterior pode substituí-los. O relatório MTProto só apresenta aquilo que o worker confirmou no protocolo.
 
 ## Entrega integral e tolerância a falhas (2026-11-02)
 
-A consulta comum **não resume os campos adicionais**: usa `rich_pages` para distribuir todos os campos mapeados e suas observações nas páginas necessárias. O botão **Obter Markdown completo** continua disponível para solicitar também o arquivo `.md` por `sendDocument`.
+A consulta comum mostra os campos já mapeados. O botão **Exportação completa** solicita páginas legíveis, Markdown, JSONL com respostas MTProto completas e pacotes ZIP de mídia acessível. A expansão é implementada na branch de revisão; cobertura total e recebimento verificável no Telegram ainda não foram comprovados.
 
 A Bot API 10.3 limita cada Rich Message a 32.768 caracteres UTF-8, 500 blocos, 16 níveis de aninhamento, 50 anexos de mídia e 20 colunas por tabela. A implementação usa uma margem inferior de tamanho e divide em páginas. Um limite por mensagem não significa que o Telegram conceda campos que não foram retornados pelo MTProto.
 
 Em falhas temporárias **com resposta do Telegram**, o transporte repete operações HTTP 429 e 5xx até cinco tentativas, respeitando `parameters.retry_after` quando fornecido. Erros de transporte ambíguos não são repetidos automaticamente para evitar duplicar mensagens. Cada página rica é tentada mesmo se outra falhar; se o conjunto rico não for concluído, o HTML paginado também é tentado. A coleta de arquivos Markdown é independente do sucesso das páginas de texto e continua tentando as partes restantes quando uma delas é recusada.
 
-A execução só registra **RELATÓRIO ENTREGUE** se as páginas ricas ou HTML estiverem completas e, quando solicitado, **todos** os documentos Markdown forem aceitos pela Bot API. Caso contrário, tenta comunicar **Entrega incompleta**, com totais confirmados, e termina com código de falha. O resultado pode ser parcialmente entregue por limites de tempo, conectividade, permissões ou privacidade: não existe garantia técnica de entrega ilimitada.
+Na exportação completa, o worker só registra **RELATÓRIO ENTREGUE** se páginas ricas ou HTML, todos os documentos Markdown e JSONL e todos os pacotes de mídia previstos forem aceitos pela Bot API. Isso confirma aceitação de envio, não inspeção do conteúdo recebido nem cobertura total de métodos MTProto. Caso contrário, tenta comunicar **Entrega incompleta**, com totais confirmados, e termina com código de falha. O resultado pode ser parcialmente entregue por limites de tempo, conectividade, permissões ou privacidade: não existe garantia técnica de entrega ilimitada.
 
 A sessão MTProto do worker é temporária; o Telegram controla `access_hash`, FloodWait e o conjunto de dados permitido à identidade autenticada. `GetFullChatRequest` foi acrescentado para grupos básicos nos quais o bot tenha acesso.
 
