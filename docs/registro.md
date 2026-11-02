@@ -1,3 +1,9 @@
+# Revisão da entrega eficaz — 2026-11-02
+
+**IMPLEMENTADO:** confirmação das mensagens pelo objeto `Message.message_id` da Bot API, SHA-256 nos anexos Markdown, contagem separada de páginas ricas/HTML e arquivos, 429 com retry_after e timeout de 30 minutos. Erros 5xx de envios com resultado incerto não são automaticamente repetidos para evitar duplicações. **PENDENTE DE PROVA REAL:** clicar no botão de Markdown e verificar recebimento no Telegram. O arquivo citado como `partners.md` não foi encontrado; nenhum requisito seu foi presumido.
+
+---
+
 # Implementado — 2026-11-02: entrega integral, MTProto e Bot API 10.3
 
 **IMPLEMENTADO NO CÓDIGO:** retirada da abreviação dos nove campos no resultado normal, ampliação de campos opcionais oficiais de usuários/bots/canais, suporte ao método `messages.getFullChat` para grupos básicos e entrega rica paginada com fallback HTML. Transporte trata `retry_after`, tenta partes subsequentes mesmo após recusa parcial e envia o Markdown em uma etapa independente. Relatório só é classificado completo quando o conjunto obrigatório foi aceito pela Bot API. Sem testes autorais nem comentários/docstrings adicionados ao código, conforme AGENTS.md.

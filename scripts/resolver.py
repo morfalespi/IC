@@ -1,5 +1,6 @@
 import asyncio
 import html
+import hashlib
 import json
 import os
 import re
@@ -64,7 +65,7 @@ def chamar(metodo, corpo, cabecalhos):
         if retorno.get("ok"):
             return retorno
         estado = retorno.get("error_code", codigo)
-        if tentativa == 4 or estado not in (429, 500, 502, 503, 504):
+        if tentativa == 4 or estado != 429:
             return retorno
         parametros = retorno.get("parameters") or {}
         espera = parametros.get("retry_after") if estado == 429 else None
@@ -73,6 +74,11 @@ def chamar(metodo, corpo, cabecalhos):
         print("Bot API: nova tentativa", metodo, "status", estado, "após", espera, "s")
         time.sleep(espera)
     return {"ok": False, "error_code": 0, "description": "Tentativas esgotadas"}
+
+def confirmacao_mensagem(resposta):
+    mensagem = resposta.get("result") if isinstance(resposta, dict) else None
+    return bool(resposta.get("ok")) and isinstance(mensagem, dict) and isinstance(mensagem.get("message_id"), int)
+
 
 def postar(chat_id, texto, formatado, teclado=None):
     carga = {"chat_id": int(chat_id), "text": texto}
@@ -85,7 +91,7 @@ def postar(chat_id, texto, formatado, teclado=None):
 
 def enviar(chat_id, texto):
     retorno = postar(chat_id, texto, True)
-    if not retorno.get("ok"):
+    if not confirmacao_mensagem(retorno):
         raise RuntimeError(f"sendMessage falhou: {retorno.get('error_code')} {retorno.get('description')}")
     open(os.path.join(os.environ.get("RUNNER_TEMP", "/tmp"), "notificado"), "w").close()
 
@@ -99,7 +105,7 @@ def enviar_foto(chat_id, conteudo):
         f"\r\n--{limite}--\r\n".encode(),
     ])
     retorno = chamar("sendPhoto", corpo, {"Content-Type": f"multipart/form-data; boundary={limite}"})
-    if not retorno.get("ok"):
+    if not confirmacao_mensagem(retorno):
         raise RuntimeError(f"sendPhoto falhou: {retorno.get('error_code')} {retorno.get('description')}")
 
 
@@ -137,14 +143,14 @@ def editar_ficha_rica(conteudo, foto=None, definitiva=False):
         dados["message_id"] = ID_MENSAGEM
     if foto and len(foto) <= 10 * 1024 * 1024:
         resposta = solicitar_bot_api(metodo, dados, foto)
-        if resposta.get("ok"):
+        if confirmacao_mensagem(resposta):
             if definitiva:
                 marcar_notificado()
             print("ficha rica editada; foto incorporada no mesmo bloco")
             return True, True
         print("mídia embutida indisponível:", resposta.get("error_code"), corte(resposta.get("description"), 180))
     resposta = solicitar_bot_api(metodo, dados)
-    if resposta.get("ok"):
+    if confirmacao_mensagem(resposta):
         if definitiva:
             marcar_notificado()
         print("ficha rica editada; sem foto incorporada")
@@ -176,8 +182,10 @@ def enviar_documento_md(chat, conteudo, id_entidade, indice, total):
     if total > 1:
         filename += f"_parte_{indice}_de_{total}"
     filename += ".md"
+    resumo_hash = hashlib.sha256(conteudo).hexdigest()
     campos = {"chat_id": str(int(chat)), "caption": "📄 Relatório MTProto completo" +
-              (f" · parte {indice}/{total}" if total > 1 else "")}
+              (f" · parte {indice}/{total}" if total > 1 else "") +
+              "\nSHA-256: " + resumo_hash}
     if ORIGEM_ID:
         campos["reply_parameters"] = json.dumps({"message_id": ORIGEM_ID})
     partes = []
@@ -193,10 +201,10 @@ def enviar_documento_md(chat, conteudo, id_entidade, indice, total):
     ])
     resposta = chamar("sendDocument", b"".join(partes),
                      {"Content-Type": f"multipart/form-data; boundary={limite}"})
-    if not resposta.get("ok"):
+    if not confirmacao_mensagem(resposta):
         raise RuntimeError("Envio Markdown recusado: " + str(resposta.get("error_code")) +
                            " " + str(resposta.get("description", ""))[:180])
-    print(f"documento Markdown {indice}/{total} enviado: {len(conteudo)} bytes")
+    print(f"documento Markdown {indice}/{total} confirmado: {len(conteudo)} bytes")
 
 
 def botao_atualizar(alvo):
@@ -693,7 +701,7 @@ async def principal():
                         if resposta_id:
                             detalhes["reply_parameters"] = {"message_id": resposta_id}
                         retorno = solicitar_bot_api("sendRichMessage", detalhes)
-                        ok = bool(retorno.get("ok"))
+                        ok = confirmacao_mensagem(retorno)
                         if not ok:
                             print("Rich Message recusada:", indice + 1, "status", retorno.get("error_code"))
                     if not ok:
@@ -704,10 +712,12 @@ async def principal():
             except Exception as erro_rico:
                 print("formatação rica indisponível:", type(erro_rico).__name__)
             html_ok = False
+            total_html = 0
+            entregues_html = 0
             if not rich_ok:
                 try:
                     paginas_html = basic_pages(identidade, secoes, notas_publicadas)
-                    entregues_html = 0
+                    total_html = len(paginas_html)
                     for indice, pagina in enumerate(paginas_html):
                         if indice > 0:
                             time.sleep(1.1)
@@ -718,15 +728,15 @@ async def principal():
                                 "text": pagina, "parse_mode": "HTML",
                                 **({"reply_markup": teclado_fallback} if teclado_fallback else {}),
                             })
-                        if not retorno or not retorno.get("ok"):
+                        if not retorno or not confirmacao_mensagem(retorno):
                             retorno = postar(chat, pagina, True,
                                              teclado_fallback if indice == 0 else None)
-                        if not retorno.get("ok"):
+                        if not confirmacao_mensagem(retorno):
                             print("página HTML recusada:", indice + 1, "status", retorno.get("error_code"))
                             continue
                         entregues_html += 1
                         print("página HTML confirmada:", entregues_html, "/", len(paginas_html))
-                    html_ok = entregues_html == len(paginas_html)
+                    html_ok = total_html > 0 and entregues_html == total_html
                 except Exception as erro_html:
                     print("HTML indisponível:", type(erro_html).__name__)
             if dados["foto"] and not foto_incorporada:
@@ -759,12 +769,14 @@ async def principal():
                 marcar_notificado()
                 print("RELATÓRIO ENTREGUE:", len(info["campos"]), "campos,",
                       entregues_ricos, "/", total_ricos, "páginas ricas,",
+                      entregues_html, "/", total_html, "páginas HTML,",
                       arquivos_entregues, "/", arquivos_previstos, "documentos")
             else:
                 aviso = (
                     "<b>⚠️ Entrega incompleta</b>\n"
                     "Algumas partes não puderam ser enviadas nesta execução.\n"
                     f"Rich Messages: {entregues_ricos}/{total_ricos}.\n"
+                    f"HTML: {entregues_html}/{total_html}.\n"
                     f"Arquivos Markdown: {arquivos_entregues}/{arquivos_previstos}.\n"
                     "Faça nova consulta para tentar obter as partes restantes."
                 )

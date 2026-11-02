@@ -60,6 +60,16 @@ Fontes: https://core.telegram.org/bots/api#rich-message-formatting-options ; htt
 
 O limite atual é de **2 consultas por chat e 6 globalmente em 60 segundos**. O workflow usa sessão MTProto temporária, sem cache persistente de peers. Sua consulta pode falhar por permissões, ausência de access_hash, privacidade ou rate limit.
 
+## Garantia de confirmação na entrega
+
+No resolver Python, cada envio com `sendRichMessage`, `sendMessage`, `sendPhoto` ou `sendDocument` é considerado confirmado somente se a resposta oficial retornar `ok=true` **e um objeto de mensagem com `message_id`**. Isso comprova aceitação do servidor Telegram, mas não que o cliente já exibiu ou que a pessoa abriu a mensagem.
+
+Quando houver falha de uma parte, o bot continua tentando as outras mensagens e o arquivo Markdown, contabilizando separadamente partes ricas, páginas HTML de compatibilidade e documentos enviados. Se faltar um componente obrigatório, comunica **Entrega incompleta** e não registra o sucesso integral. A legenda de cada arquivo Markdown contém o SHA-256 dos bytes do próprio anexo, para conferência de integridade.
+
+O worker respeita `parameters.retry_after` em erros 429. Não repete automaticamente respostas 5xx de métodos que criam mensagens: sem identificador de idempotência fornecido pela API, repetir uma operação de resultado ambíguo poderia gerar mensagens duplicadas. O limite do job aumentou de 15 para 30 minutos para acomodar esperas e páginas extensas. Isso é um orçamento de execução, não garantia de sucesso ilimitado.
+
+Fonte: https://core.telegram.org/bots/api#making-requests , https://core.telegram.org/bots/api#responseparameters , https://core.telegram.org/bots/api#senddocument , https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax .
+
 ## Publicação e verificação
 
 - CI: npm ci e npm run check executam checagem de sintaxe de JS/Python e de placeholders. As regras do proprietário não permitem testes escritos pelo autor da mudança.
