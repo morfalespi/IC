@@ -15,7 +15,7 @@ A cobertura deve preservar objetos TL completos, respostas JSON Bot API, wrapper
 | Bot API | `getUserPersonalChatMessages` | Usuário | Preserva até 20 mensagens do chat pessoal atualmente indicado no perfil e tenta baixar anexos compatíveis. |
 | Bot API | `getChatAdministrators`, `getChatMemberCount` | Grupo, supergrupo ou canal | Preserva a lista de administradores e a contagem informada. |
 | Bot API | `getFile` | Mídia retornada por métodos acima | Baixa arquivos permitidos pelo limite da Bot API; a resposta e o estado do arquivo são registrados. |
-| MTProto | `getFullUser`, `getFullChannel`, `getFullChat`, `getUserPhotos`, `getSavedMusic`, `getParticipants` | Conforme tipo de peer | Preserva respostas disponíveis; pagina coleções no modo completo. |
+| MTProto | `getFullUser`, `getFullChannel`, `getFullChat`, `getUserPhotos`, `getSavedMusic`, `getParticipants`, `getMessages`, `channels.getMessages` | Conforme tipo de peer | Preserva respostas disponíveis; pagina coleções no modo completo e tenta obter conteúdo das mensagens fixadas por seus IDs. |
 
 ## Limites oficiais da sessão de bot
 
@@ -35,6 +35,7 @@ A cobertura deve preservar objetos TL completos, respostas JSON Bot API, wrapper
 | Fotos de perfil | Consultada e paginada no modo completo para todo usuário resolvido | Paginação e download dependem do que Telegram disponibilizar |
 | Música salva no perfil | Consultada e paginada no modo completo para todo usuário resolvido | A resposta do Telegram informa a coleção acessível, inclusive vazia |
 | Participantes de canal | Tentativa paginada no modo completo | A chamada não é pulada por flags; Telegram ainda pode recusar por permissão |
+| Mensagem fixada | Obtida por ID no modo completo quando MTProto retorna `pinned_msg_id` | Métodos aceitam bots; Telegram pode não entregar a mensagem ou sua mídia |
 | Dados estruturados | JSONL sem mapeamento manual, dividido em anexos | Confirmação da Bot API não prova que o arquivo recebido abre ou preserva todo conteúdo |
 | Foto e arquivos de mídia baixáveis | ZIP com manifesto e hash | Itens indisponíveis ou acima do limite são explicitados; não contam como sucesso integral |
 | Histórico de mensagens e stories ativos | Fora do acesso de bot | Métodos exigem sessão de usuário; não serão habilitados mantendo a decisão de autenticação atual |

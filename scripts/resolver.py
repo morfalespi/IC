@@ -21,11 +21,11 @@ from ficha_completa import rich_pages, basic_pages, markdown_files, jsonl_files
 from mtproto_export import build_media_archives
 from telethon import TelegramClient, errors, utils
 from telethon.sessions import StringSession
-from telethon.tl.functions.channels import GetFullChannelRequest, GetChannelsRequest, GetParticipantsRequest
+from telethon.tl.functions.channels import GetFullChannelRequest, GetChannelsRequest, GetParticipantsRequest, GetMessagesRequest as GetChannelMessagesRequest
 from telethon.tl.functions.contacts import ResolveUsernameRequest
-from telethon.tl.functions.messages import GetChatsRequest, GetFullChatRequest
+from telethon.tl.functions.messages import GetChatsRequest, GetFullChatRequest, GetMessagesRequest
 from telethon.tl.functions.users import GetFullUserRequest, GetUsersRequest
-from telethon.tl.types import Channel, Chat, ChannelParticipantsRecent, InputChannel, InputUser, PeerChannel, PeerChat, PeerUser, User
+from telethon.tl.types import Channel, Chat, ChannelParticipantsRecent, InputChannel, InputUser, PeerChannel, PeerChat, PeerUser, User, InputMessageID
 
 ESPERA_TOTAL = 600
 USERNAME_VALIDO = re.compile(r"[A-Za-z0-9_]{1,32}")
@@ -644,6 +644,7 @@ def registros_telegram(dados, alvo, info):
         "entidade": dados.get("entidade"),
         "resposta_resolucao": dados.get("resposta_resolucao"),
         "resposta_completa": dados.get("resposta_completa"),
+        "mensagens_fixadas_mtproto": dados.get("mensagens_fixadas_mtproto", []),
         "fotos_perfil": dados.get("fotos_mtproto", []),
         "musicas_perfil": dados.get("musicas_mtproto", []),
         "participantes": dados.get("participantes_mtproto", []),
@@ -740,13 +741,38 @@ async def coletar(alvo):
     try:
         await com_espera(lambda: cliente.start(bot_token=os.environ["BOT_TOKEN"]))
         entidade, origem, resposta_resolucao = await resolver_alvo(cliente, alvo)
-        dados = {"entidade": entidade, "completo": None, "resposta_completa": None, "resposta_resolucao": resposta_resolucao, "foto": None, "notas": [origem], "fotos_info": None, "musicas_info": None, "fotos_mtproto": [], "musicas_mtproto": [], "participantes_mtproto": [], "midias": [], "pacotes_midias": [], "falhas_coleta": [], "respostas_bot_api": {}, "falhas_bot_api": [], "midias_dir": tempfile.mkdtemp(prefix="infocard_telegram_") if MODO == "completo" and CHAT_DESTINO else None}
+        dados = {"entidade": entidade, "completo": None, "resposta_completa": None, "resposta_resolucao": resposta_resolucao, "foto": None, "notas": [origem], "fotos_info": None, "musicas_info": None, "fotos_mtproto": [], "musicas_mtproto": [], "participantes_mtproto": [], "midias": [], "pacotes_midias": [], "falhas_coleta": [], "respostas_bot_api": {}, "falhas_bot_api": [], "mensagens_fixadas_mtproto": [], "midias_dir": tempfile.mkdtemp(prefix="infocard_telegram_") if MODO == "completo" and CHAT_DESTINO else None}
         if dados["midias_dir"]:
             atexit.register(shutil.rmtree, dados["midias_dir"], ignore_errors=True)
         atualizar_status("1/2 · Identificação confirmada; buscando campos adicionais", entidade)
         try:
             dados["resposta_completa"] = await com_espera(lambda: completo(cliente, entidade))
             dados["completo"] = objeto_completo(dados["resposta_completa"])
+            mensagem_fixada_id = getattr(dados["completo"], "pinned_msg_id", None)
+            if MODO == "completo" and mensagem_fixada_id:
+                try:
+                    if isinstance(entidade, Channel):
+                        fixadas = await com_espera(lambda: cliente(GetChannelMessagesRequest(
+                            channel=entidade, id=[InputMessageID(mensagem_fixada_id)]
+                        )))
+                    else:
+                        fixadas = await com_espera(lambda: cliente(GetMessagesRequest(
+                            id=[InputMessageID(mensagem_fixada_id)]
+                        )))
+                    dados["mensagens_fixadas_mtproto"].append(fixadas)
+                    if dados["midias_dir"]:
+                        for mensagem in getattr(fixadas, "messages", []) or []:
+                            if getattr(mensagem, "media", None):
+                                await baixar_midia(
+                                    cliente, mensagem, dados, "mensagem_fixada",
+                                    f"mensagem_fixada_{getattr(mensagem, 'id', mensagem_fixada_id)}"
+                                )
+                except Exception as erro_fixadas:
+                    dados["falhas_coleta"].append({
+                        "method": "messages.getMessages" if isinstance(entidade, Chat) else "channels.getMessages",
+                        "error": type(erro_fixadas).__name__,
+                    })
+                    dados["notas"].append(f"Mensagem fixada indisponível: {type(erro_fixadas).__name__}")
             if MODO == "completo" and isinstance(entidade, Channel):
                 try:
                     offset_participantes = 0
