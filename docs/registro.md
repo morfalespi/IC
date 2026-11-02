@@ -319,3 +319,7 @@ Limites de autenticação: o Telegram documenta `messages.getHistory` e `stories
 ## 2026-11-02 — CORREÇÃO: distinguir cobertura de dados e entrega
 
 A primeira versão da branch usava uma única condição para combinar falhas de coleta com falhas de envio e, em ambos os casos, respondia “Entrega incompleta”. Isso descrevia incorretamente uma execução em que todos os arquivos foram entregues, mas algum dado não pôde ser obtido. O código agora mantém estados distintos: entrega confirmada mede páginas/anexos aceitos e cobertura mede os dados disponíveis; o bot pode informar “Resultado parcial enviado” quando a entrega ocorreu e a coleta teve lacunas. Também foi restaurada a regra local contra testes escritos pelo próprio implementador, que não conflita com Partners e não precisava ter sido removida.
+
+## 2026-11-02 — AMPLIAÇÃO EFETIVA: consultar leitores bot elegíveis sem flags prévios
+
+O modo completo deixou de pular `photos.getUserPhotos` quando a entidade não trazia foto, `users.getSavedMusic` quando o campo `saved_music` estava ausente, e `channels.getParticipants` quando os flags de `channelFull` não indicavam acesso. As três chamadas passam a consultar o Telegram diretamente; a resposta do método decide o que está acessível. O método de resolução inicial também é preservado no JSONL junto com seus objetos de retorno. Os métodos `messages.getCommonChats` e `messages.getPeerSettings` foram identificados como exclusivos de usuário e registrados fora do acesso do bot.
