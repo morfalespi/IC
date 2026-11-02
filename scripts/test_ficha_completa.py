@@ -66,8 +66,10 @@ class TesteFichaCompleta(unittest.TestCase):
         textos = [
             trecho
             for pagina in partes
-            for trecho in re.findall(r"~{3,}text\n(.*?)\n~{3,}",
-                                     pagina.decode("utf-8"), flags=re.DOTALL)
+            for trecho in re.findall(
+                r"### Bio(?: — trecho [0-9]+)?\n\n~{3,}text\n(.*?)\n~{3,}",
+                pagina.decode("utf-8"), flags=re.DOTALL
+            )
         ]
         self.assertEqual("".join(textos), bio)
         self.assertIn("Bio", "".join(p.decode("utf-8") for p in partes))
