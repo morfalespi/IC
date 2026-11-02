@@ -42,3 +42,12 @@ Antes desta evolução, o resolver mapeava uma seleção de campos, consultava n
 ## Critério de sucesso sustentado
 
 Para cada execução completa, todas as respostas dos métodos de leitura inventariados e elegíveis foram serializadas sem perda, as coleções acessíveis foram paginadas até o fim, os anexos obrigatórios foram aceitos e inspecionados no Telegram, e cada campo ou coleção indisponível tem um estado e motivo explícitos. O sucesso continua limitado ao acesso realmente concedido pelo Telegram à sessão de bot.
+
+
+## Referências oficiais consultadas
+
+- [users.getFullUser](https://core.telegram.org/method/users.getFullUser) e [channels.getFullChannel](https://core.telegram.org/method/channels.getFullChannel): respostas completas e disponibilidade para bots.
+- [messages.getFullChat](https://core.telegram.org/method/messages.getFullChat): grupos básicos.
+- [photos.getUserPhotos](https://core.telegram.org/method/photos.getUserPhotos) e [users.getSavedMusic](https://core.telegram.org/method/users.getSavedMusic): fotos e músicas de perfil, com paginação e autorização de bot.
+- [channels.getParticipants](https://core.telegram.org/method/channels.getParticipants): paginação; pode retornar CHAT_ADMIN_REQUIRED.
+- [messages.getHistory](https://core.telegram.org/method/messages.getHistory), [stories.getPeerStories](https://core.telegram.org/method/stories.getPeerStories), [messages.getCommonChats](https://core.telegram.org/method/messages.getCommonChats) e [messages.getPeerSettings](https://core.telegram.org/method/messages.getPeerSettings): limitações de autenticação de bot.
