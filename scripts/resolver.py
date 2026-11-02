@@ -109,7 +109,7 @@ def marcar_notificado():
     open(os.path.join(os.environ.get("RUNNER_TEMP", "/tmp"), "notificado"), "w").close()
 
 
-def editar_ficha_rica(conteudo, foto=None):
+def editar_ficha_rica(conteudo, foto=None, definitiva=False):
     if not CHAT_DESTINO:
         return False, False
     metodo = "editMessageText" if ID_MENSAGEM else "sendRichMessage"
@@ -119,13 +119,15 @@ def editar_ficha_rica(conteudo, foto=None):
     if foto and len(foto) <= 10 * 1024 * 1024:
         resposta = solicitar_bot_api(metodo, dados, foto)
         if resposta.get("ok"):
-            marcar_notificado()
+            if definitiva:
+                marcar_notificado()
             print("ficha rica editada; foto incorporada no mesmo bloco")
             return True, True
         print("mídia embutida indisponível:", resposta.get("error_code"), corte(resposta.get("description"), 180))
     resposta = solicitar_bot_api(metodo, dados)
     if resposta.get("ok"):
-        marcar_notificado()
+        if definitiva:
+            marcar_notificado()
         print("ficha rica editada; sem foto incorporada")
         return True, False
     print("ficha rica indisponível:", resposta.get("error_code"), corte(resposta.get("description"), 180))
@@ -546,7 +548,7 @@ async def principal():
     if chat:
         if codigo == 0:
             rico = ficha_final(info, notas, dados["foto"])
-            ok, foto_enviada = editar_ficha_rica(rico, dados["foto"])
+            ok, foto_enviada = editar_ficha_rica(rico, dados["foto"], definitiva=True)
             if ok and dados["foto"] and not foto_enviada:
                 try:
                     enviar_foto(chat, dados["foto"])
@@ -558,7 +560,7 @@ async def principal():
                 print("ficha convencional enviada por fallback")
         else:
             causa = re.sub(r"<[^>]*>", "", texto)
-            ok, _ = editar_ficha_rica(ficha_falha(alvo, causa))
+            ok, _ = editar_ficha_rica(ficha_falha(alvo, causa), definitiva=True)
             if not ok:
                 enviar(chat, texto)
                 print("erro convencional enviado por fallback")
