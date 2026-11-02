@@ -41,5 +41,5 @@ export function cartaoErro(entrada, motivo) {
   return '<h2>⚠️ Infocard</h2>' +
     '<p><b>Pesquisa não concluída</b></p>' +
     '<table bordered compact>' + linha('Consulta', entrada.rotulo) +
-    linha('Motivo', motivo) + '</table>' + controles(entrada.alvo);
+    linha('Motivo', motivo) + '</table>' + controles(entrada);
 }

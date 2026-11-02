@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       alvo:
-        description: "Username, ID numérico ou ID|username de referência"
+        description: "Username público ou ID numérico. Informe expected_id separadamente, quando houver."
         required: true
       healthcheck:
         description: "Somente validar o dispatch; não acessa Telegram"

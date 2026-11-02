@@ -1,23 +1,23 @@
-# Segurança
+# Segurança do Infocard
 
-## Segredos
+## Estado do projeto
 
-Nunca versione tokens ou credenciais. O arquivo `tgcloud/lib/segredos.js` deve permanecer no Git apenas com placeholders vazios; o workflow de deploy injeta `GH_DISPATCH_TOKEN` e o nome do repositório somente no runner antes da publicação.
+O repositório morfalespi/IC é público. As execuções GitHub Actions também podem tornar visíveis metadados e logs. O fluxo de workflow_dispatch passa username/ID pesquisado, expected_id e chat/message_id como inputs; por isso **não é um transporte de dados de consulta confidencial**.
 
-Secrets esperados no GitHub Actions:
+Não fazer pesquisas de dados sensíveis de terceiros por esta arquitetura supondo sigilo. Para proteção de consultas privadas será necessário projetar um transporte autenticado que não publique o contexto em workflows visíveis e decidir retenção mínima, controles de acesso e exclusão.
 
-- `TGCLOUD_TOKEN`
-- `GH_DISPATCH_TOKEN`
-- `API_ID`
-- `API_HASH`
-- `BOT_TOKEN`
+## Credenciais
 
-O `GH_DISPATCH_TOKEN` deve ser um token fine-grained restrito a este repositório e com apenas a permissão necessária para disparar Actions. Rotacione imediatamente qualquer segredo que apareça em commit, log, issue, print ou mensagem pública.
+Não versionar TGCLOUD_TOKEN, GH_DISPATCH_TOKEN, API_ID, API_HASH, BOT_TOKEN, sessões MTProto ou access_hash. O arquivo tgcloud/lib/segredos.js deve permanecer no Git apenas com placeholders vazios. Durante o deploy, o GH_DISPATCH_TOKEN é injetado no módulo publicado no Telegram Serverless; proteger a conta do bot, acesso ao runtime e política de rotação.
 
-## Dados retornados
+Usar permissões mínimas para GH_DISPATCH_TOKEN e rotacionar qualquer segredo exposto em commits, prints, issues ou logs públicos. Não adicionar secrets a documentação ou mensagens de diagnóstico.
 
-O bot deve exibir apenas campos efetivamente entregues pelas APIs utilizadas. Não trate ausência de campo como prova de inexistência e não prometa acesso a dados protegidos por configurações de privacidade.
+## Dados
 
-## Relato de vulnerabilidade
+Mostrar somente campos efetivamente retornados pelas APIs e permitidos pela privacidade. Campo ausente não comprova inexistência. Os recursos de Rich Messages e Markdown não concedem maior acesso a dados.
 
-Enquanto o repositório for privado, use um canal privado do proprietário do projeto para relatar vulnerabilidades. Não publique tokens, IDs privados ou dados pessoais em issues.
+Não criar coletores de terceiros, bancos de perfis ou cache persistente sem revisão explícita de finalidade, privacidade, segurança e consentimentos pertinentes.
+
+## Relatar problemas
+
+Descrever a falha e o link do run com informações sensíveis omitidas. Não colocar IDs privados, telefones, tokens ou documentos pessoais em issues públicas. Usar canal privado autorizado pelo proprietário do projeto para vulnerabilidades.

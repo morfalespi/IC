@@ -1,97 +1,41 @@
-# Verificação vigente — 2026-11-02: identidade e botões
+# Checklist operacional do Infocard
 
-1. Testar `@myJAMrobot` no privado: o resultado deve consultar `contacts.resolveUsername` e enviar uma ficha real.
-2. Testar `8786464392 @myJAMrobot` apenas se o ID realmente corresponder à conta; comparar a identidade no MTProto. Uma divergência deve resultar em erro explicativo.
-3. Usar **Atualizar** e **Completo + Markdown** a partir da ficha *nova*, gerada pelo deploy atualizado. Confirmar `callback_data` sem barras verticais e `expected_id` separado no workflow. Não copiar o payload do botão para o campo de texto.
-4. Conferir que a execução `resolver.yml` do teste **não** foi healthcheck, que o Telethon executou e que o relatório, as partes e o `.md` chegaram ao chat.
-5. Testar um botão antigo: receber aviso para nova pesquisa em vez de associar uma identidade errada.
-6. Confirmar em `scripts/check.sh` que só há checagens de sintaxe e segredos; não há execução de `scripts/test_ficha_completa.py` nem comentários/docstrings no código produzido.
-7. Não considerar deploy verde nem CI verde prova suficiente da consulta ou do arquivo.
+## Antes de publicar
 
-# Teste do botão: Completo + Markdown
+- Confirmar a main e o diff previsto, sem segredos no Git.
+- Consultar documentação oficial do método alterado e o SDK instalado.
+- Preservar a regra de não adicionar comentários/docstrings ao código e de não escrever testes autorais.
+- Conferir que npm run check executa sintaxe JS/Python e verifica o placeholder de tgcloud/lib/segredos.js.
+- Verificar configurações de deploy, migração e healthcheck separadamente.
 
-1. Envie `@username` ou `ID @username` e confira que o bot apresenta um **resumo** com **📚 Completo + Markdown**.
-2. Toque no botão imediatamente: deve surgir uma nova ficha de andamento, mantendo o resumo anterior. O dispatch usa `modo=completo`.
-3. Confira no GitHub Actions a execução real de `resolver.yml`, sem `healthcheck`. Depois devem chegar todas as páginas ricas, numeradas e, separadamente, um documento `.md` do mesmo perfil.
-4. Abra o `.md` e confira nome, ID, bio, campos extras e observações completas; textos com acentos, quebras de linha e emojis devem permanecer intactos.
-5. Simule um relatório longo: o Markdown deve ser dividido em arquivos somente se o total exceder 40 MiB; nenhuma parte pode ser omitida.
-6. Teste em cliente Telegram que não renderiza Rich Message: o resumo HTML deve oferecer o mesmo botão inline.
-7. Confirme que clicar duas vezes rapidamente respeita o limite global de solicitações e que não são exportadas credenciais ou telefones não obtidos pelo protocolo.
+## Após publicar
 
-# Verificações de relatório integral
+- CI verde prova somente verificações que ele executou.
+- Deploy verde prova que sincronização/migração/publicação declaradas terminaram, não que a função corrigida funciona.
+- Healthcheck do resolver prova aceitação do workflow_dispatch; Telethon é pulado.
+- Verificar nos logs do worker qual input chegou, se o peer corresponde e quais operações Bot API retornaram ok. Não divulgar valores completos de IDs de terceiros em relatórios públicos.
+- Verificar a mesma mensagem no aplicativo Telegram, incluindo o recebimento de mídia e anexo .md.
 
-1. Confira que `npm run check` valida a sintaxe JavaScript e Python e os placeholders privados. A regra do projeto proíbe testes escritos pelo autor da implementação; a validação funcional exige uma execução real.
-2. Faça uma consulta por `ID @username` cuja correspondência já foi verificada; compare cada campo retornado com a ficha final.
-3. Use um usuário/bot com bio, dados adicionais e foto, observando cada campo dentro de seção apropriada.
-4. Em caso de muitos campos, confirme `Parte 1/N`, `Parte 2/N` etc. **Nenhuma seção pode desaparecer ou ser truncada**.
-5. Confirme a foto incorporada ou enviada separadamente e os botões de Atualizar, Copiar ID e Abrir perfil.
-6. Em caso de erro do formato rico, confirme que o modo HTML clássico envia todas as partes.
-7. Confira que o worker nunca transmite `access_hash`, telefone, `API_ID`, `API_HASH`, sessões ou tokens como conteúdo do relatório.
-8. Registre sucesso apenas com uma execução real de `resolver.yml` que tenha enviado o relatório ao Telegram; deploy e healthcheck não são prova de sucesso em consulta.
+## Matriz de comportamento real
 
-## Limites oficiais
+| Cenário | Resultado obrigatório | Prova |
+|---|---|---|
+| /start, /help | Ajuda e seletores | Mensagem recebida no privado |
+| @username público | contacts.resolveUsername e relatório | Run não-healthcheck e mensagem |
+| ID sem contexto | Resultado permitido ou erro explicativo | Run e feedback |
+| ID @username com correspondência | Identidade coincidente antes dos dados | Log de resolução e relatório |
+| ID @username divergente | Nenhum dado atribuído ao ID incorreto | Mensagem de recusa |
+| Escolher usuário, grupo e canal | Mostrar campos de referência que chegaram | Mensagem inicial |
+| Atualizar | Callback validado e edição do cartão | Callback e mesmo message_id |
+| Completo + Markdown | Páginas ricas e documento .md completos | Logs de envio e arquivos no Telegram |
+| Rich Message recusada | Fallback HTML e foto quando possível | Log do erro e mensagem de fallback |
+| Limite excedido | Explicação ao usuário | Mensagem e bloqueio de dispatch |
 
-A Bot API 10.3 admite até 32.768 caracteres UTF-8, 500 blocos, 16 níveis, 50 mídias e 20 colunas por Rich Message. Ao exceder qualquer teto, o resultado deve continuar na próxima mensagem, sem descarte: https://core.telegram.org/bots/api#rich-message-formatting-options.
+## Limites e riscos
 
-# Checklist — cartão rico Telegram Bot API 10.3
-
-- Enviar `@BotFather` no privado: mensagem inicial precisa ser um cartão com título, tabela e botão **Atualizar**.
-- Observar as edições de progresso: status de autenticação, entidade identificada e conclusão, sem mandar uma nova mensagem para cada etapa.
-- Após o resultado, confirmar campos MTProto dentro da tabela, detalhes expansíveis e botões **Copiar ID** e **Abrir perfil** quando houver username.
-- Se existir foto do perfil, verificar se a imagem aparece **na mesma mensagem rica**. Se não, conferir aviso nos logs e fallback de foto separada.
-- Pressionar **Atualizar** e confirmar que o callback atualiza o mesmo cartão e respeita o limite de 1 busca por chat por 60 s.
-- Conferir busca por ID desconhecido e falha do GitHub para assegurar que a mensagem seja editada com uma explicação, sem credenciais em logs.
-- Validar que Rich Messages usam `rich_message` e não `parse_mode=HTML` convencional, que não aceita tabelas.
-- Conferir CI, deploy e execução **real** de `resolver.yml`. Um healthcheck verde não executa Telethon.
-- Observar diferenças entre versões de clientes Telegram; ter fallback em mensagens HTML convencionais.
-
-Fonte oficial: https://core.telegram.org/bots/api (Bot API 10.3, 24 de agosto de 2026).
-
-# Checklist do Infocard — pesquisa MTProto por ID ou referência
-
-## Antes do deploy
-
-- Use `main` e confirme CI verde; prefira repositório privado durante testes.
-- Mantenha `.gitignore`, sem `.env`, sessões, tokens ou credenciais no Git.
-- Confirme os cinco secrets no GitHub Actions: `API_ID`, `API_HASH`, `BOT_TOKEN`, `GH_DISPATCH_TOKEN`, `TGCLOUD_TOKEN`.
-- O `GH_DISPATCH_TOKEN` precisa de Actions: Read and write; o repositório é obtido de `github.repository`, nunca fixado.
-- No @BotFather, ative o Serverless; opcionalmente habilite inline mode.
-
-## Deploy
-
-- Execute `Deploy (Telegram Serverless)` na `main` ou faça push de mudanças do runtime.
-- Confira: `npm ci`, `fetch`, `status`, migração, configuração privada no runner, `push`, webhook e dispatch.
-- O healthcheck **não** prova a resolução real por MTProto.
-
-## Smoke tests no privado
-
-1. `/start` mostra as três formas: `@username`, `ID` e `ID @username` e o botão seletor.
-2. `@BotFather` dispara um workflow MTProto real e retorna uma resposta.
-3. Um ID numérico não é bloqueado localmente: inicia tentativa oficial por ID e apresenta o resultado ou causa de falha.
-4. `ID @username` correspondente recebe resultado verificado; ID discordante deve dar erro sem associar pessoas erradas.
-5. Teste o botão `Escolher usuário como referência`. O Telegram pode enviar apenas ID (sem username), sem garantir resolução.
-6. Encaminhamento com remetente visível pode oferecer ID/username; remetente oculto deve ser informado como indisponível.
-7. Confira que nenhuma consulta de perfil usa `api.getChat`.
-8. Verifique execução e logs de `Resolver entidade (MTProto)`.
-
-## Teste de retorno parcial verificável
-
-- Escolha um usuário usando o botão oficial e confirme que a primeira resposta exibe **Informações fornecidas pelo Telegram**, ID e nome/username se presentes, independentemente de sucesso do resolver.
-- Escolha um canal e um grupo. Verifique os dados `chat_shared` e a tentativa separada de enriquecimento por MTProto.
-- Não confunda campos fornecidos em uma seleção com campos confirmados pelo MTProto.
-- Confira erros de runtime do `request_chat` no SDK, pois CI e deploy validam publicação e sintaxe, não a compatibilidade de cada botão com o cliente Telegram.
-- Na pesquisa por ID digitado, confirme que uma recusa do servidor gera explicação útil, sem dados inventados.
-
-## Enriquecimento real — testes adicionais
-
-- Execute uma pesquisa de usuário com `ID @username` já confirmado e confira que os campos extraídos do MTProto permanecem corretos.
-- Se `stars_rating` vier presente, verifique se o relatório exibe o nível. Nunca interprete campo ausente como nível zero.
-- Se `saved_music` vier presente, confira a música destacada e, quando autorizada, a contagem de músicas via método oficial.
-- Se o Telegram fornecer fotos, confira se `photos.getUserPhotos` retornou total ou apenas amostra; ambos devem ser apresentados com rótulos diferentes.
-- Teste um bot público e verifique os campos de `bot_info`, sem expor informações internas.
-- Simule uma resposta sem dados adicionais para confirmar que o relatório básico continua disponível. A execução do CI garante sintaxe, mas **não substitui** os testes reais da API.
-- A solução não utiliza scraping, gerações de dados por IA nem consultas não oficiais para inventar campos.
-
-## Limites
-
-Um `access_hash` é específico do contexto MTProto e não é fornecido universalmente a partir de IDs. O valor zero é uma forma documentada de referência para bots em certas condições, não um método para contornar restrições. Não prometa que qualquer ID terá resultado.
+- 2 consultas por chat e 6 no total em janela de 60 s (tgcloud/lib/limite.js).
+- Telegram Bot API 10.3: limites oficiais de Rich Messages; paginar preservando conteúdo efetivamente coletado.
+- Um botão criado por versão anterior pode ser inválido e deve solicitar nova busca.
+- Identificador ID isolado desconhecido não é consulta universal.
+- O repositório é público e os inputs do workflow podem expor ID/chat. Não tratar logs públicos como repositório de dados privados.
+- Um arquivo Markdown válido e um CI verde **não** confirmam que o documento foi entregue: verificar sendDocument e recebimento.

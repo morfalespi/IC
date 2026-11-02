@@ -1,64 +1,68 @@
-# AGENTS.md
+# AGENTS.md — normas operacionais do Infocard
 
-Orientação para assistentes de IA e pessoas neste repositório. As afirmações técnicas sobre o que funciona ficam em `docs/registro.md`, com data, condição e evidência. Este arquivo não é prova de que algo funciona.
+Este arquivo orienta manutenção e revisão. Não é prova de execução ou disponibilidade de dados. As regras do proprietário, as especificações oficiais, o código de produção e as evidências de execução têm papéis diferentes.
 
-## O que é
+## Prioridade das referências
 
-Bot de Telegram no Telegram Serverless. Recebe `@username`, ID numérico ou `ID @username` em conversa privada para consulta por MTProto. O modo inline orienta abrir o privado. IDs podem ser tentados com referência de hash zero oficial para bots, sem garantia de acesso. A Bot API recebe updates, referências compartilhadas e envia respostas; não consulta perfis por `getChat`. Sem Mini App nem endpoints. O banco tem a tabela `disparos`.
+1. Telegram Bot API: https://core.telegram.org/bots/api e histórico https://core.telegram.org/bots/api-changelog
+2. Telegram MTProto: https://core.telegram.org/api/peers, https://core.telegram.org/method/contacts.resolveUsername e a documentação de cada método usado
+3. Telegram Serverless: https://core.telegram.org/bots/serverless e cópia em docs/Serverless-OFFICIAL
+4. SDK efetivamente instalado: docs/tgcloud-sdk.md e versão do projeto
+5. GitHub Actions: https://docs.github.com/en/actions e documentação de workflow_dispatch
 
-## Fluxo vigente (2026-11-02)
+Repositórios de terceiros, exemplos, versões anteriores deste projeto e comentários históricos não substituem as fontes acima. Conferir versões e parâmetros antes de mudar integração.
 
-- Não há leitura de perfis por `api.getChat` nem fallback Bot API; toda pesquisa por username ou ID dispara o resolver MTProto.
-- O teclado "Escolher usuário como referência" usa `request_users` apenas para obter ID e eventual username; não busca dados de perfil pela Bot API.
-- Encaminhamentos, contatos e menções podem fornecer referências oficiais, validadas pelo resolver MTProto.
-- O usuário pode pesquisar `ID @username`, que só retorna informações se o username resolver para o ID exato.
-- `docs/registro.md` contém evidências históricas de versões antigas, não uma especificação operacional.
+## Regras do proprietário — preservar
 
-## Regras do dono (DECISÃO)
+- Sem comentários e docstrings no código de produção. Documentar decisões em Markdown fora dos arquivos executáveis.
+- Não criar ou manter testes escritos pelo mesmo autor da implementação. A revisão deve confrontar as especificações oficiais e realizar verificações independentes e execução real. Checagem sintática não equivale a teste funcional.
+- Não afirmar funcionamento sem evidência identificada. Usar IMPLEMENTADO, VERIFICADO, HIPÓTESE e DECISÃO em docs/registro.md.
+- Falhas esperadas devem ser comunicadas ao usuário quando a Bot API estiver disponível. Não prometer comunicação quando a própria API ou a execução estiver indisponível.
+- Publicar correções autorizadas na main. Mudanças no tgcloud/ acionam deploy automático; mudanças apenas em scripts/ acionam CI, mas o próximo workflow do resolver utiliza a main atual.
+- Corrigir um problema identificado e avaliar suas regressões antes de afirmar sucesso.
+- Não adicionar tokens, sessões MTProto ou dados privados em commits, arquivos de documentação ou logs deliberados.
 
-- Sem comentários no código.
-- Sem testes escritos por quem escreveu o código. A verificação é a execução real: deploy e Actions.
-- Não afirmar como fato o que não tenha fonte verificável. Dizer o que não foi verificado.
-- Nenhuma falha silenciosa: todo erro chega a quem usou, com a causa.
-- Publicar direto na `main`. Cada push em `tgcloud/**` vai ao ar.
-- Um problema por vez: identificar o comportamento atual, definir o esperado, corrigir, verificar, conferir regressões.
-- Fontes: `docs/Serverless-OFFICIAL`, `docs/tgcloud-sdk.md`, a documentação do Bot API em `romastefale/loggerview` (`biblioteca/core-telegram-org-bots-api`), `romastefale/td`, `romastefale/mtproto` e `romastefale/abafigurinhas` como referência.
+## Fluxo implementado
 
-## Classificação das afirmações
+- handlers/message.js recebe o objeto Message; handlers/callback_query.js recebe CallbackQuery; handlers/inline_query.js recebe InlineQuery. O Update completo pode ser acessado como ctx.update quando o segundo argumento do handler for declarado.
+- Comandos de texto reconhecidos: /start e /help. Não há registro automático de menu por setMyCommands; o menu do BotFather não é inferido do código.
+- Texto de consulta aceito: @username, ID ou ID @username. Este último é convenção da interface do Infocard, não sintaxe do Telegram.
+- botões usam callback_data tipado (r ou f), validado em tgcloud/lib/entrada.js; não reutilizar conteúdo opaco de callback como texto digitado.
+- O TGCloud envia alvo e expected_id como parâmetros separados a resolver.yml, que aciona scripts/resolver.py.
+- MTProto tenta resolução por ID com as limitações de access_hash do Telegram; username passa por contacts.resolveUsername e, se houver expected_id, exige correspondência exata do peer.
+- O modo resumo pode abreviar campos deliberadamente; o botão Completo + Markdown solicita outra consulta MTProto e gera páginas ricas e anexo .md com campos mapeados e efetivamente retornados, não todas as propriedades existentes do protocolo.
+- Dados compartilhados por seletores e encaminhamentos podem aparecer no cartão inicial, mas o worker não possui armazenamento de contexto persistente para conservá-los se a ficha for sobrescrita.
+- O modo inline orienta a conversa privada; não faz consulta MTProto dentro de outro chat.
+- Sem Mini App nem endpoints próprios. Existe a tabela disparos para limitar requisições; limites atuais em tgcloud/lib/limite.js.
 
-VERIFICADO, IMPLEMENTADO, HIPÓTESE e DECISÃO, como definido em `docs/registro.md`. Um deploy concluído não prova que as funções estão corretas. Comentários não são requisitos: confira o código e a documentação antes de confiar.
+## Operações e limitações
 
-## Estrutura
+- O runtime Serverless não tem sistema de arquivos Node nem pacotes arbitrários; importar o SDK de sdk e sdk/db e módulos locais por caminhos .js.
+- Database: queries assíncronas, sem chaves estrangeiras. tgcloud push publica código e schema, mas não aplica migrações por si só.
+- O workflow .github/workflows/deploy.yml executa tgcloud migrate antes de tgcloud push; portanto um deploy desse workflow **pode alterar o esquema do banco**.
+- O GitHub injeta GH_DISPATCH_TOKEN no módulo publicado do TGCloud durante o deploy. O repositório mantém apenas placeholders em tgcloud/lib/segredos.js; o segredo existe no ambiente publicado e precisa de proteção e rotação.
+- O repositório é PÚBLICO. workflow_dispatch recebe alvo, expected_id e identificadores de chat/mensagem; metadados e logs das execuções podem expor esse contexto. Não tratar o workflow atual como transporte privado. Não registrar IDs completos em respostas de suporte públicas.
+- O status CI ou deploy só prova o que suas etapas verificaram. Healthcheck de dispatch ignora Telethon. Prova funcional exige workflow não-healthcheck, resultado da Bot API e inspeção do conteúdo entregue no Telegram.
+- A Bot API 10.3 oferece Rich Messages, tabelas, mídia e botões, mas impõe limites por mensagem; paginação e envio de documentos são alternativas documentadas, não permissão para consultas ilimitadas.
+- ID isolado de entidade desconhecida não possui resolução universal garantida. Não prometer acesso a dados ocultos ou inventar access_hash.
 
-| Caminho | O que é |
+## Caminhos principais
+
+| Arquivo | Responsabilidade |
 |---|---|
-| `tgcloud/handlers/` | Um arquivo por tipo de update: `message.js`, `inline_query.js`, `callback_query.js`. Sem subpastas. |
-| `tgcloud/lib/` | Módulos compartilhados. |
-| `tgcloud/schema.js` | Schema do banco (`disparos`). A plataforma recusa módulo vazio. |
-| `.github/workflows/deploy.yml` | Publica a cada push em `main` que altera `tgcloud/**` e arquivos de configuração. |
-| `.github/workflows/resolver.yml` | Busca por MTProto com `scripts/resolver.py`. O bot o dispara em `lib/despacho.js`. |
-| `tgcloud/lib/segredos.js` | No git só tem valor vazio. O `deploy.yml` o sobrescreve no runner com o secret `GH_DISPATCH_TOKEN` antes do `push`. Nunca commitar o token. |
-| `docs/registro.md` | O que foi verificado, implementado, hipótese e decisão. |
-| `.tgcloud/` | Estado do CLI. Nunca editar nem ler. |
+| tgcloud/handlers/message.js | Mensagens, /start, /help, referências compartilhadas |
+| tgcloud/handlers/callback_query.js | Ações dos botões r/f |
+| tgcloud/handlers/inline_query.js | Pesquisa inline orientada ao privado |
+| tgcloud/lib/entrada.js | Parser de entrada e codificação/decodificação de callback_data |
+| tgcloud/lib/consulta.js | Cartão inicial, controle e disparo |
+| tgcloud/lib/limite.js, tgcloud/schema.js | Limites por chat/global e tabela disparos |
+| tgcloud/lib/despacho.js | workflow_dispatch |
+| scripts/resolver.py | MTProto, enriquecimento e envio via Bot API |
+| scripts/ficha_completa.py | Paginação rica, fallback HTML e arquivos Markdown |
+| .github/workflows/ci.yml | Checagem de sintaxe e placeholders |
+| .github/workflows/deploy.yml | Sincronização, migração, publicação e healthcheck |
+| .github/workflows/resolver.yml | Consulta MTProto ou healthcheck sem consulta |
+| docs/auditoria-operacional.md | Matriz atual de achados e provas |
+| docs/registro.md | Histórico de decisões e evidências |
 
-Só `.js` dentro de `tgcloud/` vai para a nuvem.
-
-## Regras do runtime (documentação do Serverless)
-
-- Importar módulos do projeto por caminho relativo com `.js`; o SDK pelo nome (`'sdk'`, `'sdk/db'`).
-- Sem sistema de arquivos e sem pacotes npm.
-- O handler recebe o payload do update; o `Update` completo está em `ctx.update`.
-- Toda chamada de banco é assíncrona: sempre `await`.
-- Sem chaves estrangeiras. Remoção só por `.deprecated('motivo')`. Mudança de tipo é manual.
-- Publicar não altera o banco.
-- O `push` espelha a pasta: o que for editado só no @BotFather é sobrescrito.
-- O link `tg://user?id=` só funciona dentro de link embutido ou botão (documentação do Bot API).
-
-## Comandos
-
-```
-npx tgcloud status   # o que mudou localmente contra a nuvem
-npx tgcloud run <módulo> '<payload>'   # executa na plataforma sem publicar
-```
-
-Não use `npx tgcloud` fora do projeto: sem o CLI local, o npx baixa um pacote avulso de mesmo nome.
+Não editar .tgcloud/ nem colocar segredos em documentação. Não afirmar que uma função foi verificada só porque está descrita neste arquivo.

@@ -1,3 +1,13 @@
+# Auditoria corretiva — 2026-11-02
+
+**IMPLEMENTADO:** correção do botão de cartão de erro, remoção de código de formatação obsoleto e seus truncamentos, correção da mensagem de ID esperado inválido e atualização do texto do workflow. **REVISADO:** AGENTS.md, README.md, SECURITY.md e docs/launch-checklist.md com inventário em docs/auditoria-operacional.md. Preservadas as decisões sem comentários em código e sem testes autorais.
+
+**VERIFICADO POR LEITURA DE CÓDIGO:** a base contém somente /start e /help como comandos com barra, seletor oficial para usuário/canal/grupo, parser tipado de callback, MTProto por contacts.resolveUsername e relatório integral por sendDocument. Repositório confirmado público; GitHub Actions recebe metadados de consulta. A checagem sintática/CI ainda não é prova do comportamento real.
+
+**PENDENTE:** registrar CI/deploy deste commit e provar no chat o callback Atualizar e Completo + Markdown. Ver docs/auditoria-operacional.md.
+
+---
+
 # IMPLEMENTADO — 2026-11-02: remover a referência caseira `ID|username`
 
 **Causa verificada no código:** uma representação interna de referência (`ID|username`) era colocada no payload dos botões e devolvida ao parser de entrada do usuário, que aceitava `ID @username` mas não o separador interno. A mensagem "Não foi possível interpretar a referência" vinha do próprio parser e não do Telegram.

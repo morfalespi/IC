@@ -21,7 +21,6 @@ from telethon.tl.functions.users import GetFullUserRequest, GetUsersRequest
 from telethon.tl.types import Channel, InputChannel, InputUser, PeerChannel, PeerChat, PeerUser, User
 
 ESPERA_TOTAL = 600
-LIMITE_TEXTO = 4000
 USERNAME_VALIDO = re.compile(r"[A-Za-z0-9_]{1,32}")
 ALVO_VALIDO = re.compile(r"(?:[A-Za-z0-9_]{1,32}|-?\d{1,16})")
 CHAT_VALIDO = re.compile(r"-?[0-9]{1,16}")
@@ -277,18 +276,6 @@ def agrupar_campos(info):
     return grupos
 
 
-def linha_tabela(rotulo, valor):
-    return ("<tr><th>" + esc(corte(rotulo, 85))
-            + "</th><td>" + esc(corte(valor, 450)) + "</td></tr>")
-
-
-def tabela_rica(linhas, subtitulo=None):
-    corpo = "".join(linha_tabela(rotulo, valor) for rotulo, valor in linhas)
-    legenda = "<caption>" + esc(subtitulo) + "</caption>" if subtitulo else ""
-    return ('<table bordered striped compact>' + legenda +
-            '<tr><th>Campo</th><th>Valor confirmado</th></tr>' + corpo + '</table>')
-
-
 def dados_basicos(info):
     linhas = [
         ("Tipo", info["tipo"]),
@@ -303,89 +290,6 @@ def dados_basicos(info):
         linhas.append(("Indicadores públicos", ", ".join(info["marcas"])))
     linhas.append(("Foto de perfil", "Disponível" if info["foto"] else "Não informada"))
     return linhas
-
-
-def texto_simples_consolidado(info, notas, estado_foto):
-    linhas = [
-        "<b>📇 Infocard · Telegram MTProto</b>",
-        "<b>✅ Identificação confirmada</b>",
-    ]
-    linhas.extend(esc(k) + ": " + esc(v) for k, v in dados_basicos(info))
-    for titulo, campos in agrupar_campos(info):
-        linhas.append("\n<b>" + esc(titulo) + "</b>")
-        linhas.extend(esc(rotulo) + ": " + esc(valor) for rotulo, valor in campos)
-    linhas.append("\nFoto: " + esc(estado_foto))
-    if notas:
-        linhas.append("\n<b>Origem e limites</b>")
-        linhas.extend(esc(corte(nota, 200)) for nota in notas[:6])
-    texto = "\n".join(linhas)
-    if len(texto) > LIMITE_TEXTO:
-        linhas = [
-            "<b>📇 Infocard · Telegram MTProto</b>",
-            "<b>✅ Identificação confirmada</b>",
-        ]
-        linhas.extend(esc(k) + ": " + esc(v) for k, v in dados_basicos(info))
-        for titulo, campos in agrupar_campos(info):
-            secao = "\n<b>" + esc(titulo) + "</b>\n" + "\n".join(
-                esc(k) + ": " + esc(v) for k, v in campos
-            )
-            if len("\n".join(linhas)) + len(secao) > LIMITE_TEXTO - 100:
-                linhas.append("\nDetalhes adicionais disponíveis na ficha rica do Telegram.")
-                break
-            linhas.append(secao)
-        texto = "\n".join(linhas)
-    if len(texto) <= LIMITE_TEXTO:
-        return texto
-    seguros = []
-    for linha in linhas:
-        candidato = "\n".join(seguros + [linha])
-        if len(candidato) > LIMITE_TEXTO - 130:
-            seguros.append("<i>Alguns detalhes não couberam no texto simples; consulte o cartão rico.</i>")
-            break
-        seguros.append(linha)
-    return "\n".join(seguros)
-
-
-def ficha_final(info, notas, foto):
-    basicos = dados_basicos(info)
-    grupos = agrupar_campos(info)
-    blocos = [
-        '<h2>📇 Infocard · Perfil consolidado</h2>',
-        '<p><b>✅ Identificação confirmada</b> · Telegram MTProto</p>',
-        tabela_rica(basicos, "Identificação e dados consolidados"),
-    ]
-    if grupos:
-        blocos.append("<h3>🔬 Dados aprofundados</h3>")
-        for indice, (titulo, campos) in enumerate(grupos):
-            tabela = tabela_rica(campos, titulo)
-            if indice == 0:
-                blocos.append(tabela)
-            else:
-                blocos.append('<details><summary>' + esc(titulo) +
-                              ' · ' + str(len(campos)) + ' campo(s)</summary>' +
-                              tabela + '</details>')
-    else:
-        blocos.append("<p><i>Nenhum campo adicional foi fornecido nesta consulta.</i></p>")
-    if notas:
-        origem = "".join("<p>" + esc(corte(n, 260)) + "</p>" for n in notas[:7])
-        blocos.append('<details><summary>🔎 Origem, observações e limites</summary>' +
-                      origem + '</details>')
-    botoes = [botao_atualizar(os.environ.get("ALVO", "").strip().lstrip("@"))]
-    botoes.append('<tg-button type="copy_text" text="' + esc(info["id"]) +
-                  '">📋 Copiar ID</tg-button>')
-    username = info["username"]
-    if username and re.fullmatch(r"[A-Za-z0-9_]{1,32}", username):
-        botoes.append('<tg-button type="url" url="https://t.me/' + esc(username) +
-                      '">🔗 Abrir perfil</tg-button>')
-    controles = ('<tg-button-row align="center">' +
-                 "".join(botao for botao in botoes if botao) + '</tg-button-row>')
-    blocos.extend([
-        '<hr/>',
-        '<footer>Dados observados por MTProto; campos ausentes não foram presumidos. ' +
-        'Foto: ' + ("recebida" if foto else "não retornada") + '.</footer>',
-        controles,
-    ])
-    return "".join(blocos)
 
 
 def ficha_falha(alvo, motivo):
@@ -654,41 +558,6 @@ def descrever(entidade, completo_, alvo):
     return info
 
 
-def estado_da_foto(info, enviada, tem_chat):
-    if enviada:
-        return "enviada junto"
-    if not info["foto"]:
-        return "não"
-    return "existe, mas não foi possível enviar" if tem_chat else "existe"
-
-
-def relatorio(info, notas, foto):
-    topo = [
-        "<b>Lido via MTProto</b>",
-        f"Consultado: {esc(info['consultado'])}",
-        f"Tipo: {esc(info['tipo'])}",
-        f"ID: <code>{esc(info['id'])}</code>",
-        f"Nome: {esc(info['nome'])}" if info["nome"] else "Nome: (vazio)",
-    ]
-    if info["username"]:
-        topo.append(f"Username principal: @{esc(info['username'])}")
-    if info["usernames"]:
-        topo.append("Usernames ativos: " + ", ".join(f"@{esc(u)}" for u in info["usernames"]))
-    if info["marcas"]:
-        topo.append(f"Marcas: {esc(', '.join(info['marcas']))}")
-    campos = [f"{esc(rotulo)}: {esc(valor)}" for rotulo, valor in info["campos"]]
-    rodape = [f"Foto de perfil: {foto}"]
-    if info["tipo"] in ("usuário", "bot"):
-        rodape.append(f'<a href="tg://user?id={info["id"]}">Abrir perfil</a>')
-    avisos = [esc(corte(nota, 300)) for nota in notas]
-    while len("\n".join(topo + campos + rodape + avisos)) > LIMITE_TEXTO and (campos or avisos):
-        if campos:
-            campos.pop()
-        else:
-            avisos.pop()
-    return "\n".join(topo + campos + rodape + avisos)
-
-
 def falha(alvo, motivo):
     entrada = f"{EXPECTED_ID} @{alvo}" if EXPECTED_ID else (alvo if re.fullmatch(r"-?\d{1,16}", alvo) else f"@{alvo}")
     return f"<b>Não foi possível ler</b>\nEntrada: {esc(entrada)}\n{esc(motivo)}"
@@ -703,9 +572,10 @@ async def principal():
         return 1
     if EXPECTED_ID and (not re.fullmatch(r"-?\d{1,16}", EXPECTED_ID) or
                         int(EXPECTED_ID) == 0 or abs(int(EXPECTED_ID)) > 4503599627370495):
+        texto = falha(alvo or "(vazio)", "ID esperado inválido; envie ID @username válido.")
         print("EXPECTED_ID inválido")
-        return 1
-    if not ALVO_VALIDO.fullmatch(alvo):
+        codigo = 1
+    elif not ALVO_VALIDO.fullmatch(alvo):
         texto = falha(alvo or "(vazio)", "Entrada inválida: use @username, ID numérico ou ID @username.")
         print("entrada inválida")
         codigo = 1
@@ -723,7 +593,6 @@ async def principal():
             if dados["musicas_info"]:
                 info["campos"].append(("Músicas de perfil no MTProto", dados["musicas_info"]))
 
-            texto = texto_simples_consolidado(info, notas, estado_da_foto(info, foto_enviada, bool(chat)))
             print("tipo resolvido:", info["tipo"], "| campos extras:", len(info["campos"]))
             codigo = 0
         except errors.UsernameNotOccupiedError:
