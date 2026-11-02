@@ -77,7 +77,7 @@ Por decisão expressa do proprietário, não são criados testes escritos pelo p
 
 - 41531172969 e 41531283280: consultas reais em modo resumo; os logs registraram entidade de bot, campos adicionais e foto incorporada, anteriores a esta auditoria.
 - 41533495539: healthcheck, sem execução do resolver MTProto.
-- O fluxo novo do botão Completo + Markdown e as correções desta auditoria **não devem ser marcados VERIFICADO** sem clique real, workflow com MODO=completo e entrega ao Telegram.
+- O fluxo de Exportação completa (Markdown + JSONL + mídia) e as correções desta auditoria **não devem ser marcados VERIFICADO** sem clique real, workflow com MODO=completo, recebimento e inspeção dos anexos no Telegram.
 
 ## Sequência sugerida para validação real
 
@@ -85,7 +85,7 @@ Por decisão expressa do proprietário, não são criados testes escritos pelo p
 2. @username público de teste; comprovar ID, nome, Rich Message e foto quando houver.
 3. ID @username correspondente; conferir comparação exata. Em seguida testar ID divergente.
 4. Atualizar a ficha pelo botão novo; observar o mesmo message_id.
-5. Completo + Markdown; confirmar workflow com MODO=completo, páginas ricas e anexo no Telegram.
+5. Exportação completa; confirmar workflow com MODO=completo, páginas ricas, Markdown, JSONL e ZIP no Telegram; conferir hashes e abrir cada anexo.
 6. Provocar erro de referência e observar botão Atualizar na ficha de erro.
 7. Conferir login e permissões do Telegram e erros de Bot API, sem divulgar dados pessoais nos logs ou issues.
 
@@ -97,4 +97,14 @@ Foi removido o corte fixo de nove campos da apresentação usual, mantendo pagin
 
 ## Revisão de confirmação da entrega — 2026-11-02
 
-**IMPLEMENTADO:** exigir o `result.message_id` retornado pelo servidor Bot API nos métodos de envio/edição em chat, adicionar hash SHA-256 à legenda de cada Markdown, contar partes de Rich Messages, HTML e anexos separadamente, respeitar `retry_after` em 429 sem repetir 5xx de resultado de envio ambíguo e ampliar timeout do job para 30 minutos. **NÃO VERIFICADO EM PRODUÇÃO:** falhas reais de todas as modalidades e recebimento do arquivo após esta revisão. CI e healthcheck são insuficientes. O arquivo referenciado pelo usuário como `partners.md` não estava disponível na árvore main nem nas peças desta conversa; não foi tomado como fonte normativa nem inventado. Referências oficiais: https://core.telegram.org/bots/api e https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax.
+**IMPLEMENTADO:** exigir o `result.message_id` retornado pelo servidor Bot API nos métodos de envio/edição em chat, adicionar hash SHA-256 à legenda de cada Markdown, contar partes de Rich Messages, HTML e anexos separadamente, respeitar `retry_after` em 429 sem repetir 5xx de resultado de envio ambíguo e ampliar timeout do job para 30 minutos. **NÃO VERIFICADO EM PRODUÇÃO:** falhas reais de todas as modalidades e recebimento do arquivo após esta revisão. CI e healthcheck são insuficientes. A skill Partners selecionada pela pessoa governa esta evolução; as instruções locais divergentes foram ajustadas em `AGENTS.md`. Referências técnicas: https://core.telegram.org/bots/api, https://core.telegram.org/api e https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax.
+
+
+## Escopo ativo decidido em 2026-11-02
+
+A meta agora é ampliar o Infocard para entregar a cobertura máxima e verificável dos dados de leitura acessíveis à sessão MTProto de bot, em vez de limitar o produto aos campos já mapeados. A autenticação permanece como bot. Os métodos `messages.getHistory` e `stories.getPeerStories` são exclusivos de contas de usuário; `channels.getParticipants` pode exigir administração. A cobertura técnica precisa ser inventariada campo a campo e método a método conforme a layer oficial e o Telethon instalado. Não alegar conclusão até que os dados retornados, a paginação e a entrega recebida no Telegram sejam confirmados. Ver [docs/partners-mtproto-coverage.md](partners-mtproto-coverage.md).
+
+
+## Correção de estados na exportação completa — 2026-11-02
+
+O bot separa a entrega de anexos da cobertura dos dados. Quando o Telegram recebeu as partes montadas, mas um método não retornou dados, a resposta é “Resultado parcial enviado”; “Entrega incompleta” fica reservado a páginas/anexos sem confirmação. A lacuna continua explícita no relatório e o resultado não é tratado como integral. A regra do proprietário contra testes escritos pelo próprio implementador foi preservada, pois não conflitava com Partners.

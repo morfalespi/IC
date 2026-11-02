@@ -19,7 +19,7 @@ export default async function (callback) {
   const completo = pedido.acao === 'f';
   await api.answerCallbackQuery({
     callback_query_id: callback.id,
-    text: completo ? 'Preparando relatório completo e Markdown…' : 'Atualização solicitada.',
+    text: completo ? 'Preparando exportação completa…' : 'Atualização solicitada.',
   });
   try {
     const contexto = completo

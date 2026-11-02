@@ -297,3 +297,29 @@ Situação: **IMPLEMENTADO localmente; requer primeiro deploy no novo repositór
 - Adicionados `SECURITY.md`, `.env.example` e `docs/launch-checklist.md`.
 
 Critério de conclusão: CI verde no novo repositório, deploy verde com todos os secrets configurados e execução dos smoke tests do checklist. Até isso ocorrer, o pacote é **launch-ready**, não “produção comprovada”.
+
+
+## 2026-11-02 — DECISÃO: Partners governa a evolução do Infocard
+
+A pessoa definiu que Partners tem precedência sobre normas locais do repositório quando houver divergência; ajustar esta documentação e a implementação em vez de tratar convenções históricas como imutáveis. O critério do projeto passa a ser a cobertura e entrega máxima, verificável e sustentada dos dados MTProto acessíveis a uma autenticação de bot. A sessão permanecerá como bot. Métodos exclusivos de usuário e dados dependentes de permissões seguem os limites oficiais do Telegram. Estado anterior é inventário, não baseline. A execução desta decisão ainda requer mudanças e prova real de entrega; este registro não afirma conclusão.
+
+
+
+## 2026-11-02 — IMPLEMENTADO PARCIAL: exportação ampla das respostas MTProto
+
+Na branch `codex/partners-mtproto-coverage`, o resolver passou a preservar os wrappers e objetos TL completos das chamadas executadas e a serializar valores em JSONL sem restringir a campos conhecidos. No modo completo, percorre páginas de fotos de perfil e músicas salvas, tenta paginar participantes quando os flags de acesso do canal permitem, baixa arquivos acessíveis e os entrega em pacotes ZIP com manifesto e SHA-256. A entrega completa solicita relatório legível, Markdown, JSONL e os pacotes de mídia. O status de sucesso interno exige que todas as partes previstas sejam aceitas pela Bot API.
+
+**VERIFICADO:** a branch contém estas alterações nos arquivos `scripts/resolver.py`, `scripts/ficha_completa.py` e `scripts/mtproto_export.py`; os documentos de escopo agora distinguem capacidade implementada e lacunas restantes.
+
+**NÃO VERIFICADO:** compatibilidade de execução com a versão instalada do Telethon, execução real com bot após estas mudanças, abertura/inspeção dos anexos recebidos e cobertura de todos os métodos MTProto de leitura elegíveis para cada tipo de peer. A matriz em `docs/partners-mtproto-coverage.md` identifica isso como trabalho restante. Portanto esta mudança é uma etapa de ampliação, não cobertura total nem sucesso comprovado em produção.
+
+Limites de autenticação: o Telegram documenta `messages.getHistory` e `stories.getPeerStories` como métodos exclusivos de usuário; a sessão permanece de bot por decisão da pessoa. `channels.getParticipants` pode depender de privilégios e permissões do chat. A resposta da API não concede acesso a dados privados ou ocultos.
+
+
+## 2026-11-02 — CORREÇÃO: distinguir cobertura de dados e entrega
+
+A primeira versão da branch usava uma única condição para combinar falhas de coleta com falhas de envio e, em ambos os casos, respondia “Entrega incompleta”. Isso descrevia incorretamente uma execução em que todos os arquivos foram entregues, mas algum dado não pôde ser obtido. O código agora mantém estados distintos: entrega confirmada mede páginas/anexos aceitos e cobertura mede os dados disponíveis; o bot pode informar “Resultado parcial enviado” quando a entrega ocorreu e a coleta teve lacunas. Também foi restaurada a regra local contra testes escritos pelo próprio implementador, que não conflita com Partners e não precisava ter sido removida.
+
+## 2026-11-02 — AMPLIAÇÃO EFETIVA: consultar leitores bot elegíveis sem flags prévios
+
+O modo completo deixou de pular `photos.getUserPhotos` quando a entidade não trazia foto, `users.getSavedMusic` quando o campo `saved_music` estava ausente, e `channels.getParticipants` quando os flags de `channelFull` não indicavam acesso. As três chamadas passam a consultar o Telegram diretamente; a resposta do método decide o que está acessível. O método de resolução inicial também é preservado no JSONL junto com seus objetos de retorno. Os métodos `messages.getCommonChats` e `messages.getPeerSettings` foram identificados como exclusivos de usuário e registrados fora do acesso do bot.

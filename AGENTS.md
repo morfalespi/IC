@@ -2,7 +2,11 @@
 
 Este arquivo orienta manutenção e revisão. Não é prova de execução ou disponibilidade de dados. As regras do proprietário, as especificações oficiais, o código de produção e as evidências de execução têm papéis diferentes.
 
-## Prioridade das referências
+## Método obrigatório: Partners
+
+A skill Partners e as decisões explícitas da pessoa definem o objetivo, os critérios de sucesso e o método de evolução. Quando estas normas locais divergirem de Partners ou de uma decisão atual da pessoa, atualizar este arquivo e os demais documentos afetados; não perpetuar uma regra antiga por inércia.
+
+Para fatos técnicos, usar as especificações oficiais vigentes. Código e decisões anteriores são inventário do estado observado, não padrão normativo. Conferir versões e parâmetros antes de alterar uma integração.
 
 1. Telegram Bot API: https://core.telegram.org/bots/api e histórico https://core.telegram.org/bots/api-changelog
 2. Telegram MTProto: https://core.telegram.org/api/peers, https://core.telegram.org/method/contacts.resolveUsername e a documentação de cada método usado
@@ -12,10 +16,10 @@ Este arquivo orienta manutenção e revisão. Não é prova de execução ou dis
 
 Repositórios de terceiros, exemplos, versões anteriores deste projeto e comentários históricos não substituem as fontes acima. Conferir versões e parâmetros antes de mudar integração.
 
-## Regras do proprietário — preservar
+## Regras de qualidade
 
 - Sem comentários e docstrings no código de produção. Documentar decisões em Markdown fora dos arquivos executáveis.
-- Não criar ou manter testes escritos pelo mesmo autor da implementação. A revisão deve confrontar as especificações oficiais e realizar verificações independentes e execução real. Checagem sintática não equivale a teste funcional.
+- Não criar ou manter testes escritos pelo mesmo autor da implementação. A revisão deve confrontar as especificações oficiais e realizar verificações independentes e execução real. Checagem sintática, CI verde e healthcheck não provam entrega funcional. Essa regra continua compatível com Partners: foco em resultados não exige remover uma restrição de validação que não conflita com o objetivo.
 - Não afirmar funcionamento sem evidência identificada. Usar IMPLEMENTADO, VERIFICADO, HIPÓTESE e DECISÃO em docs/registro.md.
 - Falhas esperadas devem ser comunicadas ao usuário quando a Bot API estiver disponível. Não prometer comunicação quando a própria API ou a execução estiver indisponível.
 - Publicar correções autorizadas na main. Mudanças no tgcloud/ acionam deploy automático; mudanças apenas em scripts/ acionam CI, mas o próximo workflow do resolver utiliza a main atual.
@@ -30,7 +34,7 @@ Repositórios de terceiros, exemplos, versões anteriores deste projeto e coment
 - botões usam callback_data tipado (r ou f), validado em tgcloud/lib/entrada.js; não reutilizar conteúdo opaco de callback como texto digitado.
 - O TGCloud envia alvo e expected_id como parâmetros separados a resolver.yml, que aciona scripts/resolver.py.
 - MTProto tenta resolução por ID com as limitações de access_hash do Telegram; username passa por contacts.resolveUsername e, se houver expected_id, exige correspondência exata do peer.
-- A busca comum exibe todos os campos mapeados que o MTProto efetivamente retornou, em páginas ricas, sem corte fixo de quantidade. O botão Obter Markdown completo faz outra consulta e entrega também o anexo .md; isso não significa coletar todas as propriedades possíveis do protocolo.
+- Estado observado: a busca comum exibe um subconjunto mapeado dos campos retornados pelo MTProto; o relatório completo entrega Markdown desse mesmo subconjunto. A meta decidida é ampliar a coleta e entrega para cobrir integralmente os campos e recursos de leitura acessíveis à autenticação de bot, documentando limites da API e falhas parciais.
 - Dados compartilhados por seletores e encaminhamentos podem aparecer no cartão inicial, mas o worker não possui armazenamento de contexto persistente para conservá-los se a ficha for sobrescrita.
 - O modo inline orienta a conversa privada; não faz consulta MTProto dentro de outro chat.
 - Sem Mini App nem endpoints próprios. Existe a tabela disparos para limitar requisições; limites atuais em tgcloud/lib/limite.js.
