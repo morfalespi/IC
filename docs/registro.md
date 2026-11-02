@@ -6,6 +6,14 @@
 
 **FONTES OFICIAIS:** https://core.telegram.org/bots/api#available-methods ; https://core.telegram.org/bots/api#userprofilephotos ; https://core.telegram.org/bots/api#userprofileaudios ; https://core.telegram.org/bots/api#getuserpersonalchatmessages ; https://core.telegram.org/bots/api#file
 
+
+
+## Complemento integrado — chats relacionados do Bot API
+
+**IMPLEMENTADO NO CÓDIGO:** quando `getChat` retorna chats `personal_chat`, `parent_chat` ou `linked_chat_id`, a exportação completa tenta chamar `getChat` para cada ID distinto e inclui as respostas no JSONL. Também tenta baixar foto e primeiro áudio de perfil associados.
+
+**PR #3 integrado:** o CI passou as verificações automatizadas do repositório. Isso não confirma permissão para chats relacionados específicos nem entrega real dos respectivos dados.
+
 ---
 
 # Revisão da entrega eficaz — 2026-11-02
