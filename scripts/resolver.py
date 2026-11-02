@@ -321,6 +321,40 @@ async def coletar_bot_api(dados, entidade, info):
                 dados, audio["file_id"], "audio_perfil_bot_api",
                 audio.get("file_unique_id")
             )
+        ids_relacionados = []
+        for chave in ("personal_chat", "parent_chat"):
+            relacionado = resultado_chat.get(chave)
+            id_relacionado = relacionado.get("id") if isinstance(relacionado, dict) else None
+            if isinstance(id_relacionado, int):
+                ids_relacionados.append(id_relacionado)
+        id_vinculado = resultado_chat.get("linked_chat_id")
+        if isinstance(id_vinculado, int):
+            ids_relacionados.append(id_vinculado)
+        id_atual = info.get("id")
+        ids_relacionados = list(dict.fromkeys(
+            identificador for identificador in ids_relacionados
+            if identificador != id_atual
+        ))
+        for id_relacionado in ids_relacionados:
+            resposta_relacionada = await bot_api_leitura(
+                dados, "getChat", {"chat_id": id_relacionado}
+            )
+            if not resposta_relacionada.get("ok"):
+                continue
+            chat_relacionado = resposta_relacionada.get("result") or {}
+            dados.setdefault("chats_relacionados_bot_api", []).append(chat_relacionado)
+            foto_relacionada = chat_relacionado.get("photo") or {}
+            if foto_relacionada.get("big_file_id"):
+                await baixar_arquivo_bot_api(
+                    dados, foto_relacionada["big_file_id"], "foto_chat_relacionado_bot_api",
+                    foto_relacionada.get("big_file_unique_id")
+                )
+            audio_relacionado = chat_relacionado.get("first_profile_audio") or {}
+            if audio_relacionado.get("file_id"):
+                await baixar_arquivo_bot_api(
+                    dados, audio_relacionado["file_id"], "audio_chat_relacionado_bot_api",
+                    audio_relacionado.get("file_unique_id")
+                )
 
     if isinstance(entidade, User):
         for metodo, lista_chave, categoria in (
@@ -605,6 +639,7 @@ def registros_telegram(dados, alvo, info):
     objetos = {
         "metadados": metadados,
         "respostas_bot_api": dados.get("respostas_bot_api", {}),
+        "chats_relacionados_bot_api": dados.get("chats_relacionados_bot_api", []),
         "falhas_bot_api": dados.get("falhas_bot_api", []),
         "entidade": dados.get("entidade"),
         "resposta_resolucao": dados.get("resposta_resolucao"),
