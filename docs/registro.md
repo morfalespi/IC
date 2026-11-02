@@ -1,3 +1,9 @@
+## Paginação sem total explícito — PR #6 integrado
+
+Foi removido o último fallback que tratava uma página Bot API menor que 100 como fim da lista quando a resposta não fornecia `total_count`. Sem total, a coleta agora prossegue até uma resposta vazia. CI passou; endpoint e execução com dados reais não foram validados ao vivo.
+
+---
+
 ## Correção de confiança na paginação — PR #5 integrado
 
 A revisão identificou que páginas menores que o limite de 100 encerravam algumas coletas mesmo quando a resposta informava um total maior. Agora os coletores continuam conforme o total e registram incompletude quando não o alcançam; essa marca entra no JSONL e impede que o modo completo classifique a coleta como sem falhas.
