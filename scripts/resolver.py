@@ -167,40 +167,144 @@ def atualizar_status(etapa, entidade=None):
         print("atualização intermediária indisponível; a pesquisa continua")
 
 
-def ficha_final(info, notas, foto):
+CATEGORIAS = (
+    ("👤 Perfil e atividade", (
+        "Bio", "Aniversário", "Idioma", "Premium", "Restrições", "Chats em comum",
+        "Canal pessoal", "Nome nos encaminhamentos", "Mensagens de voz",
+        "Emoji de status", "Fotos de perfil no MTProto",
+    )),
+    ("🎵 Recursos e presença", (
+        "Música destacada no perfil", "Músicas de perfil no MTProto", "Presentes recebidos",
+        "Nível Telegram Stars", "Placeholder inline", "Usuários ativos do bot",
+        "Mini App principal do bot", "Descrição do bot", "Comandos",
+        "Política de privacidade",
+    )),
+    ("🏢 Informações comerciais", (
+        "Intro comercial", "Endereço comercial", "Fuso dos horários comerciais",
+        "Intervalos de atendimento registrados",
+    )),
+    ("📢 Canal ou grupo", (
+        "Descrição", "Membros", "Administradores", "Online agora",
+        "Chat vinculado", "Modo lento", "Boosts aplicados",
+        "Nível de boosts do canal", "Presentes recebidos pelo canal",
+        "Limite de reações distintas", "Localização",
+    )),
+)
+
+
+def agrupar_campos(info):
+    restantes = list(info["campos"])
+    grupos = []
+    for nome_grupo, rotulos in CATEGORIAS:
+        encontrados = [campo for campo in restantes if campo[0] in rotulos]
+        if encontrados:
+            grupos.append((nome_grupo, encontrados))
+            restantes = [campo for campo in restantes if campo[0] not in rotulos]
+    if restantes:
+        grupos.append(("➕ Outros dados retornados", restantes))
+    return grupos
+
+
+def linha_tabela(rotulo, valor):
+    return ("<tr><th>" + esc(corte(rotulo, 85))
+            + "</th><td>" + esc(corte(valor, 450)) + "</td></tr>")
+
+
+def tabela_rica(linhas, subtitulo=None):
+    corpo = "".join(linha_tabela(rotulo, valor) for rotulo, valor in linhas)
+    legenda = "<caption>" + esc(subtitulo) + "</caption>" if subtitulo else ""
+    return ('<table bordered striped compact>' + legenda +
+            '<tr><th>Campo</th><th>Valor confirmado</th></tr>' + corpo + '</table>')
+
+
+def dados_basicos(info):
     linhas = [
         ("Tipo", info["tipo"]),
         ("ID", str(info["id"])),
-        ("Nome", info["nome"] or "(não informado)"),
+        ("Nome", info["nome"] or "Não informado"),
     ]
     if info["username"]:
         linhas.append(("Username", "@" + info["username"]))
     if info["usernames"]:
-        linhas.append(("Usernames ativos", ", ".join("@" + u for u in info["usernames"])))
+        linhas.append(("Outros usernames ativos", ", ".join("@" + u for u in info["usernames"])))
     if info["marcas"]:
-        linhas.append(("Indicadores", ", ".join(info["marcas"])))
-    linhas.extend(info["campos"])
-    itens = []
-    for nome, valor in linhas:
-        itens.append("<tr><th>" + esc(corte(nome, 70)) + "</th><td>" + esc(corte(valor, 300)) + "</td></tr>")
-    tabela = ('<table bordered striped compact><tr><th>Dado</th><th>Resultado oficial</th></tr>'
-              + "".join(itens[:13]) + "</table>")
-    extras = ""
-    if len(itens) > 13:
-        extras = ('<details><summary>➕ Mais informações (' + str(len(itens) - 13) + ')</summary>'
-                  '<table compact>' + "".join(itens[13:]) + "</table></details>")
-    aviso = ""
+        linhas.append(("Indicadores públicos", ", ".join(info["marcas"])))
+    linhas.append(("Foto de perfil", "Disponível" if info["foto"] else "Não informada"))
+    return linhas
+
+
+def texto_simples_consolidado(info, notas, estado_foto):
+    linhas = [
+        "<b>📇 Infocard · Telegram MTProto</b>",
+        "<b>✅ Identificação confirmada</b>",
+    ]
+    linhas.extend(esc(k) + ": " + esc(v) for k, v in dados_basicos(info))
+    for titulo, campos in agrupar_campos(info):
+        linhas.append("\n<b>" + esc(titulo) + "</b>")
+        linhas.extend(esc(rotulo) + ": " + esc(valor) for rotulo, valor in campos)
+    linhas.append("\nFoto: " + esc(estado_foto))
     if notas:
-        aviso = ('<details><summary>🔎 Origem e observações</summary><p>'
-                 + "<br>".join(esc(corte(n, 250)) for n in notas[:6]) + "</p></details>")
+        linhas.append("\n<b>Origem e limites</b>")
+        linhas.extend(esc(corte(nota, 200)) for nota in notas[:6])
+    texto = "\n".join(linhas)
+    if len(texto) > LIMITE_TEXTO:
+        linhas = [
+            "<b>📇 Infocard · Telegram MTProto</b>",
+            "<b>✅ Identificação confirmada</b>",
+        ]
+        linhas.extend(esc(k) + ": " + esc(v) for k, v in dados_basicos(info))
+        for titulo, campos in agrupar_campos(info):
+            secao = "\n<b>" + esc(titulo) + "</b>\n" + "\n".join(
+                esc(k) + ": " + esc(v) for k, v in campos
+            )
+            if len("\n".join(linhas)) + len(secao) > LIMITE_TEXTO - 100:
+                linhas.append("\nDetalhes adicionais disponíveis na ficha rica do Telegram.")
+                break
+            linhas.append(secao)
+        texto = "\n".join(linhas)
+    return texto[:LIMITE_TEXTO]
+
+
+def ficha_final(info, notas, foto):
+    basicos = dados_basicos(info)
+    grupos = agrupar_campos(info)
+    blocos = [
+        '<h2>📇 Infocard · Perfil consolidado</h2>',
+        '<p><b>✅ Identificação confirmada</b> · Telegram MTProto</p>',
+        tabela_rica(basicos, "Identificação e dados consolidados"),
+    ]
+    if grupos:
+        blocos.append("<h3>🔬 Dados aprofundados</h3>")
+        for indice, (titulo, campos) in enumerate(grupos):
+            tabela = tabela_rica(campos, titulo)
+            if indice == 0:
+                blocos.append(tabela)
+            else:
+                blocos.append('<details><summary>' + esc(titulo) +
+                              ' · ' + str(len(campos)) + ' campo(s)</summary>' +
+                              tabela + '</details>')
+    else:
+        blocos.append("<p><i>Nenhum campo adicional foi fornecido nesta consulta.</i></p>")
+    if notas:
+        origem = "".join("<p>" + esc(corte(n, 260)) + "</p>" for n in notas[:7])
+        blocos.append('<details><summary>🔎 Origem, observações e limites</summary>' +
+                      origem + '</details>')
     botoes = [botao_atualizar(os.environ.get("ALVO", "").strip().lstrip("@"))]
-    botoes.append('<tg-button type="copy_text" text="' + esc(info["id"]) + '">📋 Copiar ID</tg-button>')
+    botoes.append('<tg-button type="copy_text" text="' + esc(info["id"]) +
+                  '">📋 Copiar ID</tg-button>')
     username = info["username"]
     if username and re.fullmatch(r"[A-Za-z0-9_]{1,32}", username):
-        botoes.append('<tg-button type="url" url="https://t.me/' + esc(username) + '">🔗 Perfil</tg-button>')
-    controls = '<tg-button-row align="center">' + ''.join(b for b in botoes if b) + '</tg-button-row>'
-    return ('<h2>📇 Infocard</h2><p><b>✅ Dados obtidos via MTProto</b></p>'
-            + tabela + extras + aviso + '<hr/><footer>Origem: Telegram MTProto • Campos visíveis à sessão do bot</footer>' + controls)
+        botoes.append('<tg-button type="url" url="https://t.me/' + esc(username) +
+                      '">🔗 Abrir perfil</tg-button>')
+    controles = ('<tg-button-row align="center">' +
+                 "".join(botao for botao in botoes if botao) + '</tg-button-row>')
+    blocos.extend([
+        '<hr/>',
+        '<footer>Dados observados por MTProto; campos ausentes não foram presumidos. ' +
+        'Foto: ' + ("recebida" if foto else "não retornada") + '.</footer>',
+        controles,
+    ])
+    return "".join(blocos)
 
 
 def ficha_falha(alvo, motivo):
@@ -300,7 +404,7 @@ async def coletar(alvo):
     try:
         await com_espera(lambda: cliente.start(bot_token=os.environ["BOT_TOKEN"]))
         entidade, origem = await resolver_alvo(cliente, alvo)
-        atualizar_status("Entidade identificada; consultando dados adicionais", entidade)
+        atualizar_status("1/2 · Identificação confirmada; buscando campos adicionais", entidade)
         dados = {"entidade": entidade, "completo": None, "foto": None, "notas": [origem], "fotos_info": None, "musicas_info": None}
         try:
             dados["completo"] = await com_espera(lambda: completo(cliente, entidade))
@@ -335,7 +439,7 @@ async def coletar(alvo):
                         dados["musicas_info"] = f"{total} música(s) acessível(is) no perfil"
                 except Exception as erro:
                     dados["notas"].append(f"Contagem de músicas indisponível: {type(erro).__name__}")
-        atualizar_status("Dados do perfil e mídia processados", entidade)
+        atualizar_status("2/2 · Dados aprofundados processados; consolidando ficha", entidade)
         return dados
     finally:
         await cliente.disconnect()
@@ -518,7 +622,7 @@ async def principal():
             if dados["musicas_info"]:
                 info["campos"].append(("Músicas de perfil no MTProto", dados["musicas_info"]))
 
-            texto = relatorio(info, notas, estado_da_foto(info, foto_enviada, bool(chat)))
+            texto = texto_simples_consolidado(info, notas, estado_da_foto(info, foto_enviada, bool(chat)))
             print("tipo resolvido:", info["tipo"], "| campos extras:", len(info["campos"]))
             codigo = 0
         except errors.UsernameNotOccupiedError:
