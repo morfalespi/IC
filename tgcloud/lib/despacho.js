@@ -19,7 +19,7 @@ function urlDisparo() {
   return `https://api.github.com/repos/${GH_REPOSITORY}/actions/workflows/resolver.yml/dispatches`;
 }
 
-export async function dispararBusca(alvo, chatId, mensagemId, modo = "resumo", origemId = "") {
+export async function dispararBusca(entrada, chatId, mensagemId, modo = "resumo", origemId = "") {
   if (!GH_DISPATCH_TOKEN) {
     const erro = new Error('GH_DISPATCH_TOKEN não foi injetado no deploy');
     erro.status = 0;
@@ -33,7 +33,7 @@ export async function dispararBusca(alvo, chatId, mensagemId, modo = "resumo", o
       'X-GitHub-Api-Version': '2026-03-10',
       'User-Agent': 'infocard-bot',
     },
-    body: fetch.body.json({ ref: 'main', inputs: { alvo: String(alvo), chat: String(chatId), message_id: String(mensagemId || ""), modo: modo === "completo" ? "completo" : "resumo", origem_id: String(origemId || "") } }),
+    body: fetch.body.json({ ref: 'main', inputs: { alvo: String(entrada.username || entrada.id), expected_id: entrada.tipo === "referencia" ? entrada.id : "", chat: String(chatId), message_id: String(mensagemId || ""), modo: modo === "completo" ? "completo" : "resumo", origem_id: String(origemId || "") } }),
   });
   if (res.status !== 200 && res.status !== 204) {
     const corpo = await res.text();

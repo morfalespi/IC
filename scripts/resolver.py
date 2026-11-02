@@ -23,12 +23,13 @@ from telethon.tl.types import Channel, InputChannel, InputUser, PeerChannel, Pee
 ESPERA_TOTAL = 600
 LIMITE_TEXTO = 4000
 USERNAME_VALIDO = re.compile(r"[A-Za-z0-9_]{1,32}")
-ALVO_VALIDO = re.compile(r"(?:[A-Za-z0-9_]{1,32}|-?\d{1,16}|-?\d{1,16}\|[A-Za-z0-9_]{1,32})")
+ALVO_VALIDO = re.compile(r"(?:[A-Za-z0-9_]{1,32}|-?\d{1,16})")
 CHAT_VALIDO = re.compile(r"-?[0-9]{1,16}")
 MENSAGEM_ID = os.environ.get("MESSAGE_ID", "").strip()
 CHAT_DESTINO = os.environ.get("CHAT_ID", "").strip()
 ID_MENSAGEM = int(MENSAGEM_ID) if MENSAGEM_ID.isdigit() and int(MENSAGEM_ID) > 0 else None
 MODO = "completo" if os.environ.get("MODO") == "completo" else "resumo"
+EXPECTED_ID = os.environ.get("EXPECTED_ID", "").strip()
 REFERENCIA = os.environ.get("ORIGEM_ID", "")
 ORIGEM_ID = int(REFERENCIA) if REFERENCIA.isdigit() and int(REFERENCIA) > 0 else None
 
@@ -141,11 +142,22 @@ def editar_ficha_rica(conteudo, foto=None, definitiva=False):
     return False, False
 
 
-def botao_completo(alvo):
-    if not re.fullmatch(r"[A-Za-z0-9_|-]{1,55}", alvo):
+def callback_data(acao, alvo):
+    if acao not in ("r", "f"):
         return ""
-    return '<tg-button type="callback_data" style="primary" data="f:' + esc(alvo) + '">📚 Completo + Markdown</tg-button>'
+    if re.fullmatch(r"-?\d{1,16}", alvo):
+        valor = f"{acao}:i:{alvo}"
+    elif USERNAME_VALIDO.fullmatch(alvo):
+        valor = f"{acao}:u:{EXPECTED_ID}:{alvo}" if EXPECTED_ID else f"{acao}:n:{alvo}"
+    else:
+        return ""
+    return valor if len(valor.encode("utf-8")) <= 64 else ""
 
+
+def botao_completo(alvo):
+    dados = callback_data("f", alvo)
+    return ('<tg-button type="callback_data" style="primary" data="' +
+            esc(dados) + '">📚 Completo + Markdown</tg-button>') if dados else ""
 
 def resumo_categoria(categorias, maximo=9):
     selecionados, restantes = [], maximo
@@ -195,9 +207,9 @@ def enviar_documento_md(chat, conteudo, id_entidade, indice, total):
 
 
 def botao_atualizar(alvo):
-    if not re.fullmatch(r"[A-Za-z0-9_|-]{1,55}", alvo):
-        return ""
-    return '<tg-button type="callback_data" style="primary" data="r:' + esc(alvo) + '">🔄 Atualizar</tg-button>'
+    dados = callback_data("r", alvo)
+    return ('<tg-button type="callback_data" style="primary" data="' +
+            esc(dados) + '">🔄 Atualizar</tg-button>') if dados else ""
 
 
 def status_ficha(etapa, nome=None, id_entidade=None):
@@ -377,7 +389,7 @@ def ficha_final(info, notas, foto):
 
 
 def ficha_falha(alvo, motivo):
-    linhas = '<tr><th>Consulta</th><td>' + esc(alvo.replace("|", " @")) + '</td></tr>'
+    linhas = '<tr><th>Consulta</th><td>' + esc(f"{EXPECTED_ID} @{alvo}" if EXPECTED_ID else (alvo if re.fullmatch(r"-?\d{1,16}", alvo) else f"@{alvo}")) + '</td></tr>'
     linhas += '<tr><th>Resultado</th><td>' + esc(corte(motivo, 600)) + '</td></tr>'
     return ('<h2>📇 Infocard</h2><p><b>⚠️ Busca não concluída</b></p>'
             '<table bordered compact><tr><th>Campo</th><th>Valor</th></tr>' + linhas +
@@ -451,22 +463,19 @@ async def resolver_id(cliente, id_marcado):
 
 
 async def resolver_alvo(cliente, alvo):
-    if "|" in alvo:
-        numero, username = alvo.split("|", 1)
-        resolvido = entidade_de(await com_espera(lambda: cliente(ResolveUsernameRequest(username))))
-        if resolvido is None:
-            raise LookupError("O Telegram não retornou uma entidade para esta referência.")
-        if utils.get_peer_id(resolvido) != int(numero):
-            raise LookupError("O ID informado não corresponde ao @username no Telegram. Nenhum resultado foi atribuído ao ID.")
-        return resolvido, "ID confirmado por @username oficial"
     if re.fullmatch(r"-?\d{1,16}", alvo):
-        return await resolver_id(cliente, int(alvo)), "Consulta por ID com access_hash zero permitido a bots quando o servidor aceitar"
+        if EXPECTED_ID:
+            raise ValueError("ID esperado exige um username público para a verificação.")
+        return await resolver_id(cliente, int(alvo)), "Consulta MTProto por ID, sujeita às permissões do Telegram"
     resultado = await com_espera(lambda: cliente(ResolveUsernameRequest(alvo)))
     entidade = entidade_de(resultado)
     if entidade is None:
-        raise LookupError("O Telegram não devolveu os dados dessa entrada.")
+        raise LookupError("O Telegram não retornou uma entidade para o username.")
+    if EXPECTED_ID:
+        if utils.get_peer_id(entidade) != int(EXPECTED_ID):
+            raise LookupError("O username foi resolvido, mas o ID retornado pelo Telegram não corresponde ao ID esperado.")
+        return entidade, "ID confirmado por contacts.resolveUsername"
     return entidade, "Referência obtida por contacts.resolveUsername"
-
 
 async def coletar(alvo):
     cliente = TelegramClient(StringSession(), int(os.environ["API_ID"]), os.environ["API_HASH"])
@@ -533,7 +542,7 @@ def descricao_musica(documento):
 def descrever(entidade, completo_, alvo):
     foto = getattr(entidade, "photo", None)
     info = {
-        "consultado": alvo.replace("|", " @") if re.search(r"\d\|", alvo) else (alvo if re.fullmatch(r"-?\d{1,16}", alvo) else f"@{alvo}"),
+        "consultado": f"{EXPECTED_ID} @{alvo}" if EXPECTED_ID else (alvo if re.fullmatch(r"-?\d{1,16}", alvo) else f"@{alvo}"),
         "id": utils.get_peer_id(entidade),
         "username": getattr(entidade, "username", None),
         "usernames": [u.username for u in (getattr(entidade, "usernames", None) or []) if getattr(u, "active", False)],
@@ -681,7 +690,7 @@ def relatorio(info, notas, foto):
 
 
 def falha(alvo, motivo):
-    entrada = alvo.replace("|", " @") if "|" in alvo else (alvo if re.fullmatch(r"-?\d{1,16}", alvo) else f"@{alvo}")
+    entrada = f"{EXPECTED_ID} @{alvo}" if EXPECTED_ID else (alvo if re.fullmatch(r"-?\d{1,16}", alvo) else f"@{alvo}")
     return f"<b>Não foi possível ler</b>\nEntrada: {esc(entrada)}\n{esc(motivo)}"
 
 
@@ -691,6 +700,10 @@ async def principal():
     chat = os.environ.get("CHAT_ID", "").strip()
     if chat and not CHAT_VALIDO.fullmatch(chat):
         print("CHAT_ID inválido")
+        return 1
+    if EXPECTED_ID and (not re.fullmatch(r"-?\d{1,16}", EXPECTED_ID) or
+                        int(EXPECTED_ID) == 0 or abs(int(EXPECTED_ID)) > 4503599627370495):
+        print("EXPECTED_ID inválido")
         return 1
     if not ALVO_VALIDO.fullmatch(alvo):
         texto = falha(alvo or "(vazio)", "Entrada inválida: use @username, ID numérico ou ID @username.")
@@ -766,10 +779,10 @@ async def principal():
             paginas = rich_pages(identidade, secoes, notas_publicadas, controles)
             paginas_html = basic_pages(identidade, secoes, notas_publicadas)
             teclado_fallback = None
-            if MODO == "resumo" and re.fullmatch(r"[A-Za-z0-9_|-]{1,55}", alvo_disparo):
+            if MODO == "resumo" and callback_data("f", alvo_disparo):
                 teclado_fallback = {"inline_keyboard": [[{
                     "text": "📚 Completo + Markdown",
-                    "callback_data": "f:" + alvo_disparo,
+                    "callback_data": callback_data("f", alvo_disparo),
                 }]]}
             print("modo:", MODO, "| páginas ricas:", len(paginas),
                   "| páginas HTML:", len(paginas_html), "| campos totais:", len(info["campos"]))

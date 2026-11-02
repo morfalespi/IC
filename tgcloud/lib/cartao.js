@@ -1,3 +1,5 @@
+import { codigoCallback } from './entrada.js';
+
 function esc(valor) {
   return String(valor ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
@@ -6,8 +8,9 @@ function linha(campo, valor) {
   return '<tr><th>' + esc(campo) + '</th><td>' + esc(String(valor).slice(0, 180)) + '</td></tr>';
 }
 
-function controles(alvo) {
-  const ref = 'r:' + alvo;
+function controles(entrada) {
+  const ref = codigoCallback('r', entrada);
+  if (!ref) return '';
   return '<tg-button-row align="center">' +
     '<tg-button type="callback_data" style="primary" data="' + esc(ref) + '">🔄 Atualizar</tg-button>' +
     '</tg-button-row>';
@@ -31,7 +34,7 @@ export function cartaoPesquisa(entrada, dados = null, modo = 'resumo') {
     '<p><i>' + (modo === 'completo'
       ? 'As páginas completas e o arquivo Markdown serão enviados após a consulta oficial.'
       : 'A ficha será atualizada após a consulta oficial ao Telegram.') + '</i></p>' +
-    controles(entrada.alvo);
+    controles(entrada);
 }
 
 export function cartaoErro(entrada, motivo) {

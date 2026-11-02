@@ -11,6 +11,10 @@ on:
         type: boolean
         required: false
         default: false
+      expected_id:
+        description: "ID do peer esperado, validado após contacts.resolveUsername"
+        required: false
+        default: ""
       chat:
         description: "ID do chat que recebe a resposta (vazio: só mostra no log)"
         required: false
@@ -40,6 +44,7 @@ jobs:
       API_HASH: ${{ secrets.API_HASH }}
       BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
       ALVO: ${{ inputs.alvo }}
+      EXPECTED_ID: ${{ inputs.expected_id }}
       CHAT_ID: ${{ inputs.chat }}
       MESSAGE_ID: ${{ inputs.message_id }}
       MODO: ${{ inputs.modo }}

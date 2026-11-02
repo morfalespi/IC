@@ -1,3 +1,17 @@
+# IMPLEMENTADO — 2026-11-02: remover a referência caseira `ID|username`
+
+**Causa verificada no código:** uma representação interna de referência (`ID|username`) era colocada no payload dos botões e devolvida ao parser de entrada do usuário, que aceitava `ID @username` mas não o separador interno. A mensagem "Não foi possível interpretar a referência" vinha do próprio parser e não do Telegram.
+
+**Correção implementada:** callback_data tipado e validado (`r/f:u:ID:username`, `r/f:n:username`, `r/f:i:ID`) com limite 64 bytes; parser de callback independente; `alvo` e `expected_id` separados em workflow_dispatch; consulta oficial por `contacts.resolveUsername` com comparação do peer antes de produzir o relatório; texto `ID @username` reservado à interface do usuário. Payloads legados são rejeitados com indicação de nova busca.
+
+**DECISÃO do AGENTS.md preservada:** não escrever comentários/docstrings no código e não manter testes escritos pelo autor. Removido o teste Python autoral, desligada a chamada a `unittest` do check, preservadas verificações de sintaxe e placeholders. Documentação em Markdown não se confunde com comentários dentro de código.
+
+**Fontes oficiais:** https://core.telegram.org/bots/api#callbackquery; https://core.telegram.org/method/contacts.resolveUsername; https://core.telegram.org/type/contacts.ResolvedPeer; https://core.telegram.org/api/peers; https://core.telegram.org/bots/api#senddocument.
+
+**Estado atual:** implementação publicada apenas após CI/deploy, sem pressupor que o callback real tenha sido testado. Para marcar VERIFICADO é necessário obter evidência de execução MTProto e recebimento da ficha e documento no chat; o healthcheck do GitHub é insuficiente. A ausência de erro em testes anteriores não é evidência de que o novo payload está correto.
+
+---
+
 # AUDITORIA — 2026-11-02: fonte oficial, comentários e fidelidade dos arquivos
 
 **Referência normativa:** Bot API em https://core.telegram.org/bots/api e banco de peers MTProto em https://core.telegram.org/api/peers. O código antigo é usado apenas para regressões; uma execução verde sem consulta e entrega reais não comprova funcionamento do botão.

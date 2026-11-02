@@ -44,3 +44,11 @@ O SDK do TGCloud encaminha nomes de métodos Bot API dinamicamente. A nova ediç
 - Pontuação Telegram Stars: https://core.telegram.org/api/stars
 
 Mesmo com paginação, o relatório só contém campos oficialmente recebidos; o Telegram não garante acesso irrestrito a IDs desconhecidos.
+
+## Payloads de botões e identidade (2026-11-02)
+
+- Bot API `CallbackQuery` e `InlineKeyboardButton.callback_data`: https://core.telegram.org/bots/api#callbackquery — payload opaco de 1 a 64 bytes, definido pela aplicação. É obrigatório responder à consulta com `answerCallbackQuery`.
+- MTProto `contacts.resolveUsername`: https://core.telegram.org/method/contacts.resolveUsername — método oficial para username; retorna `contacts.ResolvedPeer`.
+- Resultado `contacts.ResolvedPeer`: https://core.telegram.org/type/contacts.ResolvedPeer — permite comparar ID da entidade resolvida antes de entregar dados.
+- Referência e `access_hash`: https://core.telegram.org/api/peers — ID por si só não concede acesso universal; o hash depende da autenticação.
+- `sendDocument`: https://core.telegram.org/bots/api#senddocument — arquivo Markdown é conteúdo de documento, não `parse_mode` para interpretar como comando ou referência.

@@ -59,7 +59,8 @@ export function relatorioBuscando(entrada) {
 }
 
 export function relatorioInline(entrada) {
-  const direto = entrada.tipo !== 'referencia' && /^[A-Za-z0-9_-]{1,64}$/.test(entrada.alvo);
+  const alvo = entrada.username || entrada.id;
+  const direto = entrada.tipo !== 'referencia' && /^[A-Za-z0-9_-]{1,64}$/.test(alvo);
   return {
     titulo: 'Pesquisar ' + recorte(entrada.rotulo, 75) + ' via MTProto',
     html: [
@@ -67,7 +68,7 @@ export function relatorioInline(entrada) {
       'Entrada: ' + esc(entrada.rotulo),
       'Abra o privado com o bot para iniciar a pesquisa e receber os resultados.',
     ].join('\n'),
-    botaoPrivado: direto ? entrada.alvo : null,
+    botaoPrivado: direto ? alvo : null,
   };
 }
 

@@ -63,6 +63,19 @@ O bot agora apresenta as consultas em **Rich Messages** nativas do Telegram:
 
 Referências: https://core.telegram.org/bots/api#sendrichmessage, https://core.telegram.org/bots/api#editmessagetext, https://core.telegram.org/bots/api#rich-messages e https://core.telegram.org/bots/api#inputrichmessage.
 
+## Referência oficial de username e callbacks sem separador ambíguo
+
+A partir de 2026-11-02, o código diferencia **ID esperado**, **username** e **ação do botão**. O texto que a pessoa envia pode ser `@username`, `ID` ou `ID @username` (esta última é uma convenção de entrada do Infocard, não sintaxe da API do Telegram).
+
+- O Telegram Bot API define `callback_data` como **1–64 bytes opacos**; o Infocard usa o esquema interno validado `f:u:ID:username`, `f:n:username`, `f:i:ID` (também `r:` para atualizar). Ele nunca converte esses dados em texto da pesquisa. A ausência de padrão Telegram para os bytes de `callback_data` não autoriza aceitar sequências arbitrárias sem validação.
+- O TGCloud valida o payload e envia `alvo` (username ou ID) e `expected_id` (opcional) como dois inputs distintos para `workflow_dispatch`; não há `ID|username` como referência de perfil.
+- O resolver Python chama `contacts.resolveUsername(username)`, recebe `contacts.ResolvedPeer` e, quando `expected_id` está presente, compara o `Peer` retornado usando `utils.get_peer_id` antes de enriquecer o perfil. A pesquisa por ID sem username ainda pode falhar pelas regras de `access_hash` do Telegram.
+- Botões produzidos pela versão anterior, com payload antigo, apresentam erro informativo e precisam de uma nova pesquisa. Isso evita reinterpretar indevidamente uma referência legada.
+
+**Regras do repositório:** sem comentários e docstrings no código modificado; os testes Python anteriormente criados pelo mesmo autor da implementação foram retirados do repositório. O CI continua verificando sintaxe JS/Python, placeholders de segredos e deploy. Ele **não comprova resolução MTProto nem callback real**. Para validar o fluxo, use o botão e confira uma execução com `EXPECTED_ID` e `MODO=completo`, além da entrega do `.md` pelo Telegram.
+
+Fontes normativas: https://core.telegram.org/bots/api#callbackquery, https://core.telegram.org/method/contacts.resolveUsername, https://core.telegram.org/type/contacts.ResolvedPeer, https://core.telegram.org/api/peers e https://core.telegram.org/bots/api#senddocument.
+
 ## Escolha sob demanda: relatório completo + arquivo Markdown
 
 A primeira consulta de um ID ou username publica apenas um **resumo** com identificação confirmada, destaques e botões. O botão **📚 Completo + Markdown** (callback `f:`) abre **uma nova ficha de andamento**, sem apagar o resumo original, e solicita ao workflow MTProto uma nova coleta oficial da mesma referência.
@@ -89,7 +102,7 @@ O Infocard reúne identificação confirmada, todos os campos úteis que o resol
 - A primeira página tenta incluir a foto como mídia nativa da Rich Message. Se a API não aceitar a incorporação na edição, a foto pode ser enviada à parte. Não são inventadas imagens ou outras mídias ausentes.
 - O modo de compatibilidade usa mensagens HTML convencionais **também paginadas**, de modo que um erro de Rich Messages não apague os dados.
 - Campos adicionais de `userFull` e `channelFull` incluem Stars e suas pontuações, recursos comerciais, permissões disponíveis na sessão do bot, presença de recursos de canal e estatísticas apenas quando os valores são realmente retornados. Dados de sessão, telefone e `access_hash` não são expostos.
-- Foram adicionados testes automáticos de paginação, campos longos, caracteres especiais e ausência de truncamentos, executados no `npm run check`.
+- A verificação atual executa checagem sintática JS/Python e dos placeholders de segredos, respeitando a regra do repositório que proíbe testes criados pelo autor da implementação. A prova funcional exige consulta real.
 
 **Limitação de origem:** nem toda conta permite obter todos os campos; IDs numéricos sem referência continuam sujeitos ao acesso autorizado do Telegram. O formato integral evita perder dados **já obtidos**, mas não cria direitos de consulta nem contorna a privacidade.
 

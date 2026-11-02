@@ -32,7 +32,7 @@ VERIFICADO, IMPLEMENTADO, HIPÓTESE e DECISÃO, como definido em `docs/registro.
 
 | Caminho | O que é |
 |---|---|
-| `tgcloud/handlers/` | Um arquivo por tipo de update: `message.js`, `inline_query.js`. Sem subpastas. |
+| `tgcloud/handlers/` | Um arquivo por tipo de update: `message.js`, `inline_query.js`, `callback_query.js`. Sem subpastas. |
 | `tgcloud/lib/` | Módulos compartilhados. |
 | `tgcloud/schema.js` | Schema do banco (`disparos`). A plataforma recusa módulo vazio. |
 | `.github/workflows/deploy.yml` | Publica a cada push em `main` que altera `tgcloud/**` e arquivos de configuração. |

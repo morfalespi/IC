@@ -1,3 +1,13 @@
+# Verificação vigente — 2026-11-02: identidade e botões
+
+1. Testar `@myJAMrobot` no privado: o resultado deve consultar `contacts.resolveUsername` e enviar uma ficha real.
+2. Testar `8786464392 @myJAMrobot` apenas se o ID realmente corresponder à conta; comparar a identidade no MTProto. Uma divergência deve resultar em erro explicativo.
+3. Usar **Atualizar** e **Completo + Markdown** a partir da ficha *nova*, gerada pelo deploy atualizado. Confirmar `callback_data` sem barras verticais e `expected_id` separado no workflow. Não copiar o payload do botão para o campo de texto.
+4. Conferir que a execução `resolver.yml` do teste **não** foi healthcheck, que o Telethon executou e que o relatório, as partes e o `.md` chegaram ao chat.
+5. Testar um botão antigo: receber aviso para nova pesquisa em vez de associar uma identidade errada.
+6. Confirmar em `scripts/check.sh` que só há checagens de sintaxe e segredos; não há execução de `scripts/test_ficha_completa.py` nem comentários/docstrings no código produzido.
+7. Não considerar deploy verde nem CI verde prova suficiente da consulta ou do arquivo.
+
 # Teste do botão: Completo + Markdown
 
 1. Envie `@username` ou `ID @username` e confira que o bot apresenta um **resumo** com **📚 Completo + Markdown**.
@@ -10,7 +20,7 @@
 
 # Verificações de relatório integral
 
-1. Confira que `npm run check` executou também `test_ficha_completa.py` e não só a sintaxe dos arquivos.
+1. Confira que `npm run check` valida a sintaxe JavaScript e Python e os placeholders privados. A regra do projeto proíbe testes escritos pelo autor da implementação; a validação funcional exige uma execução real.
 2. Faça uma consulta por `ID @username` cuja correspondência já foi verificada; compare cada campo retornado com a ficha final.
 3. Use um usuário/bot com bio, dados adicionais e foto, observando cada campo dentro de seção apropriada.
 4. Em caso de muitos campos, confirme `Parte 1/N`, `Parte 2/N` etc. **Nenhuma seção pode desaparecer ou ser truncada**.

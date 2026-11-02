@@ -6,7 +6,7 @@ import { enviarCartao, editarCartao } from './envio.js';
 import { cartaoPesquisa, cartaoErro } from './cartao.js';
 
 export async function consultar(texto, contexto) {
-  const entrada = lerEntrada(texto);
+  const entrada = typeof texto === 'string' ? lerEntrada(texto) : texto;
   if (entrada.erro) return relatorioInvalido(entrada);
   if (contexto.canal !== 'privado') return relatorioInline(entrada);
 
@@ -33,7 +33,7 @@ export async function consultar(texto, contexto) {
       mensagemId = mensagem?.message_id;
       if (!Number.isSafeInteger(mensagemId)) throw new Error('O Telegram não retornou message_id para acompanhar a consulta.');
     }
-    await dispararBusca(entrada.alvo, contexto.chatId, mensagemId, contexto.modo, contexto.origemMensagemId);
+    await dispararBusca(entrada, contexto.chatId, mensagemId, contexto.modo, contexto.origemMensagemId);
     return { enviado: true, mensagemId };
   } catch (erroDespacho) {
     console.error('pesquisa ou despacho falhou:', erroDespacho);

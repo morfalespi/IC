@@ -1,8 +1,7 @@
-"""Paginação sem perda de campos do relatório, conforme limites da Bot API 10.3."""
+
 import html
 import re
 
-# Margens conservadoras para tags, caracteres UTF-8 e blocos adicionais.
 RICH_BYTES = 25000
 RICH_ROWS = 180
 BASIC_CHARS = 3800
@@ -21,7 +20,7 @@ def fragments(value, max_chars=FIELD_PART):
 
 
 def _expand(rows):
-    """Divide somente valores longos; não omite partes ou campos."""
+
     expanded = []
     for label, value in rows:
         pieces = fragments(value)
@@ -48,11 +47,7 @@ def _basic_lines(title, rows):
 
 
 def rich_pages(identity, sections, observations, controls):
-    """Gera tantas Rich Messages quanto necessário, mantendo o conteúdo integral.
 
-    A primeira página é editada no cartão original. Excedentes são mensagens
-    complementares ligadas pela numeração e pela identificação confirmada.
-    """
     groups = [("👤 Identificação confirmada", _expand(identity))]
     groups.extend((title, _expand(rows)) for title, rows in sections if rows)
     if observations:
@@ -61,7 +56,6 @@ def rich_pages(identity, sections, observations, controls):
         )))
     prefix = "<h2>📇 Infocard · Relatório oficial</h2>"
     controls = controls or ""
-    # Reserva espaço para cabeçalho, rodapé, botões e numeração.
     safe_budget = RICH_BYTES - 1500 - len(controls.encode("utf-8"))
     if safe_budget < 7000:
         raise ValueError("Controles excedem o orçamento seguro da Rich Message")
@@ -166,7 +160,7 @@ def basic_pages(identity, sections, observations):
 
 
 def markdown_document(identity, sections, observations):
-    """Exporta os valores originais em Markdown UTF-8, sem resumir ou cortar."""
+
     linhas = [
         "# Infocard — relatório completo", "",
         "Fonte: respostas oficiais do Telegram MTProto acessíveis à sessão do bot.",
