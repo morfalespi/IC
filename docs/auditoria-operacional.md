@@ -103,3 +103,8 @@ Foi removido o corte fixo de nove campos da apresentação usual, mantendo pagin
 ## Escopo ativo decidido em 2026-11-02
 
 A meta agora é ampliar o Infocard para entregar a cobertura máxima e verificável dos dados de leitura acessíveis à sessão MTProto de bot, em vez de limitar o produto aos campos já mapeados. A autenticação permanece como bot. Os métodos `messages.getHistory` e `stories.getPeerStories` são exclusivos de contas de usuário; `channels.getParticipants` pode exigir administração. A cobertura técnica precisa ser inventariada campo a campo e método a método conforme a layer oficial e o Telethon instalado. Não alegar conclusão até que os dados retornados, a paginação e a entrega recebida no Telegram sejam confirmados. Ver [docs/partners-mtproto-coverage.md](partners-mtproto-coverage.md).
+
+
+## Correção de estados na exportação completa — 2026-11-02
+
+O bot separa a entrega de anexos da cobertura dos dados. Quando o Telegram recebeu as partes montadas, mas um método não retornou dados, a resposta é “Resultado parcial enviado”; “Entrega incompleta” fica reservado a páginas/anexos sem confirmação. A lacuna continua explícita no relatório e o resultado não é tratado como integral. A regra do proprietário contra testes escritos pelo próprio implementador foi preservada, pois não conflitava com Partners.
