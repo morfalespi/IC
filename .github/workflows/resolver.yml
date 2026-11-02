@@ -1,4 +1,4 @@
-name: Resolver username ou ID (MTProto)
+name: Resolver @username (MTProto)
 
 on:
   workflow_dispatch:

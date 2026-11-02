@@ -1,14 +1,14 @@
-const ID_NUMERICO = /^-?\d{1,16}$/;
-const USERNAME = /^@?([A-Za-z0-9_]{1,32})$/;
+const ID_NUMERICO = /^-?\d+$/;
+const USERNAME = /^@?([A-Za-z][A-Za-z0-9_]{0,31})$/;
 
 export function lerEntrada(texto) {
-  const t = String(texto ?? '').trim();
-  if (ID_NUMERICO.test(t)) {
-    const n = Number(t);
-    if (!Number.isSafeInteger(n)) return { erro: 'id fora do intervalo seguro' };
-    return { tipo: 'id', chat_id: n, rotulo: t };
+  const valor = String(texto ?? '').trim();
+  if (ID_NUMERICO.test(valor)) {
+    return { tipo: 'id', rotulo: valor, erro: 'Um ID isolado não pode ser pesquisado de forma confiável por MTProto sem o access_hash. Envie um @username público.' };
   }
-  const m = USERNAME.exec(t);
-  if (m) return { tipo: 'username', chat_id: `@${m[1]}`, rotulo: `@${m[1]}` };
-  return { erro: 'entrada não reconhecida' };
+  const encontrado = USERNAME.exec(valor);
+  if (!encontrado) {
+    return { tipo: 'invalido', rotulo: valor, erro: 'Envie um @username público (letras, números e _, começando por letra).' };
+  }
+  return { tipo: 'username', username: encontrado[1], rotulo: '@' + encontrado[1] };
 }

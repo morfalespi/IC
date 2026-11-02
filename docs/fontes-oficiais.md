@@ -1,29 +1,26 @@
-# Fontes oficiais e escopo das afirmações
+# Fontes oficiais — implementação MTProto
 
-Revisão: 2026-11-01. Este arquivo separa comportamento documentado oficialmente de observações locais do projeto.
+Atualizado em 2026-11-02. O **fluxo operacional de pesquisa** usa exclusivamente Telegram MTProto por `contacts.resolveUsername`. Referências anteriores ao `getChat` como consulta de perfil foram descontinuadas e permanecem apenas no registro histórico.
 
-## Telegram Bot API
+## Pesquisa via MTProto
 
-- `getChat`: https://core.telegram.org/bots/api#getchat — aceita `chat_id` numérico; quando o identificador é textual, a documentação do método especifica username de supergrupo ou canal. Não documenta resolução arbitrária de username de usuário comum.
-- `ChatFullInfo`: https://core.telegram.org/bots/api#chatfullinfo — fonte dos campos opcionais exibidos pelo relatório Bot API. Campo ausente não deve ser interpretado como inexistência do dado fora do Bot API.
-- `KeyboardButtonRequestUsers`: https://core.telegram.org/bots/api#keyboardbuttonrequestusers — fonte do fluxo “Escolher usuário”.
-- `InlineQueryResultsButton` / `answerInlineQuery`: https://core.telegram.org/bots/api#inlinequeryresultsbutton e https://core.telegram.org/bots/api#answerinlinequery — fonte do botão que abre o privado com `start_parameter`.
-- links `tg://user?id=...`: https://core.telegram.org/bots/api#formatting-options — a possibilidade de mencionar/abrir pelo ID depende das configurações de privacidade; não afirmar que o link sempre funciona.
+- `contacts.resolveUsername`: https://core.telegram.org/method/contacts.resolveUsername — resolve usernames; a documentação explicita o uso permitido por bots e usuários. Pode responder `USERNAME_INVALID` e `USERNAME_NOT_OCCUPIED`.
+- Login de bot via MTProto: https://core.telegram.org/api/bots — autorização usando `BOT_TOKEN`, `API_ID` e `API_HASH`.
+- `access_hash` e IDs: https://core.telegram.org/api/peers — um ID de usuário/canal isolado não fornece necessariamente a referência necessária para consultas MTProto.
+- A disponibilidade de dados é limitada pelas respostas e pela privacidade do Telegram.
 
-## Telegram MTProto
+## Bot API usada apenas como transporte
 
-- `contacts.resolveUsername`: https://core.telegram.org/method/contacts.resolveUsername — resolve username para peer e a documentação afirma explicitamente que usuários e bots podem usar o método. Isso sustenta o fallback por **username**, mas não garante sucesso para todo username nem acesso a todos os campos do perfil.
-- Erros documentados do método incluem `USERNAME_INVALID` e `USERNAME_NOT_OCCUPIED`; limites/flood control continuam dependentes do servidor e devem ser tratados como condição operacional, não como um número fixo inferido pelo projeto.
+- `sendMessage`: https://core.telegram.org/bots/api#sendmessage — entrega de mensagens ao usuário.
+- `answerInlineQuery`: https://core.telegram.org/bots/api#answerinlinequery — resposta inline que direciona ao privado.
+- `InlineQueryResultsButton`: https://core.telegram.org/bots/api#inlinequeryresultsbutton — uso de `start_parameter` para abrir o privado.
+- A Bot API não realiza a pesquisa de perfis neste projeto.
 
-## GitHub Actions / REST API
+## GitHub Actions
 
-- Create a workflow dispatch event: https://docs.github.com/en/rest/actions/workflows#create-a-workflow-dispatch-event — fine-grained PAT requer permissão de repositório `Actions: write`. Na versão REST atual usada pelo projeto (`2026-03-10`), a documentação registra sucesso com HTTP 200 e dados do run. O cliente também aceita 204 por compatibilidade defensiva com comportamento de versões anteriores.
-- O projeto fixa `X-GitHub-Api-Version: 2026-03-10` no dispatcher e na validação do deploy. Mudanças futuras de versão devem ser confrontadas novamente com a documentação oficial antes de alterar a interpretação de respostas.
+- Dispatch do workflow: https://docs.github.com/en/rest/actions/workflows#create-a-workflow-dispatch-event — requer permissão Actions: write no token fine-grained.
+- Referência dinâmica: `github.repository`. O dispatcher aceita HTTP 200 e 204 como indicação de disparo aceito, mas isso não é prova de que a resolução MTProto tenha concluído.
 
-## Regra de evidência do projeto
+## Evidências
 
-1. **DOCUMENTADO:** a fonte oficial afirma o comportamento.
-2. **OBSERVADO:** um run reproduzível mostrou o comportamento nas condições registradas.
-3. **IMPLEMENTADO:** o caminho existe no código, mas ainda não há execução suficiente.
-4. **HIPÓTESE:** explicação ainda não demonstrada; não deve aparecer ao usuário como fato.
-5. Um HTTP 400 genérico não é evidência de `chat not found`. O fallback MTProto só deve ocorrer quando o erro do Bot API for 400 e a descrição indicar `chat not found`; outros 400 são reportados sem iniciar workflow.
+A documentação oficial fundamenta comportamentos possíveis, não garante um resultado para todas as contas. O arquivo `docs/registro.md` contém observações históricas, inclusive de uma versão substituída e que não deve ser usada como referência da arquitetura atual.

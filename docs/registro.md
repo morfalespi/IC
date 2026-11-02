@@ -1,3 +1,18 @@
+# AVISO — Histórico arquivado, não é a arquitetura vigente
+
+Em 2026-11-02, a implementação passou a usar **MTProto como único mecanismo de consulta de perfis**. O Bot API permanece somente no transporte de mensagens e updates. Todas as menções abaixo ao `getChat`, ao fallback por erro 400, ao botão "Escolher usuário" e a relatórios obtidos por Bot API registram **uma versão antiga e descontinuada** e não servem mais como guia de execução, requisitos ou testes atuais. Para o comportamento atual, use `README.md`, `docs/launch-checklist.md` e o código publicado.
+
+## Alteração vigente — 2026-11-02
+
+- Pesquisa por `@username` no privado solicita diretamente o workflow de Telethon/MTProto.
+- Inline apresenta um botão que abre o privado; nenhum lookup é feito inline.
+- IDs numéricos isolados são rejeitados sem consulta porque não fornecem um `access_hash` confiável.
+- Compartilhamentos de usuário, encaminhamentos, contatos e menções não usam o antigo relatório Bot API.
+- Não há `api.getChat`; os recursos Bot API restantes se limitam a interface e entrega.
+- Critério de verificação: CI, deploy e uma pesquisa real via workflow (não confundir com healthcheck).
+
+---
+
 # Registro de verificações, implementações, hipóteses e decisões
 
 Data-base: 2026-11-01. Classificações:

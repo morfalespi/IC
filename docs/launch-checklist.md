@@ -1,56 +1,31 @@
-# Checklist de lançamento
+# Checklist de lançamento — pesquisa somente por MTProto
 
-## 1. Repositório
+## Configuração
 
-- Criar o repositório como **privado** para o primeiro lançamento.
-- Branch padrão: `main`.
-- Subir este código sem nenhum token no histórico.
-- Confirmar que o workflow `CI` fica verde.
+- O repositório deve preferencialmente ser privado no lançamento.
+- Confirme a branch `main` e o CI verde.
+- Cadastre em GitHub Actions Secrets: `TGCLOUD_TOKEN`, `GH_DISPATCH_TOKEN`, `API_ID`, `API_HASH` e `BOT_TOKEN`.
+- `GH_DISPATCH_TOKEN` deve ser fine-grained, restrito ao repositório e com permissão de Actions: Read and write.
+- `github.repository` deve ser injetado pelo workflow, sem nome de owner/repo fixado no código.
+- Ative o Serverless do bot no @BotFather; obtenha seu token CLI em Serverless → CLI Access.
+- Configure inline mode no @BotFather caso deseje esse fluxo.
 
-## 2. Telegram
+## Deploy
 
-- Criar/selecionar o bot no @BotFather.
-- Ativar Telegram Serverless para o bot.
-- Obter o token separado de CLI do Serverless (`TGCLOUD_TOKEN`).
-- Obter o token normal da Bot API (`BOT_TOKEN`) para o resolver MTProto.
-- Ativar inline mode se o fluxo inline for desejado.
+- Acione `Deploy (Telegram Serverless)` ou altere o runtime na `main`.
+- Confirme: autenticação TGCloud, `npm ci`, `fetch`, `status`, migração, injeção de configuração, `push`, webhook e dispatch healthcheck.
+- Healthcheck valida o disparo do workflow, mas **não** uma consulta real.
 
-## 3. MTProto
+## Testes de funcionamento
 
-- Criar/usar uma aplicação em `my.telegram.org/apps` e obter `API_ID` e `API_HASH`.
-- Guardar ambos exclusivamente como GitHub Actions secrets.
+1. Envie `/start` ao bot no privado: deve explicar a pesquisa por MTProto.
+2. Envie `@BotFather` ou outro username público conhecido: deve mostrar que solicitou a pesquisa, sem chamar `getChat`.
+3. Confira uma execução **não-healthcheck** de `Resolver @username (MTProto)` no GitHub Actions.
+4. Confira que o resultado ou a falha da pesquisa chega ao mesmo chat.
+5. Envie um ID numérico: deve explicar que um ID isolado sem `access_hash` não é confiável; não deve disparar o resolver.
+6. Se o inline mode estiver ativo, teste o botão que abre a conversa privada.
+7. Confirme que não existem tokens, `.env`, sessões ou credenciais versionados.
 
-## 4. GitHub Actions secrets
+## Critério de eficácia
 
-Criar os secrets abaixo em **Settings → Secrets and variables → Actions**:
-
-- `TGCLOUD_TOKEN`
-- `API_ID`
-- `API_HASH`
-- `BOT_TOKEN`
-- `GH_DISPATCH_TOKEN`
-
-`GH_DISPATCH_TOKEN` deve ser fine-grained, restrito somente a este repositório, com **Actions: Read and write**. O nome do repositório não é secret e é injetado automaticamente pelo workflow a partir de `github.repository`.
-
-## 5. Primeiro deploy
-
-- Executar `Deploy (Telegram Serverless)` manualmente ou fazer um push válido na `main`.
-- Confirmar as etapas: secret → `npm ci` → `fetch` → `status` → migração → injeção privada → `push` → `webhook` → validação do dispatch.
-- Não considerar o deploy concluído se a etapa de validação do `GH_DISPATCH_TOKEN` falhar.
-
-## 6. Smoke tests
-
-No privado com o bot:
-
-1. `/start` deve mostrar ajuda.
-2. Consultar um `@username` de canal/supergrupo conhecido.
-3. Consultar um ID conhecido pelo Bot API.
-4. Testar “Escolher usuário”.
-5. Encaminhar uma mensagem de usuário com remetente visível.
-6. Consultar um username de usuário comum e confirmar a criação do run `Resolver username ou ID (MTProto)`.
-7. Confirmar que o resultado ou a falha chega ao mesmo chat.
-8. Testar inline mode, se habilitado.
-
-## 7. Critério de eficácia
-
-Registre cada teste com entrada, horário, caminho usado (Bot API ou MTProto), status do workflow e resultado. Um teste bem-sucedido demonstra apenas aquele cenário; não deve ser generalizado para usernames, contas ou condições de privacidade diferentes.
+Registre a entrada, o horário, o run do resolver, seu status e a resposta recebida. Um deploy concluído não prova a resolução de todos os usernames. O Telegram pode limitar solicitações e ocultar campos conforme a configuração do perfil.
