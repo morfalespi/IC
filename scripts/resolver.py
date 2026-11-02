@@ -1091,8 +1091,6 @@ async def principal():
                     if entrega_ok:
                         linhas_aviso.append("<b>⚠️ Resultado parcial enviado</b>")
                     linhas_aviso.append("Alguns dados disponíveis não puderam ser incluídos nesta consulta.")
-                    if dados.get("falhas_coleta"):
-                        linhas_aviso.append(f"Métodos sem resposta completa: {len(dados['falhas_coleta'])}.")
                     if falhas_midias:
                         linhas_aviso.append(f"Itens de mídia indisponíveis: {falhas_midias}.")
                 linhas_aviso.append("As observações no relatório indicam os dados que faltaram.")
