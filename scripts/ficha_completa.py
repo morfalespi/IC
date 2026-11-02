@@ -1,5 +1,6 @@
 
 import html
+import json
 import re
 
 RICH_BYTES = 25000
@@ -185,6 +186,24 @@ def markdown_document(identity, sections, observations):
             linhas.extend([f"### Observação {i}", "", fence + "text", original, fence, ""])
     return "\n".join(linhas) + "\n"
 
+
+
+def jsonl_files(records, max_bytes=40 * 1024 * 1024):
+    if max_bytes < 1024:
+        raise ValueError("max_bytes muito pequeno")
+    pages = []
+    current = bytearray()
+    for record in records:
+        line = (json.dumps(record, ensure_ascii=False, separators=(",", ":"), allow_nan=False) + "\n").encode("utf-8")
+        if len(line) > max_bytes:
+            raise ValueError("Um registro JSONL excedeu o limite seguro do documento")
+        if current and len(current) + len(line) > max_bytes:
+            pages.append(bytes(current))
+            current = bytearray()
+        current.extend(line)
+    if current or not pages:
+        pages.append(bytes(current))
+    return pages
 
 def markdown_files(identity, sections, observations, max_bytes=40 * 1024 * 1024):
     if max_bytes < 1024:
