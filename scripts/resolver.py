@@ -143,7 +143,7 @@ def marcar_notificado():
 
 def editar_ficha_rica(conteudo, foto=None, definitiva=False):
     if not CHAT_DESTINO:
-        return False, False
+        return False, False, ID_MENSAGEM
     metodo = "editMessageText" if ID_MENSAGEM else "sendRichMessage"
     dados = {"chat_id": int(CHAT_DESTINO), "rich_message": {"html": conteudo}}
     if ID_MENSAGEM:
@@ -153,17 +153,17 @@ def editar_ficha_rica(conteudo, foto=None, definitiva=False):
         if confirmacao_mensagem(resposta):
             if definitiva:
                 marcar_notificado()
-            print("ficha rica editada; foto incorporada no mesmo bloco")
-            return True, True
+            print("Rich Message aceita; foto incorporada no mesmo bloco")
+            return True, True, (resposta.get("result") or {}).get("message_id", ID_MENSAGEM)
         print("mídia embutida indisponível:", resposta.get("error_code"), corte(resposta.get("description"), 180))
     resposta = solicitar_bot_api(metodo, dados)
     if confirmacao_mensagem(resposta):
         if definitiva:
             marcar_notificado()
-        print("ficha rica editada; sem foto incorporada")
-        return True, False
+        print("Rich Message aceita; sem foto incorporada")
+        return True, False, (resposta.get("result") or {}).get("message_id", ID_MENSAGEM)
     print("ficha rica indisponível:", resposta.get("error_code"), corte(resposta.get("description"), 180))
-    return False, False
+    return False, False, ID_MENSAGEM
 
 
 def callback_data(acao, alvo):
@@ -529,7 +529,7 @@ def atualizar_status(etapa, entidade=None):
         )
         id_entidade = utils.get_peer_id(entidade)
     status = status_ficha(etapa, nome, id_entidade)
-    sucesso, _ = editar_ficha_rica(status)
+    sucesso, _, _ = editar_ficha_rica(status)
     if not sucesso:
         print("atualização intermediária indisponível; a pesquisa continua")
 
@@ -1216,6 +1216,10 @@ async def principal():
             total_ricos = 0
             entregues_ricos = 0
             foto_incorporada = False
+            primeira_rica_id = None
+            primeira_rica_nova = False
+            mensagens_ricas_extra = []
+            avisos_fallback = []
             rich_ok = False
             try:
                 paginas = rich_pages(identidade, secoes, notas_publicadas, controles)
@@ -1225,7 +1229,8 @@ async def principal():
                     if indice > 0:
                         time.sleep(1.1)
                     if indice == 0:
-                        ok, foto_incorporada = editar_ficha_rica(pagina, dados["foto"])
+                        ok, foto_incorporada, primeira_rica_id = editar_ficha_rica(pagina, dados["foto"])
+                        primeira_rica_nova = not bool(ID_MENSAGEM)
                     else:
                         detalhes = {"chat_id": int(chat), "rich_message": {"html": pagina}}
                         resposta_id = ORIGEM_ID if completo else ID_MENSAGEM
@@ -1235,6 +1240,8 @@ async def principal():
                         ok = confirmacao_mensagem(retorno)
                         if not ok:
                             print("Rich Message recusada:", indice + 1, "status", retorno.get("error_code"))
+                        elif isinstance(retorno.get("result"), dict):
+                            mensagens_ricas_extra.append(retorno["result"].get("message_id"))
                     if not ok:
                         continue
                     entregues_ricos += 1
@@ -1246,6 +1253,15 @@ async def principal():
             total_html = 0
             entregues_html = 0
             if not rich_ok:
+                for mensagem_id in ([primeira_rica_id] if primeira_rica_nova else []) + mensagens_ricas_extra:
+                    if not isinstance(mensagem_id, int):
+                        avisos_fallback.append("Uma página rica enviada não teve ID confirmado para limpeza; o fallback pode duplicar conteúdo.")
+                        continue
+                    retorno_exclusao = chamar("deleteMessage", json.dumps({
+                        "chat_id": int(chat), "message_id": mensagem_id
+                    }).encode(), {"Content-Type": "application/json"})
+                    if not retorno_exclusao.get("ok") or retorno_exclusao.get("result") is not True:
+                        avisos_fallback.append("Uma página rica enviada não pôde ser removida; o fallback pode duplicar conteúdo.")
                 try:
                     paginas_html = basic_pages(identidade, secoes, notas_publicadas)
                     total_html = len(paginas_html)
@@ -1253,13 +1269,15 @@ async def principal():
                         if indice > 0:
                             time.sleep(1.1)
                         retorno = None
-                        if indice == 0 and entregues_ricos == 0 and ID_MENSAGEM:
+                        if indice == 0 and ID_MENSAGEM:
                             retorno = solicitar_bot_api("editMessageText", {
                                 "chat_id": int(chat), "message_id": ID_MENSAGEM,
                                 "text": pagina, "parse_mode": "HTML",
                                 **({"reply_markup": teclado_fallback} if teclado_fallback else {}),
                             })
                         if not retorno or not confirmacao_mensagem(retorno):
+                            if indice == 0 and entregues_ricos > 0:
+                                avisos_fallback.append("A página HTML inicial não substituiu a página rica anterior; o fallback pode duplicar conteúdo.")
                             retorno = postar(chat, pagina, True,
                                              teclado_fallback if indice == 0 else None)
                         if not confirmacao_mensagem(retorno):
@@ -1270,6 +1288,11 @@ async def principal():
                     html_ok = total_html > 0 and entregues_html == total_html
                 except Exception as erro_html:
                     print("HTML indisponível:", type(erro_html).__name__)
+            if avisos_fallback:
+                try:
+                    enviar(chat, "<b>⚠️ Fallback com possível duplicação</b>\n" + "\n".join(avisos_fallback))
+                except Exception as erro_aviso:
+                    print("aviso de fallback não confirmado:", type(erro_aviso).__name__)
             if dados["foto"] and not foto_incorporada:
                 try:
                     enviar_foto(chat, dados["foto"])
@@ -1374,11 +1397,11 @@ async def principal():
                 codigo = 1
         else:
             causa = re.sub(r"<[^>]*>", "", texto)
-            ok, _ = editar_ficha_rica(ficha_falha(alvo, causa), definitiva=True)
+            ok, _, _ = editar_ficha_rica(ficha_falha(alvo, causa), definitiva=True)
             if not ok:
                 enviar(chat, texto)
                 print("erro convencional enviado por fallback")
-        print("mensagem final entregue ao chat")
+        print("processamento do relatório encerrado")
     return codigo
 
 
