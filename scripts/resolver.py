@@ -50,7 +50,7 @@ def corte(valor, limite=400):
     return texto if len(texto) <= limite else texto[:limite] + "…"
 
 
-def chamar(metodo, corpo, cabecalhos):
+def chamar(metodo, corpo, cabecalhos, repetir_5xx=False):
     pedido = urllib.request.Request(
         f"https://api.telegram.org/bot{os.environ['BOT_TOKEN']}/{metodo}",
         data=corpo,
@@ -71,7 +71,8 @@ def chamar(metodo, corpo, cabecalhos):
         if retorno.get("ok"):
             return retorno
         estado = retorno.get("error_code", codigo)
-        if tentativa == 4 or estado != 429:
+        retryable = estado == 429 or (repetir_5xx and estado in (500, 502, 503, 504))
+        if tentativa == 4 or not retryable:
             return retorno
         parametros = retorno.get("parameters") or {}
         espera = parametros.get("retry_after") if estado == 429 else None
@@ -238,6 +239,146 @@ def registrar_midia(dados, categoria, nome, caminho=None, status="downloaded", e
     return item
 
 
+async def bot_api_leitura(dados, metodo, parametros):
+    resposta = await asyncio.to_thread(
+        chamar, metodo, json.dumps(parametros, ensure_ascii=False).encode("utf-8"),
+        {"Content-Type": "application/json"}, True
+    )
+    dados.setdefault("respostas_bot_api", {}).setdefault(metodo, []).append(resposta)
+    if not resposta.get("ok"):
+        dados.setdefault("falhas_bot_api", []).append({
+            "method": metodo,
+            "error_code": resposta.get("error_code"),
+            "description": corte(resposta.get("description", "Resposta sem sucesso"), 300),
+        })
+    return resposta
+
+
+async def baixar_arquivo_bot_api(dados, file_id, categoria, file_unique_id=None):
+    if not dados.get("midias_dir") or not file_id:
+        return None
+    hash_nome = hashlib.sha256(str(file_unique_id or file_id).encode("utf-8")).hexdigest()[:20]
+    processados = dados.setdefault("_arquivos_bot_api_processados", set())
+    if hash_nome in processados:
+        return None
+    processados.add(hash_nome)
+    try:
+        retorno = await bot_api_leitura(dados, "getFile", {"file_id": file_id})
+        if not retorno.get("ok"):
+            return registrar_midia(
+                dados, categoria, hash_nome, status="unavailable",
+                erro=f"getFile: {retorno.get('error_code')} {corte(retorno.get('description', ''), 160)}"
+            )
+        arquivo = retorno.get("result") or {}
+        caminho_remoto = arquivo.get("file_path")
+        if not caminho_remoto:
+            return registrar_midia(dados, categoria, hash_nome, status="unavailable",
+                                   erro="getFile não retornou file_path")
+        tamanho = arquivo.get("file_size")
+        if isinstance(tamanho, int) and tamanho > 20 * 1024 * 1024:
+            return registrar_midia(dados, categoria, hash_nome, status="unavailable",
+                                   erro="Arquivo excede o limite da Bot API (20 MiB)")
+        url = "https://api.telegram.org/file/bot" + os.environ["BOT_TOKEN"] + "/" + caminho_remoto
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url), timeout=60) as resposta:
+                conteudo = resposta.read(20 * 1024 * 1024 + 1)
+        except Exception as erro:
+            return registrar_midia(dados, categoria, hash_nome, status="failed",
+                                   erro=f"download: {type(erro).__name__}")
+        if len(conteudo) > 20 * 1024 * 1024:
+            return registrar_midia(dados, categoria, hash_nome, status="unavailable",
+                                   erro="Arquivo excede o limite da Bot API (20 MiB)")
+        extensao = os.path.splitext(caminho_remoto)[1][:12] or ".bin"
+        nome = hash_nome + extensao
+        caminho_local = os.path.join(dados["midias_dir"], nome)
+        with open(caminho_local, "wb") as saida:
+            saida.write(conteudo)
+        item = registrar_midia(dados, categoria, nome, caminho_local)
+        item["source"] = "Bot API"
+        return item
+    except Exception as erro:
+        return registrar_midia(dados, categoria, hash_nome, status="failed",
+                               erro=type(erro).__name__)
+
+
+async def coletar_bot_api(dados, entidade, info):
+    chat_id = "@" + info["username"] if isinstance(entidade, (Channel, Chat)) and info.get("username") else info.get("id")
+    if not chat_id:
+        return
+    chat = await bot_api_leitura(dados, "getChat", {"chat_id": chat_id})
+    if chat.get("ok"):
+        dados["chat_bot_api"] = chat.get("result")
+        resultado_chat = chat.get("result") or {}
+        foto = resultado_chat.get("photo") or {}
+        if foto.get("big_file_id"):
+            await baixar_arquivo_bot_api(
+                dados, foto["big_file_id"], "foto_perfil_bot_api",
+                foto.get("big_file_unique_id")
+            )
+        audio = resultado_chat.get("first_profile_audio") or {}
+        if audio.get("file_id"):
+            await baixar_arquivo_bot_api(
+                dados, audio["file_id"], "audio_perfil_bot_api",
+                audio.get("file_unique_id")
+            )
+
+    if isinstance(entidade, User):
+        for metodo, lista_chave, categoria in (
+            ("getUserProfilePhotos", "photos", "foto_perfil_bot_api"),
+            ("getUserProfileAudios", "audios", "audio_perfil_bot_api"),
+        ):
+            offset = 0
+            while True:
+                resposta = await bot_api_leitura(
+                    dados, metodo, {"user_id": entidade.id, "offset": offset, "limit": 100}
+                )
+                if not resposta.get("ok"):
+                    break
+                resultado = resposta.get("result") or {}
+                itens = resultado.get(lista_chave) or []
+                for item in itens:
+                    if metodo == "getUserProfilePhotos":
+                        if not item:
+                            continue
+                        item = max(item, key=lambda foto: (
+                            foto.get("width", 0) * foto.get("height", 0),
+                            foto.get("file_size", 0)
+                        ))
+                    await baixar_arquivo_bot_api(
+                        dados, item.get("file_id"), categoria, item.get("file_unique_id")
+                    )
+                offset += len(itens)
+                total = resultado.get("total_count")
+                if not itens or len(itens) < 100 or (isinstance(total, int) and offset >= total):
+                    break
+        mensagens = await bot_api_leitura(
+            dados, "getUserPersonalChatMessages", {"user_id": entidade.id, "limit": 20}
+        )
+        if mensagens.get("ok"):
+            for mensagem in mensagens.get("result") or []:
+                for categoria, valor in (mensagem or {}).items():
+                    if categoria == "photo" and isinstance(valor, list):
+                        if valor:
+                            foto = max(valor, key=lambda item: (
+                                item.get("width", 0) * item.get("height", 0),
+                                item.get("file_size", 0)
+                            ))
+                            await baixar_arquivo_bot_api(
+                                dados, foto.get("file_id"), "mensagem_foto_bot_api",
+                                foto.get("file_unique_id")
+                            )
+                    elif categoria in ("audio", "document", "animation", "video", "video_note", "voice", "sticker", "live_photo") and isinstance(valor, dict):
+                        await baixar_arquivo_bot_api(
+                            dados, valor.get("file_id"), "mensagem_" + categoria + "_bot_api",
+                            valor.get("file_unique_id")
+                        )
+    else:
+        await bot_api_leitura(
+            dados, "getChatAdministrators", {"chat_id": chat_id, "return_bots": True}
+        )
+        await bot_api_leitura(dados, "getChatMemberCount", {"chat_id": chat_id})
+
+
 async def baixar_midia(cliente, objeto, dados, categoria, nome):
     caminho = os.path.join(dados["midias_dir"], nome)
     try:
@@ -258,7 +399,7 @@ def enviar_documento_arquivo(chat, caminho, id_entidade, indice, total):
         filename += f"_parte_{indice}_de_{total}"
     filename += ".zip"
     resumo_hash = hashlib.sha256(conteudo).hexdigest()
-    campos = {"chat_id": str(int(chat)), "caption": "🖼️ Mídia MTProto exportada" +
+    campos = {"chat_id": str(int(chat)), "caption": "🖼️ Mídia Telegram exportada" +
               (f" · parte {indice}/{total}" if total > 1 else "") +
               "\nSHA-256: " + resumo_hash}
     if ORIGEM_ID:
@@ -283,12 +424,12 @@ def enviar_documento_arquivo(chat, caminho, id_entidade, indice, total):
 
 def enviar_documento_jsonl(chat, conteudo, id_entidade, indice, total):
     limite = uuid.uuid4().hex
-    filename = "infocard_" + str(id_entidade).replace("-", "n") + "_mtproto"
+    filename = "infocard_" + str(id_entidade).replace("-", "n") + "_telegram"
     if total > 1:
         filename += f"_parte_{indice}_de_{total}"
     filename += ".jsonl"
     resumo_hash = hashlib.sha256(conteudo).hexdigest()
-    campos = {"chat_id": str(int(chat)), "caption": "🧾 Dados MTProto completos (JSONL)" +
+    campos = {"chat_id": str(int(chat)), "caption": "🧾 Dados Telegram completos (JSONL)" +
               (f" · parte {indice}/{total}" if total > 1 else "") +
               "\nSHA-256: " + resumo_hash}
     if ORIGEM_ID:
@@ -325,7 +466,7 @@ def status_ficha(etapa, nome=None, id_entidade=None):
         linhas.append('<tr><th>ID</th><td><code>' + esc(id_entidade) + '</code></td></tr>')
     return ('<h2>🔎 Infocard</h2><p><b>⏳ Consulta MTProto em andamento</b></p>'
             '<table compact bordered><tr><th>Campo</th><th>Valor</th></tr>'
-            + ''.join(linhas) + '</table><footer>Fonte: Telegram MTProto</footer>')
+            + ''.join(linhas) + '</table><footer>Fonte: Telegram Bot API + MTProto</footer>')
 
 
 def atualizar_status(etapa, entidade=None):
@@ -346,12 +487,14 @@ def atualizar_status(etapa, entidade=None):
 
 CATEGORIAS = (
     ("👤 Perfil e atividade", (
-        "Bio", "Aniversário", "Idioma", "Premium", "Restrições", "Chats em comum",
+        "Bio", "Bio (Bot API)", "Aniversário", "Aniversário (Bot API)", "Idioma", "Premium", "Restrições", "Chats em comum",
         "Canal pessoal", "Nome nos encaminhamentos", "Mensagens de voz",
         "Emoji de status", "Fotos de perfil no MTProto",
     )),
     ("🎵 Recursos e presença", (
-        "Música destacada no perfil", "Músicas de perfil no MTProto", "Presentes recebidos",
+        "Música destacada no perfil", "Músicas de perfil no MTProto", "Fotos de perfil na Bot API",
+        "Áudios de perfil na Bot API", "Mensagens no chat pessoal via Bot API",
+        "Administradores via Bot API", "Membros via Bot API", "Presentes recebidos",
         "Nível Telegram Stars", "Placeholder inline", "Usuários ativos do bot",
         "Mini App principal do bot", "Descrição do bot", "Comandos",
         "Política de privacidade",
@@ -361,7 +504,9 @@ CATEGORIAS = (
         "Intervalos de atendimento registrados",
     )),
     ("📢 Canal ou grupo", (
-        "Descrição", "Membros", "Administradores", "Online agora",
+        "Descrição", "Descrição (Bot API)", "Intro comercial (Bot API)",
+        "Local comercial (Bot API)", "Horários comerciais (Bot API)",
+        "Avaliação do chat (Bot API)", "Membros", "Administradores", "Online agora",
         "Chat vinculado", "Modo lento", "Boosts aplicados",
         "Nível de boosts do canal", "Presentes recebidos pelo canal",
         "Limite de reações distintas", "Localização",
@@ -447,18 +592,20 @@ def valor_mtproto(valor):
     return str(valor)
 
 
-def registros_mtproto(dados, alvo, info):
+def registros_telegram(dados, alvo, info):
     metadados = {
-        "formato": "infocard-mtproto-jsonl-v1",
-        "escopo": "respostas de leitura acessíveis à sessão de bot",
+        "formato": "infocard-telegram-jsonl-v2",
+        "escopo": "respostas de leitura obtidas pelas APIs do Telegram nesta execução",
+        "apis": ["Bot API", "MTProto"],
         "telethon": telethon.__version__,
         "referencia": alvo,
         "tipo": info.get("tipo"),
-        "metodos_nao_disponiveis_para_bot": ["messages.getHistory", "stories.getPeerStories", "messages.getCommonChats", "messages.getPeerSettings"],
         "capturado_unix": int(time.time()),
     }
     objetos = {
         "metadados": metadados,
+        "respostas_bot_api": dados.get("respostas_bot_api", {}),
+        "falhas_bot_api": dados.get("falhas_bot_api", []),
         "entidade": dados.get("entidade"),
         "resposta_resolucao": dados.get("resposta_resolucao"),
         "resposta_completa": dados.get("resposta_completa"),
@@ -558,7 +705,7 @@ async def coletar(alvo):
     try:
         await com_espera(lambda: cliente.start(bot_token=os.environ["BOT_TOKEN"]))
         entidade, origem, resposta_resolucao = await resolver_alvo(cliente, alvo)
-        dados = {"entidade": entidade, "completo": None, "resposta_completa": None, "resposta_resolucao": resposta_resolucao, "foto": None, "notas": [origem], "fotos_info": None, "musicas_info": None, "fotos_mtproto": [], "musicas_mtproto": [], "participantes_mtproto": [], "midias": [], "pacotes_midias": [], "falhas_coleta": [], "midias_dir": tempfile.mkdtemp(prefix="infocard_mtproto_") if MODO == "completo" and CHAT_DESTINO else None}
+        dados = {"entidade": entidade, "completo": None, "resposta_completa": None, "resposta_resolucao": resposta_resolucao, "foto": None, "notas": [origem], "fotos_info": None, "musicas_info": None, "fotos_mtproto": [], "musicas_mtproto": [], "participantes_mtproto": [], "midias": [], "pacotes_midias": [], "falhas_coleta": [], "respostas_bot_api": {}, "falhas_bot_api": [], "midias_dir": tempfile.mkdtemp(prefix="infocard_telegram_") if MODO == "completo" and CHAT_DESTINO else None}
         if dados["midias_dir"]:
             atexit.register(shutil.rmtree, dados["midias_dir"], ignore_errors=True)
         atualizar_status("1/2 · Identificação confirmada; buscando campos adicionais", entidade)
@@ -680,6 +827,19 @@ async def coletar(alvo):
             except Exception as erro:
                 dados["falhas_coleta"].append({"method": "users.getSavedMusic", "error": type(erro).__name__})
                 dados["notas"].append(f"Contagem de músicas indisponível: {type(erro).__name__}")
+        if MODO == "completo":
+            try:
+                await coletar_bot_api(dados, entidade, {
+                    "id": utils.get_peer_id(entidade),
+                    "username": getattr(entidade, "username", None),
+                })
+            except Exception as erro_api:
+                dados["falhas_bot_api"].append({
+                    "method": "coleta Bot API",
+                    "error_code": 0,
+                    "description": type(erro_api).__name__,
+                })
+                dados["notas"].append(f"Leituras Bot API incompletas: {type(erro_api).__name__}")
         atualizar_status("2/2 · Dados aprofundados processados; consolidando ficha", entidade)
         return dados
     finally:
@@ -825,8 +985,6 @@ def descrever(entidade, completo_, alvo):
             add("Tema do chat", getattr(completo_, "theme_emoticon", None))
             add("Tempo de autodestruição", getattr(completo_, "ttl_period", None))
             add("Agendamento de mensagens", "disponível" if getattr(completo_, "has_scheduled", False) else None)
-            add("Tempo de autodestruição", getattr(completo_, "ttl_period", None))
-            add("Tema do chat", getattr(completo_, "theme_emoticon", None))
             add("Mensagens pagas disponíveis", "sim" if getattr(completo_, "paid_messages_available", False) else None)
             local = getattr(completo_, "location", None)
             if local:
@@ -888,6 +1046,31 @@ async def principal():
                 info["campos"].append(("Participantes detalhados acessíveis", str(total_participantes)))
             if dados["musicas_info"]:
                 info["campos"].append(("Músicas de perfil no MTProto", dados["musicas_info"]))
+            for metodo, respostas in dados.get("respostas_bot_api", {}).items():
+                resultado_api = next((item.get("result") for item in reversed(respostas) if item.get("ok")), None)
+                if metodo == "getUserProfilePhotos" and isinstance(resultado_api, dict):
+                    info["campos"].append(("Fotos de perfil na Bot API", str(resultado_api.get("total_count", 0))))
+                elif metodo == "getUserProfileAudios" and isinstance(resultado_api, dict):
+                    info["campos"].append(("Áudios de perfil na Bot API", str(resultado_api.get("total_count", 0))))
+                elif metodo == "getUserPersonalChatMessages" and isinstance(resultado_api, list):
+                    info["campos"].append(("Mensagens no chat pessoal via Bot API", str(len(resultado_api))))
+                elif metodo == "getChatAdministrators" and isinstance(resultado_api, list):
+                    info["campos"].append(("Administradores via Bot API", str(len(resultado_api))))
+                elif metodo == "getChatMemberCount" and resultado_api is not None:
+                    info["campos"].append(("Membros via Bot API", str(resultado_api)))
+            chat_bot = dados.get("chat_bot_api") or {}
+            rotulos_bot = {
+                "bio": "Bio (Bot API)", "description": "Descrição (Bot API)",
+                "birthdate": "Aniversário (Bot API)", "business_intro": "Intro comercial (Bot API)",
+                "business_location": "Local comercial (Bot API)",
+                "business_opening_hours": "Horários comerciais (Bot API)",
+                "rating": "Avaliação do chat (Bot API)",
+            }
+            for chave, rotulo in rotulos_bot.items():
+                valor = chat_bot.get(chave)
+                if valor not in (None, "", [], {}):
+                    texto_valor = json.dumps(valor, ensure_ascii=False) if isinstance(valor, (dict, list)) else str(valor)
+                    info["campos"].append((rotulo, texto_valor[:600]))
 
             print("tipo resolvido:", info["tipo"], "| campos extras:", len(info["campos"]))
             codigo = 0
@@ -1035,7 +1218,7 @@ async def principal():
                 except Exception as erro_md:
                     print("Markdown indisponível:", type(erro_md).__name__)
                 try:
-                    arquivos_json = jsonl_files(registros_mtproto(dados, alvo, info))
+                    arquivos_json = jsonl_files(registros_telegram(dados, alvo, info))
                     json_previstos = len(arquivos_json)
                     print("documentos JSONL planejados:", json_previstos)
                     for indice, arquivo in enumerate(arquivos_json, 1):
@@ -1062,7 +1245,7 @@ async def principal():
                     midias_entregues == midias_previstas
                 )
             )
-            cobertura_ok = not dados.get("falhas_coleta") and falhas_midias == 0
+            cobertura_ok = not dados.get("falhas_coleta") and not dados.get("falhas_bot_api") and falhas_midias == 0
             sucesso_final = entrega_ok and (not completo or cobertura_ok)
             if sucesso_final:
                 marcar_notificado()
@@ -1090,6 +1273,8 @@ async def principal():
                     linhas_aviso.append("Alguns dados disponíveis não puderam ser incluídos nesta consulta.")
                     if falhas_midias:
                         linhas_aviso.append(f"Itens de mídia indisponíveis: {falhas_midias}.")
+                    if dados.get("falhas_bot_api"):
+                        linhas_aviso.append(f"Leituras Bot API indisponíveis: {len(dados['falhas_bot_api'])}.")
                 linhas_aviso.append("As observações no relatório indicam os dados que faltaram.")
                 enviar(chat, "\n".join(linhas_aviso))
                 codigo = 1

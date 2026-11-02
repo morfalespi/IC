@@ -1,6 +1,6 @@
-# Infocard — Telegram Serverless + MTProto
+# Infocard — Telegram Serverless + APIs do Telegram
 
-O Infocard recebe uma referência de Telegram no privado e solicita um resolver MTProto no GitHub Actions. A cobertura atual é parcial: mostra campos mapeados. A meta ativa é expandir para todos os campos e recursos de leitura que o Telegram disponibiliza à sessão de bot, com coleta paginada e entrega sem truncamento silencioso. Não consulta perfis pelo Bot API getChat. Um ID arbitrário não garante acesso.
+O Infocard recebe uma referência no privado, resolve a entidade por MTProto e, na exportação completa, combina leituras MTProto e Bot API. A exportação preserva as respostas brutas de cada método tentado e baixa mídia quando a API e as permissões permitem. Um ID arbitrário não garante acesso.
 
 ## Uso
 
@@ -24,23 +24,23 @@ O formato ID @username é convenção de entrada **deste bot**. Não utilizar o 
 ## Resultado
 
 1. **Ficha de andamento:** cartão rico do Telegram com identificação de consulta e status.
-2. **Resultado completo na tela:** identificação e todos os campos efetivamente mapeados e retornados pelo MTProto, em tantas Rich Messages quanto necessárias, com foto e botões quando permitidos. Não existe corte intencional para nove campos.
+2. **Resultado na tela:** identificação e campos mapeados que as APIs retornarem, em tantas Rich Messages quanto necessárias, com foto e botões quando permitidos. A exportação JSONL preserva também respostas brutas que ainda não tenham mapeamento visual.
 3. **Obter Markdown completo:** ação opcional que faz uma nova consulta, repete as informações na tela em páginas ricas e envia o anexo .md em UTF-8. Se a API recusar Rich Messages, tenta HTML convencional paginado; se recusar a mídia embutida, tenta foto separada.
 4. **Falhas:** mensagem de erro e possibilidade de nova pesquisa. Quando o Telegram/GitHub estiver indisponível, a notificação não é garantida.
 
-**A cobertura atual não inclui todos os campos e recursos acessíveis ao MTProto.** O trabalho ativo é inventariar e implementar os métodos de leitura relevantes, guiado por Partners e pelas especificações oficiais. A autenticação permanece como bot: o Telegram reserva messages.getHistory e stories.getPeerStories a contas de usuário; a leitura de participantes de canais pode exigir privilégios de administrador. Campo ausente não equivale a inexistência. Consulte [a matriz de cobertura e os critérios](docs/partners-mtproto-coverage.md).
+**A exportação completa tenta leituras adicionais pelas duas APIs.** Para usuários, chama `getChat`, `getUserProfilePhotos`, `getUserProfileAudios` e `getUserPersonalChatMessages`; para grupos e canais, chama `getChat`, `getChatAdministrators` e `getChatMemberCount`. Respostas Bot API, inclusive erros de acesso, vão para o JSONL. Ausência de um campo ou erro de permissão não prova que os dados não existam. MTProto continua limitado à sessão de bot e às permissões concedidas pelo Telegram.
 
-Os dados opcionais compartilhados no seletor podem ser mostrados no cartão inicial, mas não são preservados em armazenamento temporário independente; uma edição posterior pode substituí-los. O relatório MTProto só apresenta aquilo que o worker confirmou no protocolo.
+Os dados opcionais compartilhados no seletor podem ser mostrados no cartão inicial, mas não são preservados em armazenamento temporário independente; uma edição posterior pode substituí-los. O relatório registra aquilo que cada resposta do Telegram confirmou.
 
 ## Entrega integral e tolerância a falhas (2026-11-02)
 
-A consulta comum mostra os campos já mapeados. O botão **Exportação completa** solicita páginas legíveis, Markdown, JSONL com respostas MTProto completas e pacotes ZIP de mídia acessível. A expansão é implementada na branch de revisão; cobertura total e recebimento verificável no Telegram ainda não foram comprovados.
+A consulta comum mostra os campos mapeados. O botão **Exportação completa** solicita páginas legíveis, Markdown, JSONL com respostas MTProto e Bot API e pacotes ZIP de mídia acessível. A confirmação do envio não comprova que todos os dados possíveis foram retornados nem substitui uma consulta real de ponta a ponta.
 
-A Bot API 10.3 limita cada Rich Message a 32.768 caracteres UTF-8, 500 blocos, 16 níveis de aninhamento, 50 anexos de mídia e 20 colunas por tabela. A implementação usa uma margem inferior de tamanho e divide em páginas. Um limite por mensagem não significa que o Telegram conceda campos que não foram retornados pelo MTProto.
+A Bot API 10.3 limita cada Rich Message a 32.768 caracteres UTF-8, 500 blocos, 16 níveis de aninhamento, 50 anexos de mídia e 20 colunas por tabela. A implementação usa uma margem inferior de tamanho e divide em páginas. Um limite por mensagem não significa que o Telegram conceda campos que não foram retornados pelas APIs.
 
-Em falhas temporárias **com resposta do Telegram**, o transporte repete operações HTTP 429 e 5xx até cinco tentativas, respeitando `parameters.retry_after` quando fornecido. Erros de transporte ambíguos não são repetidos automaticamente para evitar duplicar mensagens. Cada página rica é tentada mesmo se outra falhar; se o conjunto rico não for concluído, o HTML paginado também é tentado. A coleta de arquivos Markdown é independente do sucesso das páginas de texto e continua tentando as partes restantes quando uma delas é recusada.
+Em falhas temporárias **com resposta do Telegram**, leituras Bot API idempotentes repetem HTTP 429 e 5xx até cinco tentativas; operações de envio repetem HTTP 429, respeitando `parameters.retry_after` quando fornecido. Erros de transporte ambíguos não são repetidos automaticamente para evitar duplicar mensagens. Cada página rica é tentada mesmo se outra falhar; se o conjunto rico não for concluído, o HTML paginado também é tentado. A coleta de arquivos Markdown é independente do sucesso das páginas de texto e continua tentando as partes restantes quando uma delas é recusada.
 
-Na exportação completa, o envio e a cobertura são avaliados separadamente. Se páginas e anexos foram enviados, mas uma consulta não retornou dados disponíveis, o bot informa **Resultado parcial enviado**; se partes foram recusadas pela Bot API, informa **Entrega incompleta**. O estado parcial também é registrado quando alguma mídia não pôde ser incluída. A confirmação de envio não prova que o conteúdo recebido foi inspecionado nem que todos os métodos MTProto relevantes estão cobertos. Caso contrário, tenta comunicar **Entrega incompleta**, com totais confirmados, e termina com código de falha. O resultado pode ser parcialmente entregue por limites de tempo, conectividade, permissões ou privacidade: não existe garantia técnica de entrega ilimitada.
+Na exportação completa, o envio e a cobertura são avaliados separadamente. Se páginas e anexos foram enviados, mas uma consulta não retornou dados disponíveis, o bot informa **Resultado parcial enviado**; se partes foram recusadas pela Bot API, informa **Entrega incompleta**. O estado parcial também é registrado quando alguma mídia não pôde ser incluída. A confirmação de envio não prova que o conteúdo recebido foi inspecionado nem que todos os métodos de leitura relevantes estão cobertos. Caso contrário, tenta comunicar **Entrega incompleta**, com totais confirmados, e termina com código de falha. O resultado pode ser parcialmente entregue por limites de tempo, conectividade, permissões ou privacidade: não existe garantia técnica de entrega ilimitada.
 
 A sessão MTProto do worker é temporária; o Telegram controla `access_hash`, FloodWait e o conjunto de dados permitido à identidade autenticada. `GetFullChatRequest` foi acrescentado para grupos básicos nos quais o bot tenha acesso.
 
@@ -55,7 +55,7 @@ Fontes: https://core.telegram.org/bots/api#rich-message-formatting-options ; htt
 | Interpretar referência | tgcloud/lib/entrada.js | Convenção local validada |
 | Limite de disparo | tgcloud/lib/limite.js | Banco Serverless |
 | Disparar worker | tgcloud/lib/despacho.js | GitHub workflow_dispatch |
-| Resolver identidade | scripts/resolver.py | Telegram MTProto via Telethon |
+| Resolver identidade e campos detalhados | scripts/resolver.py | Telegram MTProto via Telethon e Bot API |
 | Gerar Rich Messages e .md | scripts/resolver.py, scripts/ficha_completa.py | sendRichMessage, editMessageText, sendDocument |
 
 O limite atual é de **2 consultas por chat e 6 globalmente em 60 segundos**. O workflow usa sessão MTProto temporária, sem cache persistente de peers. Sua consulta pode falhar por permissões, ausência de access_hash, privacidade ou rate limit.
@@ -66,7 +66,7 @@ No resolver Python, cada envio com `sendRichMessage`, `sendMessage`, `sendPhoto`
 
 Quando houver falha de uma parte, o bot continua tentando as outras mensagens e o arquivo Markdown, contabilizando separadamente partes ricas, páginas HTML de compatibilidade e documentos enviados. Se faltar um componente obrigatório, comunica **Entrega incompleta** e não registra o sucesso integral. A legenda de cada arquivo Markdown contém o SHA-256 dos bytes do próprio anexo, para conferência de integridade.
 
-O worker respeita `parameters.retry_after` em erros 429. Não repete automaticamente respostas 5xx de métodos que criam mensagens: sem identificador de idempotência fornecido pela API, repetir uma operação de resultado ambíguo poderia gerar mensagens duplicadas. O limite do job aumentou de 15 para 30 minutos para acomodar esperas e páginas extensas. Isso é um orçamento de execução, não garantia de sucesso ilimitado.
+O worker respeita `parameters.retry_after` em erros 429. Não repete automaticamente respostas 5xx de métodos que criam mensagens: sem identificador de idempotência fornecido pela API, repetir uma operação de resultado ambíguo poderia gerar mensagens duplicadas. O limite do job é de 30 minutos para acomodar esperas e páginas extensas. Isso é um orçamento de execução, não garantia de sucesso ilimitado.
 
 Fonte: https://core.telegram.org/bots/api#making-requests , https://core.telegram.org/bots/api#responseparameters , https://core.telegram.org/bots/api#senddocument , https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax .
 

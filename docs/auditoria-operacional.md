@@ -4,7 +4,7 @@
 
 Este documento diferencia **fonte normativa**, **código inspecionado**, **verificação estática/CI**, **publicação** e **execução real**. Documentos históricos não são baseline normativo. A ausência de testes autorais no repositório decorre da decisão expressa do proprietário, não demonstração de qualidade por si só.
 
-Revisão de referência: main no commit 0bef0e38ebeec2eaa18bb73b8170d99d6f5dba60. Correções desta auditoria devem ser confirmadas no commit subsequente.
+Revisão-base: main no commit 0bef0e38ebeec2eaa18bb73b8170d99d6f5dba60. As complementações atuais em branch estão registradas abaixo e ainda requerem execução real.
 
 ### Fontes oficiais prioritárias
 
@@ -62,7 +62,7 @@ Revisão de referência: main no commit 0bef0e38ebeec2eaa18bb73b8170d99d6f5dba60
 
 ## Verificação sem testes autorais
 
-Por decisão expressa do proprietário, não são criados testes escritos pelo próprio autor. A rotina automatizada faz checagens sintáticas e de placeholders. A avaliação funcional deve ser conduzida no Telegram, com observação dos resultados e execução do workflow MTProto sem healthcheck.
+Por decisão expressa do proprietário, não são criados testes escritos pelo próprio autor. A rotina automatizada faz checagens sintáticas e de placeholders. A avaliação funcional deve ser conduzida no Telegram, com observação dos resultados e execução do workflow resolver sem healthcheck.
 
 | Prova | O que é permitido concluir |
 |---|---|
@@ -93,7 +93,7 @@ Esta auditoria não autoriza inferir novos campos do Telegram nem contornar rest
 
 ## Revisão de entrega integral — 2026-11-02
 
-Foi removido o corte fixo de nove campos da apresentação usual, mantendo paginação integral. O método MTProto `messages.getFullChat` foi introduzido para grupos básicos acessíveis. O transporte da Bot API agora respeita `retry_after` e tenta novamente respostas 429 e 5xx; erros ambíguos de rede não são repetidos automaticamente. Se a Rich Message for recusada, há tentativa de envio paginado em HTML; os arquivos Markdown são tentados independentemente da formatação das mensagens. O sucesso exige todas as partes obrigatórias aceitas pela Bot API. Ainda é necessário demonstrar esse comportamento na execução real posterior ao commit, especialmente o botão de Markdown.
+Foi removido o corte fixo de nove campos da apresentação usual, mantendo paginação integral. O método MTProto `messages.getFullChat` foi introduzido para grupos básicos acessíveis. O transporte da Bot API respeita `retry_after`; somente leituras idempotentes repetem respostas 429 e 5xx, e erros ambíguos de rede não são repetidos automaticamente. Se a Rich Message for recusada, há tentativa de envio paginado em HTML; os arquivos Markdown são tentados independentemente da formatação das mensagens. O sucesso exige todas as partes obrigatórias aceitas pela Bot API. Ainda é necessário demonstrar esse comportamento na execução real posterior ao commit, especialmente o botão de Markdown.
 
 ## Revisão de confirmação da entrega — 2026-11-02
 
@@ -102,9 +102,18 @@ Foi removido o corte fixo de nove campos da apresentação usual, mantendo pagin
 
 ## Escopo ativo decidido em 2026-11-02
 
-A meta agora é ampliar o Infocard para entregar a cobertura máxima e verificável dos dados de leitura acessíveis à sessão MTProto de bot, em vez de limitar o produto aos campos já mapeados. A autenticação permanece como bot. Os métodos `messages.getHistory` e `stories.getPeerStories` são exclusivos de contas de usuário; `channels.getParticipants` pode exigir administração. A cobertura técnica precisa ser inventariada campo a campo e método a método conforme a layer oficial e o Telethon instalado. Não alegar conclusão até que os dados retornados, a paginação e a entrega recebida no Telegram sejam confirmados. Ver [docs/partners-mtproto-coverage.md](partners-mtproto-coverage.md).
+A meta é ampliar o Infocard para entregar a cobertura máxima e verificável dos dados de leitura acessíveis às sessões Bot API e MTProto do bot, em vez de limitar o produto aos campos já mapeados. A autenticação permanece como bot. Os métodos `messages.getHistory` e `stories.getPeerStories` são exclusivos de contas de usuário; `channels.getParticipants` pode exigir administração. A cobertura técnica precisa ser inventariada campo a campo e método a método conforme a layer oficial e o Telethon instalado. Não alegar conclusão até que os dados retornados, a paginação e a entrega recebida no Telegram sejam confirmados. Ver [docs/partners-mtproto-coverage.md](partners-mtproto-coverage.md).
 
 
 ## Correção de estados na exportação completa — 2026-11-02
 
 O bot separa a entrega de anexos da cobertura dos dados. Quando o Telegram recebeu as partes montadas, mas um método não retornou dados, a resposta é “Resultado parcial enviado”; “Entrega incompleta” fica reservado a páginas/anexos sem confirmação. A lacuna continua explícita no relatório e o resultado não é tratado como integral. A regra do proprietário contra testes escritos pelo próprio implementador foi preservada, pois não conflitava com Partners.
+
+
+## Ampliação da cobertura de leitura — branch codex/bot-api-profile-coverage
+
+**IMPLEMENTADO NO CÓDIGO:** a exportação completa tenta leituras Bot API adicionais por entidade: `getChat`; para usuários, pagina fotos e áudios de perfil e obtém até 20 mensagens do chat pessoal indicado no perfil; para grupos e canais, obtém administradores e contagem. As respostas completas e falhas de método são incluídas no JSONL junto às respostas MTProto. Arquivos compatíveis são baixados por `getFile`, deduplicados e agrupados nos ZIPs; downloads Bot API acima de 20 MiB são marcados indisponíveis. Retentativas 5xx ficam restritas a leituras idempotentes.
+
+**REVISADO:** README, AGENTS e matriz de cobertura passaram a descrever as duas APIs. Foram removidas afirmações normativas antigas que excluíam `getChat` e campos MTProto repetidos no relatório.
+
+**NÃO VERIFICADO:** execução real com o bot e inspeção do JSONL, campos obtidos, mídias e anexos recebidos. Um endpoint que falhar em uma entidade fica registrado como falha/limite e não prova inexistência do dado.
