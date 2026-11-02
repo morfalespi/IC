@@ -19,7 +19,7 @@ Repositórios de terceiros, exemplos, versões anteriores deste projeto e coment
 ## Regras de qualidade
 
 - Sem comentários e docstrings no código de produção. Documentar decisões em Markdown fora dos arquivos executáveis.
-- Escolher verificações pelo critério de resultado da Partners. Não há proibição geral de testes; quando usados, eles complementam a comparação com especificações oficiais e a confirmação independente em execução real. Checagem sintática, CI verde e healthcheck não provam entrega funcional.
+- Não criar ou manter testes escritos pelo mesmo autor da implementação. A revisão deve confrontar as especificações oficiais e realizar verificações independentes e execução real. Checagem sintática, CI verde e healthcheck não provam entrega funcional. Essa regra continua compatível com Partners: foco em resultados não exige remover uma restrição de validação que não conflita com o objetivo.
 - Não afirmar funcionamento sem evidência identificada. Usar IMPLEMENTADO, VERIFICADO, HIPÓTESE e DECISÃO em docs/registro.md.
 - Falhas esperadas devem ser comunicadas ao usuário quando a Bot API estiver disponível. Não prometer comunicação quando a própria API ou a execução estiver indisponível.
 - Publicar correções autorizadas na main. Mudanças no tgcloud/ acionam deploy automático; mudanças apenas em scripts/ acionam CI, mas o próximo workflow do resolver utiliza a main atual.
