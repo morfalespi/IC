@@ -1096,7 +1096,7 @@ async def principal():
                     if falhas_midias:
                         linhas_aviso.append(f"Itens de mídia indisponíveis: {falhas_midias}.")
                 linhas_aviso.append("As observações no relatório indicam os dados que faltaram.")
-                enviar(chat, "\\n".join(linhas_aviso))
+                enviar(chat, "\n".join(linhas_aviso))
                 codigo = 1
         else:
             causa = re.sub(r"<[^>]*>", "", texto)
