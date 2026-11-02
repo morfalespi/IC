@@ -75,8 +75,8 @@ export default async function (message) {
         erro: 'O Telegram não forneceu um ID acessível nessa referência. Compartilhe um usuário ou chat com remetente identificado.',
       });
     } else if (compartilhamento) {
-      const consulta = await consultar(compartilhamento.entrada, { canal: 'privado', chatId: message.chat.id });
-      resposta = adicionarDadosCompartilhados(consulta, compartilhamento);
+      const consulta = await consultar(compartilhamento.entrada, { canal: 'privado', chatId: message.chat.id, dadosCompartilhados: compartilhamento });
+      resposta = consulta.enviado ? consulta : adicionarDadosCompartilhados(consulta, compartilhamento);
     } else {
       const texto = message.text || '';
       const inicio = /^\/start(?:@\w+)?(?:\s+(\S+))?\s*$/.exec(texto);
@@ -89,5 +89,5 @@ export default async function (message) {
     console.error('falha ao montar a resposta:', erro);
     resposta = relatorioErro(erro);
   }
-  await enviarMensagem(message.chat.id, resposta.html, resposta.teclado);
+  if (!resposta?.enviado) await enviarMensagem(message.chat.id, resposta.html, resposta.teclado);
 }

@@ -1,3 +1,17 @@
+# Checklist — cartão rico Telegram Bot API 10.3
+
+- Enviar `@BotFather` no privado: mensagem inicial precisa ser um cartão com título, tabela e botão **Atualizar**.
+- Observar as edições de progresso: status de autenticação, entidade identificada e conclusão, sem mandar uma nova mensagem para cada etapa.
+- Após o resultado, confirmar campos MTProto dentro da tabela, detalhes expansíveis e botões **Copiar ID** e **Abrir perfil** quando houver username.
+- Se existir foto do perfil, verificar se a imagem aparece **na mesma mensagem rica**. Se não, conferir aviso nos logs e fallback de foto separada.
+- Pressionar **Atualizar** e confirmar que o callback atualiza o mesmo cartão e respeita o limite de 1 busca por chat por 60 s.
+- Conferir busca por ID desconhecido e falha do GitHub para assegurar que a mensagem seja editada com uma explicação, sem credenciais em logs.
+- Validar que Rich Messages usam `rich_message` e não `parse_mode=HTML` convencional, que não aceita tabelas.
+- Conferir CI, deploy e execução **real** de `resolver.yml`. Um healthcheck verde não executa Telethon.
+- Observar diferenças entre versões de clientes Telegram; ter fallback em mensagens HTML convencionais.
+
+Fonte oficial: https://core.telegram.org/bots/api (Bot API 10.3, 24 de agosto de 2026).
+
 # Checklist do Infocard — pesquisa MTProto por ID ou referência
 
 ## Antes do deploy

@@ -35,6 +35,21 @@ Fontes: https://core.telegram.org/method/users.getFullUser , https://core.telegr
 
 **Limite:** o ID isolado de uma entidade desconhecida ainda pode ser recusado pelo Telegram. Nem `access_hash=0` nem pesquisa externa permitem garantir a identificação. O cache persistente de peers exigiria uma sessão MTProto protegida e uma arquitetura distinta; **não está implementado**.
 
+## Cartão de resultados — Bot API 10.3
+
+O bot agora apresenta as consultas em **Rich Messages** nativas do Telegram:
+
+- `sendRichMessage`: cria um cartão de pesquisa com título, tabela compacta e o botão **Atualizar**.
+- O TGCloud envia o `message_id` do cartão ao workflow `resolver.yml`. O resolver edita o mesmo cartão via `editMessageText` com `rich_message` quando a autenticação, a identificação da entidade e a coleta terminam.
+- Resultado final: cabeçalho, tabela `<table bordered striped compact>`, dados verificados, seção expandível de detalhes e botões **Atualizar**, **Copiar ID** e **Abrir perfil** (somente com username).
+- A imagem do perfil pode aparecer dentro do próprio cartão por `InputRichMessageMedia` e `tg://photo?id=...`, com upload multipart. Se o Telegram recusar a mídia embutida, a mensagem rica permanece e a foto é tentada como envio separado.
+- O Telegram Serverless também implementa `handlers/callback_query.js` para atualizar o mesmo cartão, com limite de solicitações e verificação de chat privado.
+- Falhas de rich message usam a mensagem HTML convencional como alternativa. Nunca são montadas tabelas HTML na propriedade `text` de `sendMessage`; tabelas são exclusivas de `rich_message`.
+
+**Importante:** `sendRichMessageDraft` cria rascunhos temporários e não substitui uma mensagem persistente. Optamos por `sendRichMessage` e edições de uma mensagem real. O sucesso do CI não comprova que todos os clientes Telegram renderizam a ficha da mesma forma; requer teste real. O token do bot continua exclusivamente no GitHub Actions Secrets, não no código do TGCloud.
+
+Referências: https://core.telegram.org/bots/api#sendrichmessage, https://core.telegram.org/bots/api#editmessagetext, https://core.telegram.org/bots/api#rich-messages e https://core.telegram.org/bots/api#inputrichmessage.
+
 ## Arquitetura
 
 - `tgcloud/handlers/message.js`: entrada privada, referências compartilhadas e comandos.

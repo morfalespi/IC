@@ -23,3 +23,14 @@ A existência desses métodos oficiais não garante retorno de dados para quaisq
 - `channelFull`: https://core.telegram.org/constructor/channelFull — campos opcionais de canais e supergrupos.
 - `Peer database`: https://core.telegram.org/api/peers — um ID sem referência conhecida não garante acesso; `access_hash` depende do contexto da autenticação.
 - `Telethon Session`: https://docs.telethon.dev/en/stable/concepts/sessions.html — uma sessão persistida pode reutilizar entidades já vistas, mas exige armazenamento seguro.
+
+## Rich Messages — Bot API 10.3 (2026-08-24)
+
+- `sendRichMessage` e `InputRichMessage`: https://core.telegram.org/bots/api#sendrichmessage e https://core.telegram.org/bots/api#inputrichmessage.
+- Tabelas compactas, botões dentro da mensagem, imagem e blocos expansíveis: https://core.telegram.org/bots/api#rich-messages.
+- `editMessageText` com `rich_message`: https://core.telegram.org/bots/api#editmessagetext — atualiza mensagens de texto ou Rich Messages.
+- `InputRichMessageMedia`: https://core.telegram.org/bots/api#inputrichmessagemedia — `tg://photo?id=` no HTML e arquivo associado via multipart.
+- `answerCallbackQuery`: https://core.telegram.org/bots/api#answercallbackquery — responde à ação do botão **Atualizar**.
+- `sendRichMessageDraft`: https://core.telegram.org/bots/api#sendrichmessagedraft — rascunho temporário, não usado como ficha persistente.
+
+O SDK do TGCloud encaminha nomes de métodos Bot API dinamicamente. A nova edição com tabela e mídia precisa de verificação manual real porque CI apenas compila o código.

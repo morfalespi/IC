@@ -28,3 +28,21 @@ export function responderInline(queryId, titulo, html, botaoPrivado) {
     ...(botaoPrivado ? { button: { text: 'Pesquisar no privado', start_parameter: botaoPrivado } } : {}),
   });
 }
+
+export async function enviarCartao(chatId, richHtml, fallbackHtml) {
+  try {
+    return await api.sendRichMessage({ chat_id: chatId, rich_message: { html: richHtml } });
+  } catch (erro) {
+    console.error('sendRichMessage indisponível; usando mensagem convencional:', erro);
+    return api.sendMessage({ chat_id: chatId, text: fallbackHtml, parse_mode: 'HTML' });
+  }
+}
+
+export async function editarCartao(chatId, messageId, richHtml, fallbackHtml) {
+  try {
+    return await api.editMessageText({ chat_id: chatId, message_id: messageId, rich_message: { html: richHtml } });
+  } catch (erro) {
+    console.error('edição rica indisponível; usando texto convencional:', erro);
+    return api.editMessageText({ chat_id: chatId, message_id: messageId, text: fallbackHtml, parse_mode: 'HTML' });
+  }
+}

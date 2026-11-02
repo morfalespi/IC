@@ -15,6 +15,10 @@ on:
         description: "ID do chat que recebe a resposta (vazio: só mostra no log)"
         required: false
         default: ""
+      message_id:
+        description: "ID da ficha rica já enviada ao chat para edição progressiva"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -29,6 +33,7 @@ jobs:
       BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
       ALVO: ${{ inputs.alvo }}
       CHAT_ID: ${{ inputs.chat }}
+      MESSAGE_ID: ${{ inputs.message_id }}
     steps:
       - name: Healthcheck do dispatch
         if: ${{ inputs.healthcheck }}

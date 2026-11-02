@@ -23,6 +23,10 @@ LIMITE_TEXTO = 4000
 USERNAME_VALIDO = re.compile(r"[A-Za-z0-9_]{1,32}")
 ALVO_VALIDO = re.compile(r"(?:[A-Za-z0-9_]{1,32}|-?\d{1,16}|-?\d{1,16}\|[A-Za-z0-9_]{1,32})")
 CHAT_VALIDO = re.compile(r"-?[0-9]{1,16}")
+MENSAGEM_ID = os.environ.get("MESSAGE_ID", "").strip()
+CHAT_DESTINO = os.environ.get("CHAT_ID", "").strip()
+ID_MENSAGEM = int(MENSAGEM_ID) if MENSAGEM_ID.isdigit() and int(MENSAGEM_ID) > 0 else None
+
 
 
 def esc(valor):
@@ -78,6 +82,132 @@ def enviar_foto(chat_id, conteudo):
     retorno = chamar("sendPhoto", corpo, {"Content-Type": f"multipart/form-data; boundary={limite}"})
     if not retorno.get("ok"):
         raise RuntimeError(f"sendPhoto falhou: {retorno.get('error_code')} {retorno.get('description')}")
+
+
+def solicitar_bot_api(metodo, dados, foto=None):
+    corpo = dict(dados)
+    if foto:
+        rich = dict(corpo["rich_message"])
+        rich["html"] = rich["html"].replace("</h2>", '</h2><img src="tg://photo?id=perfil"/>', 1)
+        rich["media"] = [{"id": "perfil", "media": {"type": "photo", "media": "attach://perfil_file"}}]
+        corpo["rich_message"] = rich
+        limite = uuid.uuid4().hex
+        partes = []
+        for chave, valor in corpo.items():
+            texto = json.dumps(valor, ensure_ascii=False) if isinstance(valor, (dict, list)) else str(valor)
+            partes.append(f'--{limite}\r\nContent-Disposition: form-data; name="{chave}"\r\n\r\n{texto}\r\n'.encode("utf-8"))
+        partes.extend([
+            f'--{limite}\r\nContent-Disposition: form-data; name="perfil_file"; filename="perfil.jpg"\r\nContent-Type: image/jpeg\r\n\r\n'.encode(),
+            foto,
+            f'\r\n--{limite}--\r\n'.encode(),
+        ])
+        return chamar(metodo, b"".join(partes), {"Content-Type": f"multipart/form-data; boundary={limite}"})
+    return chamar(metodo, json.dumps(corpo, ensure_ascii=False).encode("utf-8"), {"Content-Type": "application/json"})
+
+
+def marcar_notificado():
+    open(os.path.join(os.environ.get("RUNNER_TEMP", "/tmp"), "notificado"), "w").close()
+
+
+def editar_ficha_rica(conteudo, foto=None):
+    if not CHAT_DESTINO:
+        return False, False
+    metodo = "editMessageText" if ID_MENSAGEM else "sendRichMessage"
+    dados = {"chat_id": int(CHAT_DESTINO), "rich_message": {"html": conteudo}}
+    if ID_MENSAGEM:
+        dados["message_id"] = ID_MENSAGEM
+    if foto and len(foto) <= 10 * 1024 * 1024:
+        resposta = solicitar_bot_api(metodo, dados, foto)
+        if resposta.get("ok"):
+            marcar_notificado()
+            print("ficha rica editada; foto incorporada no mesmo bloco")
+            return True, True
+        print("mídia embutida indisponível:", resposta.get("error_code"), corte(resposta.get("description"), 180))
+    resposta = solicitar_bot_api(metodo, dados)
+    if resposta.get("ok"):
+        marcar_notificado()
+        print("ficha rica editada; sem foto incorporada")
+        return True, False
+    print("ficha rica indisponível:", resposta.get("error_code"), corte(resposta.get("description"), 180))
+    return False, False
+
+
+def botao_atualizar(alvo):
+    if not re.fullmatch(r"[A-Za-z0-9_|-]{1,55}", alvo):
+        return ""
+    return '<tg-button type="callback_data" style="primary" data="r:' + esc(alvo) + '">🔄 Atualizar</tg-button>'
+
+
+def status_ficha(etapa, nome=None, id_entidade=None):
+    linhas = ['<tr><th>Etapa</th><td>' + esc(etapa) + '</td></tr>']
+    if nome:
+        linhas.append('<tr><th>Nome</th><td>' + esc(corte(nome, 100)) + '</td></tr>')
+    if id_entidade is not None:
+        linhas.append('<tr><th>ID</th><td><code>' + esc(id_entidade) + '</code></td></tr>')
+    return ('<h2>🔎 Infocard</h2><p><b>⏳ Consulta MTProto em andamento</b></p>'
+            '<table compact bordered><tr><th>Campo</th><th>Valor</th></tr>'
+            + ''.join(linhas) + '</table><footer>Fonte: Telegram MTProto</footer>')
+
+
+def atualizar_status(etapa, entidade=None):
+    if not ID_MENSAGEM or not CHAT_DESTINO:
+        return
+    nome = None
+    id_entidade = None
+    if entidade is not None:
+        nome = getattr(entidade, "title", None) or " ".join(
+            parte for parte in [getattr(entidade, "first_name", None), getattr(entidade, "last_name", None)] if parte
+        )
+        id_entidade = utils.get_peer_id(entidade)
+    status = status_ficha(etapa, nome, id_entidade)
+    sucesso, _ = editar_ficha_rica(status)
+    if not sucesso:
+        print("atualização intermediária indisponível; a pesquisa continua")
+
+
+def ficha_final(info, notas, foto):
+    linhas = [
+        ("Tipo", info["tipo"]),
+        ("ID", str(info["id"])),
+        ("Nome", info["nome"] or "(não informado)"),
+    ]
+    if info["username"]:
+        linhas.append(("Username", "@" + info["username"]))
+    if info["usernames"]:
+        linhas.append(("Usernames ativos", ", ".join("@" + u for u in info["usernames"])))
+    if info["marcas"]:
+        linhas.append(("Indicadores", ", ".join(info["marcas"])))
+    linhas.extend(info["campos"])
+    itens = []
+    for nome, valor in linhas:
+        itens.append("<tr><th>" + esc(corte(nome, 70)) + "</th><td>" + esc(corte(valor, 300)) + "</td></tr>")
+    tabela = ('<table bordered striped compact><tr><th>Dado</th><th>Resultado oficial</th></tr>'
+              + "".join(itens[:13]) + "</table>")
+    extras = ""
+    if len(itens) > 13:
+        extras = ('<details><summary>➕ Mais informações (' + str(len(itens) - 13) + ')</summary>'
+                  '<table compact>' + "".join(itens[13:]) + "</table></details>")
+    aviso = ""
+    if notas:
+        aviso = ('<details><summary>🔎 Origem e observações</summary><p>'
+                 + "<br>".join(esc(corte(n, 250)) for n in notas[:6]) + "</p></details>")
+    botoes = [botao_atualizar(os.environ.get("ALVO", "").strip().lstrip("@"))]
+    botoes.append('<tg-button type="copy_text" text="' + esc(info["id"]) + '">📋 Copiar ID</tg-button>')
+    username = info["username"]
+    if username and re.fullmatch(r"[A-Za-z0-9_]{1,32}", username):
+        botoes.append('<tg-button type="url" url="https://t.me/' + esc(username) + '">🔗 Perfil</tg-button>')
+    controls = '<tg-button-row align="center">' + ''.join(b for b in botoes if b) + '</tg-button-row>'
+    return ('<h2>📇 Infocard</h2><p><b>✅ Dados obtidos via MTProto</b></p>'
+            + tabela + extras + aviso + '<hr/><footer>Origem: Telegram MTProto • Campos visíveis à sessão do bot</footer>' + controls)
+
+
+def ficha_falha(alvo, motivo):
+    linhas = '<tr><th>Consulta</th><td>' + esc(alvo.replace("|", " @")) + '</td></tr>'
+    linhas += '<tr><th>Resultado</th><td>' + esc(corte(motivo, 600)) + '</td></tr>'
+    return ('<h2>📇 Infocard</h2><p><b>⚠️ Busca não concluída</b></p>'
+            '<table bordered compact><tr><th>Campo</th><th>Valor</th></tr>' + linhas +
+            '</table><p><i>Uma referência não encontrada não prova inexistência da conta.</i></p>'
+            '<tg-button-row>' + botao_atualizar(alvo) + '</tg-button-row>')
 
 
 def entidade_de(resultado):
@@ -168,6 +298,7 @@ async def coletar(alvo):
     try:
         await com_espera(lambda: cliente.start(bot_token=os.environ["BOT_TOKEN"]))
         entidade, origem = await resolver_alvo(cliente, alvo)
+        atualizar_status("Entidade identificada; consultando dados adicionais", entidade)
         dados = {"entidade": entidade, "completo": None, "foto": None, "notas": [origem], "fotos_info": None, "musicas_info": None}
         try:
             dados["completo"] = await com_espera(lambda: completo(cliente, entidade))
@@ -202,6 +333,7 @@ async def coletar(alvo):
                         dados["musicas_info"] = f"{total} música(s) acessível(is) no perfil"
                 except Exception as erro:
                     dados["notas"].append(f"Contagem de músicas indisponível: {type(erro).__name__}")
+        atualizar_status("Dados do perfil e mídia processados", entidade)
         return dados
     finally:
         await cliente.disconnect()
@@ -372,18 +504,12 @@ async def principal():
         codigo = 1
     else:
         try:
+            atualizar_status("Autenticando no Telegram e resolvendo a referência")
             dados = await coletar(alvo)
             notas = list(dados["notas"])
             print("campos da entidade:", campos_presentes(dados["entidade"]))
             print("campos do perfil completo:", campos_presentes(dados["completo"]))
             foto_enviada = False
-            if chat and dados["foto"]:
-                try:
-                    enviar_foto(chat, dados["foto"])
-                    foto_enviada = True
-                    print("foto enviada ao chat")
-                except Exception as erro:
-                    notas.append(f"Foto não enviada: {erro}")
             info = descrever(dados["entidade"], dados["completo"], alvo)
             if dados["fotos_info"]:
                 info["campos"].append(("Fotos de perfil no MTProto", dados["fotos_info"]))
@@ -418,8 +544,25 @@ async def principal():
             texto = falha(alvo, f"Erro inesperado: {type(erro).__name__}: {erro}")
             codigo = 1
     if chat:
-        enviar(chat, texto)
-        print("mensagem enviada ao chat")
+        if codigo == 0:
+            rico = ficha_final(info, notas, dados["foto"])
+            ok, foto_enviada = editar_ficha_rica(rico, dados["foto"])
+            if ok and dados["foto"] and not foto_enviada:
+                try:
+                    enviar_foto(chat, dados["foto"])
+                    print("foto enviada separadamente por incompatibilidade da mídia rica")
+                except Exception as erro:
+                    print("foto adicional indisponível:", type(erro).__name__)
+            if not ok:
+                enviar(chat, texto)
+                print("ficha convencional enviada por fallback")
+        else:
+            causa = re.sub(r"<[^>]*>", "", texto)
+            ok, _ = editar_ficha_rica(ficha_falha(alvo, causa))
+            if not ok:
+                enviar(chat, texto)
+                print("erro convencional enviado por fallback")
+        print("mensagem final entregue ao chat")
     return codigo
 
 

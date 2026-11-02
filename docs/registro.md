@@ -1,3 +1,9 @@
+# Mudança implementada — 2026-11-02: cartões Rich Message Bot API 10.3
+
+A consulta cria um cartão persistente via `sendRichMessage`, transmite seu `message_id` ao workflow e usa `editMessageText` para exibir progresso e resultado final, com tabela compacta, botões e foto via multipart na própria Rich Message quando permitido. Adicionado `tgcloud/handlers/callback_query.js` para atualizar o cartão. Há fallback para HTML convencional e foto separada se a integração rica falhar. **IMPLEMENTADO; requer verificar renderização e atualização ao vivo do Telegram.** Preservados os cinco secrets originais, a pesquisa MTProto e o limite de dispatch.
+
+---
+
 # Complementação — 2026-11-02: novas fontes MTProto
 
 **IMPLEMENTADO NO CÓDIGO, SUJEITO À CONFIRMAÇÃO EM PESQUISA REAL.** Foi acrescentada a coleta opcional do total ou amostra de fotos com `photos.getUserPhotos`, e do total de músicas com `users.getSavedMusic` quando a ficha completa indica música disponível. Foram expostos novos campos condicionais já presentes em `userFull` (`stars_rating`, `saved_music`, `business_work_hours`) e `channelFull`. Falhas de consultas opcionais não devem impedir a ficha principal. A documentação oficial confirma a existência dos métodos e sua disponibilidade a bots; isso não confirma que uma conta específica retornará valores. A evidência de execução deve ser coletada no resolver após o próximo teste real.
