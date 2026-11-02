@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import html
 import hashlib
 import json
@@ -12,7 +13,7 @@ import urllib.request
 import uuid
 
 import telethon
-from ficha_completa import rich_pages, basic_pages, markdown_files
+from ficha_completa import rich_pages, basic_pages, markdown_files, jsonl_files
 from telethon import TelegramClient, errors, utils
 from telethon.sessions import StringSession
 from telethon.tl.functions.channels import GetFullChannelRequest, GetChannelsRequest
@@ -207,6 +208,38 @@ def enviar_documento_md(chat, conteudo, id_entidade, indice, total):
     print(f"documento Markdown {indice}/{total} confirmado: {len(conteudo)} bytes")
 
 
+
+
+def enviar_documento_jsonl(chat, conteudo, id_entidade, indice, total):
+    limite = uuid.uuid4().hex
+    filename = "infocard_" + str(id_entidade).replace("-", "n") + "_mtproto"
+    if total > 1:
+        filename += f"_parte_{indice}_de_{total}"
+    filename += ".jsonl"
+    resumo_hash = hashlib.sha256(conteudo).hexdigest()
+    campos = {"chat_id": str(int(chat)), "caption": "🧾 Dados MTProto completos (JSONL)" +
+              (f" · parte {indice}/{total}" if total > 1 else "") +
+              "\nSHA-256: " + resumo_hash}
+    if ORIGEM_ID:
+        campos["reply_parameters"] = json.dumps({"message_id": ORIGEM_ID})
+    partes = []
+    for chave, valor in campos.items():
+        partes.append((f'--{limite}\r\nContent-Disposition: form-data; name="{chave}"'
+                       f'\r\n\r\n{valor}\r\n').encode("utf-8"))
+    partes.extend([
+        (f'--{limite}\r\nContent-Disposition: form-data; name="document"; '
+         f'filename="{filename}"\r\nContent-Type: application/x-ndjson'
+         f'\r\n\r\n').encode("utf-8"),
+        conteudo,
+        f'\r\n--{limite}--\r\n'.encode("utf-8"),
+    ])
+    resposta = chamar("sendDocument", b"".join(partes),
+                     {"Content-Type": f"multipart/form-data; boundary={limite}"})
+    if not confirmacao_mensagem(resposta):
+        raise RuntimeError("Envio JSONL recusado: " + str(resposta.get("error_code")) +
+                           " " + str(resposta.get("description", ""))[:180])
+    print(f"documento JSONL {indice}/{total} confirmado: {len(conteudo)} bytes")
+
 def botao_atualizar(alvo):
     dados = callback_data("r", alvo)
     return ('<tg-button type="callback_data" style="primary" data="' +
@@ -313,12 +346,71 @@ def entidade_de(resultado):
 
 async def completo(cliente, entidade):
     if isinstance(entidade, User):
-        return (await cliente(GetFullUserRequest(entidade))).full_user
+        return await cliente(GetFullUserRequest(entidade))
     if isinstance(entidade, Channel):
-        return (await cliente(GetFullChannelRequest(entidade))).full_chat
+        return await cliente(GetFullChannelRequest(entidade))
     if isinstance(entidade, Chat):
-        return (await cliente(GetFullChatRequest(entidade.id))).full_chat
+        return await cliente(GetFullChatRequest(entidade.id))
     return None
+
+
+def objeto_completo(resposta):
+    if resposta is None:
+        return None
+    return getattr(resposta, "full_user", None) or getattr(resposta, "full_chat", None)
+
+
+def valor_mtproto(valor):
+    if hasattr(valor, "to_dict"):
+        return valor_mtproto(valor.to_dict())
+    if isinstance(valor, dict):
+        return {str(chave): valor_mtproto(item) for chave, item in valor.items()}
+    if isinstance(valor, (list, tuple)):
+        return [valor_mtproto(item) for item in valor]
+    if isinstance(valor, bytes):
+        return {"$bytes_base64": base64.b64encode(valor).decode("ascii")}
+    if isinstance(valor, (str, int, float, bool)) or valor is None:
+        return valor
+    if hasattr(valor, "isoformat"):
+        return valor.isoformat()
+    return str(valor)
+
+
+def registros_mtproto(dados, alvo, info):
+    metadados = {
+        "formato": "infocard-mtproto-jsonl-v1",
+        "escopo": "respostas de leitura acessíveis à sessão de bot",
+        "telethon": telethon.__version__,
+        "referencia": alvo,
+        "tipo": info.get("tipo"),
+        "metodos_nao_disponiveis_para_bot": ["messages.getHistory", "stories.getPeerStories"],
+        "capturado_unix": int(time.time()),
+    }
+    objetos = {
+        "metadados": metadados,
+        "entidade": dados.get("entidade"),
+        "resposta_completa": dados.get("resposta_completa"),
+        "fotos_perfil": dados.get("fotos_mtproto", []),
+        "musicas_perfil": dados.get("musicas_mtproto", []),
+    }
+    def folhas(valor, caminho):
+        serializado = valor_mtproto(valor)
+        if isinstance(serializado, dict):
+            if not serializado:
+                yield {"path": caminho, "value": {}}
+            for chave in sorted(serializado):
+                novo = f"{caminho}.{chave}" if caminho else chave
+                yield from folhas(serializado[chave], novo)
+        elif isinstance(serializado, list):
+            if not serializado:
+                yield {"path": caminho, "value": []}
+            for indice, item in enumerate(serializado):
+                yield from folhas(item, f"{caminho}[{indice}]")
+        else:
+            yield {"path": caminho, "value": serializado}
+    for caminho, valor in objetos.items():
+        yield from folhas(valor, caminho)
+
 
 
 async def com_espera(operacao):
@@ -391,9 +483,10 @@ async def coletar(alvo):
         await com_espera(lambda: cliente.start(bot_token=os.environ["BOT_TOKEN"]))
         entidade, origem = await resolver_alvo(cliente, alvo)
         atualizar_status("1/2 · Identificação confirmada; buscando campos adicionais", entidade)
-        dados = {"entidade": entidade, "completo": None, "foto": None, "notas": [origem], "fotos_info": None, "musicas_info": None}
+        dados = {"entidade": entidade, "completo": None, "resposta_completa": None, "foto": None, "notas": [origem], "fotos_info": None, "musicas_info": None, "fotos_mtproto": [], "musicas_mtproto": []}
         try:
-            dados["completo"] = await com_espera(lambda: completo(cliente, entidade))
+            dados["resposta_completa"] = await com_espera(lambda: completo(cliente, entidade))
+            dados["completo"] = objeto_completo(dados["resposta_completa"])
         except Exception as erro:
             dados["notas"].append(f"Dados completos indisponíveis: {type(erro).__name__}: {erro}")
         try:
@@ -404,25 +497,57 @@ async def coletar(alvo):
             if getattr(entidade, "photo", None) is not None:
                 try:
                     from telethon.tl.functions.photos import GetUserPhotosRequest
-                    fotos = await com_espera(
-                        lambda: cliente(GetUserPhotosRequest(user_id=entidade, offset=0, max_id=0, limit=1))
-                    )
-                    total = getattr(fotos, "count", None)
-                    if isinstance(total, int):
-                        dados["fotos_info"] = f"{total} (total acessível informado pelo Telegram)"
-                    elif len(getattr(fotos, "photos", []) or []) > 0:
-                        dados["fotos_info"] = "pelo menos 1 foto acessível"
+                    offset = 0
+                    total = None
+                    while True:
+                        fotos = await com_espera(
+                            lambda offset=offset: cliente(GetUserPhotosRequest(
+                                user_id=entidade, offset=offset, max_id=0, limit=100
+                            ))
+                        )
+                        dados["fotos_mtproto"].append(fotos)
+                        lista_fotos = getattr(fotos, "photos", []) or []
+                        contagem = getattr(fotos, "count", None)
+                        if total is None and isinstance(contagem, int):
+                            total = contagem
+                        if not lista_fotos:
+                            break
+                        offset += len(lista_fotos)
+                        if len(lista_fotos) < 100 or (total is not None and offset >= total):
+                            break
+                    obtidas = sum(len(getattr(pagina, "photos", []) or []) for pagina in dados["fotos_mtproto"])
+                    if total is not None:
+                        dados["fotos_info"] = f"{obtidas} de {total} (fotos acessíveis informadas pelo Telegram)"
+                    elif obtidas:
+                        dados["fotos_info"] = f"{obtidas} foto(s) acessível(is)"
                 except Exception as erro:
                     dados["notas"].append(f"Contagem de fotos indisponível: {type(erro).__name__}")
             if getattr(dados["completo"], "saved_music", None) is not None:
                 try:
                     from telethon.tl.functions.users import GetSavedMusicRequest
-                    musicas = await com_espera(
-                        lambda: cliente(GetSavedMusicRequest(id=entidade, offset=0, limit=1, hash=0))
-                    )
-                    total = getattr(musicas, "count", None)
-                    if isinstance(total, int):
-                        dados["musicas_info"] = f"{total} música(s) acessível(is) no perfil"
+                    offset = 0
+                    total = None
+                    while True:
+                        musicas = await com_espera(
+                            lambda offset=offset: cliente(GetSavedMusicRequest(
+                                id=entidade, offset=offset, limit=100, hash=0
+                            ))
+                        )
+                        dados["musicas_mtproto"].append(musicas)
+                        documentos = getattr(musicas, "documents", []) or []
+                        contagem = getattr(musicas, "count", None)
+                        if total is None and isinstance(contagem, int):
+                            total = contagem
+                        if not documentos:
+                            break
+                        offset += len(documentos)
+                        if len(documentos) < 100 or (total is not None and offset >= total):
+                            break
+                    obtidas = sum(len(getattr(pagina, "documents", []) or []) for pagina in dados["musicas_mtproto"])
+                    if total is not None:
+                        dados["musicas_info"] = f"{obtidas} de {total} música(s) acessível(is) no perfil"
+                    elif obtidas:
+                        dados["musicas_info"] = f"{obtidas} música(s) acessível(is) no perfil"
                 except Exception as erro:
                     dados["notas"].append(f"Contagem de músicas indisponível: {type(erro).__name__}")
         atualizar_status("2/2 · Dados aprofundados processados; consolidando ficha", entidade)
@@ -679,7 +804,7 @@ async def principal():
             teclado_fallback = None
             if MODO == "resumo" and callback_data("f", alvo_disparo):
                 teclado_fallback = {"inline_keyboard": [[{
-                    "text": "📄 Obter Markdown completo",
+                    "text": "📥 Exportação completa (Markdown + JSONL)",
                     "callback_data": callback_data("f", alvo_disparo),
                 }]]}
             total_ricos = 0
@@ -747,6 +872,8 @@ async def principal():
                     print("foto indisponível:", type(erro_foto).__name__)
             arquivos_previstos = 0
             arquivos_entregues = 0
+            json_previstos = 0
+            json_entregues = 0
             if completo:
                 try:
                     arquivos = markdown_files(identidade, categorias, notas)
@@ -762,8 +889,25 @@ async def principal():
                                   type(erro_parte).__name__)
                 except Exception as erro_md:
                     print("Markdown indisponível:", type(erro_md).__name__)
+                try:
+                    arquivos_json = jsonl_files(registros_mtproto(dados, alvo, info))
+                    json_previstos = len(arquivos_json)
+                    print("documentos JSONL planejados:", json_previstos)
+                    for indice, arquivo in enumerate(arquivos_json, 1):
+                        time.sleep(1.1)
+                        try:
+                            enviar_documento_jsonl(chat, arquivo, info["id"], indice, json_previstos)
+                            json_entregues += 1
+                        except Exception as erro_parte:
+                            print("Documento JSONL recusado:", indice, "/", json_previstos,
+                                  type(erro_parte).__name__)
+                except Exception as erro_json:
+                    print("Exportação JSONL indisponível:", type(erro_json).__name__)
             sucesso_final = (rich_ok or html_ok) and (
-                not completo or (arquivos_previstos > 0 and arquivos_entregues == arquivos_previstos)
+                not completo or (
+                    arquivos_previstos > 0 and arquivos_entregues == arquivos_previstos and
+                    json_previstos > 0 and json_entregues == json_previstos
+                )
             )
             if sucesso_final:
                 marcar_notificado()
