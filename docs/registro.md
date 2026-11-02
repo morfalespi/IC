@@ -1,3 +1,11 @@
+## Complemento integrado — mensagens fixadas MTProto
+
+**IMPLEMENTADO NO CÓDIGO:** em modo completo, quando `getFullChat` ou `getFullChannel` retorna `pinned_msg_id`, o resolver tenta obter a mensagem por `messages.getMessages` ou `channels.getMessages`, preserva a resposta integral no JSONL e empacota mídia baixável.
+
+**PR #4 integrado:** CI passou a checagem do repositório. O acesso à mensagem e a entrega do arquivo continuam sujeitos a permissões e precisam de execução real para serem verificados.
+
+---
+
 # Implementado no branch — 2026-11-02: leituras adicionais da Bot API
 
 **IMPLEMENTADO NO CÓDIGO:** a exportação completa agora tenta `getChat`, pagina `getUserProfilePhotos` e `getUserProfileAudios`, obtém as últimas mensagens do chat pessoal do perfil, e consulta administradores e membros para grupos/canais. Preserva respostas e falhas no JSONL, tenta baixar mídia via `getFile`, deduplica arquivos e limita o download à capacidade da Bot API. Leituras idempotentes repetem 429 e 5xx; envios mantêm apenas a retentativa 429.
