@@ -297,3 +297,8 @@ Situação: **IMPLEMENTADO localmente; requer primeiro deploy no novo repositór
 - Adicionados `SECURITY.md`, `.env.example` e `docs/launch-checklist.md`.
 
 Critério de conclusão: CI verde no novo repositório, deploy verde com todos os secrets configurados e execução dos smoke tests do checklist. Até isso ocorrer, o pacote é **launch-ready**, não “produção comprovada”.
+
+
+## 2026-11-02 — DECISÃO: Partners governa a evolução do Infocard
+
+A pessoa definiu que Partners tem precedência sobre normas locais do repositório quando houver divergência; ajustar esta documentação e a implementação em vez de tratar convenções históricas como imutáveis. O critério do projeto passa a ser a cobertura e entrega máxima, verificável e sustentada dos dados MTProto acessíveis a uma autenticação de bot. A sessão permanecerá como bot. Métodos exclusivos de usuário e dados dependentes de permissões seguem os limites oficiais do Telegram. Estado anterior é inventário, não baseline. A execução desta decisão ainda requer mudanças e prova real de entrega; este registro não afirma conclusão.
