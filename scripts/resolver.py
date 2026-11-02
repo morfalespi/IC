@@ -465,6 +465,7 @@ def registros_mtproto(dados, alvo, info):
         "musicas_perfil": dados.get("musicas_mtproto", []),
         "participantes": dados.get("participantes_mtproto", []),
         "midias": [{chave: valor for chave, valor in item.items() if chave != "path"} for item in dados.get("midias", [])],
+        "metodos_com_falha": dados.get("falhas_coleta", []),
     }
     def folhas(valor, caminho):
         serializado = valor_mtproto(valor)
@@ -555,7 +556,7 @@ async def coletar(alvo):
     try:
         await com_espera(lambda: cliente.start(bot_token=os.environ["BOT_TOKEN"]))
         entidade, origem = await resolver_alvo(cliente, alvo)
-        dados = {"entidade": entidade, "completo": None, "resposta_completa": None, "foto": None, "notas": [origem], "fotos_info": None, "musicas_info": None, "fotos_mtproto": [], "musicas_mtproto": [], "participantes_mtproto": [], "midias": [], "pacotes_midias": [], "midias_dir": tempfile.mkdtemp(prefix="infocard_mtproto_") if MODO == "completo" and CHAT_DESTINO else None}
+        dados = {"entidade": entidade, "completo": None, "resposta_completa": None, "foto": None, "notas": [origem], "fotos_info": None, "musicas_info": None, "fotos_mtproto": [], "musicas_mtproto": [], "participantes_mtproto": [], "midias": [], "pacotes_midias": [], "falhas_coleta": [], "midias_dir": tempfile.mkdtemp(prefix="infocard_mtproto_") if MODO == "completo" and CHAT_DESTINO else None}
         if dados["midias_dir"]:
             atexit.register(shutil.rmtree, dados["midias_dir"], ignore_errors=True)
         atualizar_status("1/2 · Identificação confirmada; buscando campos adicionais", entidade)
@@ -584,10 +585,12 @@ async def coletar(alvo):
                             if len(lista_participantes) < 100:
                                 break
                     except Exception as erro_participantes:
+                        dados["falhas_coleta"].append({"method": "channels.getParticipants", "error": type(erro_participantes).__name__})
                         dados["notas"].append(f"Participantes indisponíveis: {type(erro_participantes).__name__}")
                 else:
                     dados["notas"].append("Lista de participantes não disponível segundo os campos de acesso retornados pelo Telegram.")
         except Exception as erro:
+            dados["falhas_coleta"].append({"method": "getFull", "error": type(erro).__name__})
             dados["notas"].append(f"Dados completos indisponíveis: {type(erro).__name__}: {erro}")
         try:
             dados["foto"] = await com_espera(lambda: cliente.download_profile_photo(entidade, file=bytes))
@@ -637,6 +640,7 @@ async def coletar(alvo):
                     elif obtidas:
                         dados["fotos_info"] = f"{obtidas} foto(s) acessível(is)"
                 except Exception as erro:
+                    dados["falhas_coleta"].append({"method": "photos.getUserPhotos", "error": type(erro).__name__})
                     dados["notas"].append(f"Contagem de fotos indisponível: {type(erro).__name__}")
             if getattr(dados["completo"], "saved_music", None) is not None:
                 try:
@@ -677,6 +681,7 @@ async def coletar(alvo):
                     elif obtidas:
                         dados["musicas_info"] = f"{obtidas} música(s) acessível(is) no perfil"
                 except Exception as erro:
+                    dados["falhas_coleta"].append({"method": "users.getSavedMusic", "error": type(erro).__name__})
                     dados["notas"].append(f"Contagem de músicas indisponível: {type(erro).__name__}")
         atualizar_status("2/2 · Dados aprofundados processados; consolidando ficha", entidade)
         return dados
@@ -1055,6 +1060,7 @@ async def principal():
                         print("Pacote de mídia recusado:", indice, "/", len(pacotes_midias), type(erro_midia).__name__)
             sucesso_final = (rich_ok or html_ok) and (
                 not completo or (
+                    not dados.get("falhas_coleta") and
                     arquivos_previstos > 0 and arquivos_entregues == arquivos_previstos and
                     json_previstos > 0 and json_entregues == json_previstos and
                     midias_entregues == midias_previstas and falhas_midias == 0
