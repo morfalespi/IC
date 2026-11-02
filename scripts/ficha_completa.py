@@ -114,35 +114,55 @@ def rich_pages(identity, sections, observations, controls):
 
 
 def basic_pages(identity, sections, observations):
-    """Fallback HTML clássico que também não elimina dados de perfil."""
-    groups = [("👤 Identificação confirmada", _expand(identity))]
-    groups.extend((title, _expand(rows)) for title, rows in sections if rows)
+    groups = [("👤 Identificação confirmada", identity)]
+    groups.extend((title, rows) for title, rows in sections if rows)
     if observations:
-        groups.append(("🔎 Origem e observações", _expand(
-            [("Observação " + str(i), note) for i, note in enumerate(observations, 1)]
-        )))
-    lines = ["<b>📇 Infocard · Telegram MTProto</b>"]
+        groups.append(("🔎 Origem e observações", [
+            ("Observação " + str(i), note) for i, note in enumerate(observations, 1)
+        ]))
+    limit = BASIC_CHARS - 140
+    header = "<b>📇 Infocard · Telegram MTProto</b>"
+    lines = [header]
     for title, rows in groups:
-        lines.extend(_basic_lines(title, rows))
-    pages, current = [], []
-    # Splitting happens only at valid escaped line boundaries, never inside HTML.
+        lines.append("<b>" + escape(title) + "</b>")
+        for key, value in rows:
+            label = escape(str(key).replace("\n", " ").replace("\r", " "))
+            value = str(value)
+            prefix = "<b>" + label + ":</b> "
+            pos = 0
+            if not value:
+                lines.append(prefix)
+            while pos < len(value):
+                low, high = 1, len(value) - pos
+                while low < high:
+                    mid = (low + high + 1) // 2
+                    candidate = prefix + escape(value[pos:pos + mid])
+                    if len(candidate) <= limit - 120:
+                        low = mid
+                    else:
+                        high = mid - 1
+                take = low
+                line = prefix + escape(value[pos:pos + take])
+                if len(line) > limit - 120:
+                    raise ValueError("Rótulo muito longo para envio HTML")
+                lines.append(line)
+                pos += take
+
+    pages = []
+    current = []
     for line in lines:
-        if len(line) > BASIC_CHARS - 140:
-            # Particularmente para valores com muitos caracteres especiais, dividir
-            # o texto escapado sem cortar entidades HTML.
-            raw = re.sub("<[^>]+>", "", line)
-            split_lines = [escape(raw[i:i + 1200]) for i in range(0, len(raw), 1200)]
-        else:
-            split_lines = [line]
-        for safe_line in split_lines:
-            trial = "\n".join(current + [safe_line])
-            if current and len(trial) > BASIC_CHARS - 100:
-                pages.append("\n".join(current))
-                current = []
-            current.append(safe_line)
+        trial = "\n".join(current + [line])
+        if current and len(trial) > limit:
+            pages.append("\n".join(current))
+            current = []
+        current.append(line)
     if current:
         pages.append("\n".join(current))
-    return [page + f"\n<i>Parte {n}/{len(pages)}</i>" for n, page in enumerate(pages, 1)]
+    return [
+        page + f"\n<i>Parte {ix}/{len(pages)}</i>"
+        for ix, page in enumerate(pages, 1)
+    ]
+
 
 
 def markdown_document(identity, sections, observations):
@@ -173,20 +193,66 @@ def markdown_document(identity, sections, observations):
 
 
 def markdown_files(identity, sections, observations, max_bytes=40 * 1024 * 1024):
-    """Documentos inteiros; divisão em partes preserva todos os bytes UTF-8."""
     if max_bytes < 1024:
         raise ValueError("max_bytes muito pequeno")
-    encoded = markdown_document(identity, sections, observations).encode("utf-8")
-    if len(encoded) <= max_bytes:
-        return [encoded]
-    arquivos, atual = [], bytearray()
-    for char in encoded.decode("utf-8"):
-        raw = char.encode("utf-8")
-        if len(atual) + len(raw) > max_bytes:
-            arquivos.append(bytes(atual))
-            atual.clear()
-        atual.extend(raw)
-    if atual:
-        arquivos.append(bytes(atual))
-    assert b"".join(arquivos) == encoded
-    return arquivos
+    whole = markdown_document(identity, sections, observations).encode("utf-8")
+    if len(whole) <= max_bytes:
+        return [whole]
+
+    header = (
+        "# Infocard — relatório completo (continuação)\n\n"
+        "Fonte: dados oficialmente acessíveis à sessão MTProto do bot.\n\n"
+    )
+    groups = [("Identificação confirmada", identity)] + list(sections)
+    if observations:
+        groups.append(("Origem e observações", [
+            ("Observação " + str(i), note) for i, note in enumerate(observations, 1)
+        ]))
+
+    def render(section, label, content, segment):
+        longest = max((len(m.group(0)) for m in re.finditer(r"~+", content)), default=0)
+        fence = "~" * max(3, longest + 1)
+        suffix = f" — trecho {segment}" if segment > 1 else ""
+        return (
+            "## " + str(section) + "\n\n### " +
+            str(label).replace("\r", " ").replace("\n", " ") + suffix +
+            "\n\n" + fence + "text\n" + content + "\n" + fence + "\n\n"
+        )
+
+    pages = []
+    current = header
+    for section, rows in groups:
+        for label, value in rows:
+            value = str(value)
+            position = 0
+            part = 1
+            while True:
+                remaining = value[position:]
+                block = render(section, label, remaining, part)
+                if len((current + block).encode("utf-8")) <= max_bytes:
+                    current += block
+                    break
+                if current != header:
+                    pages.append(current.encode("utf-8"))
+                    current = header
+                    continue
+                low, high = 0, len(remaining)
+                while low < high:
+                    middle = (low + high + 1) // 2
+                    trial = render(section, label, remaining[:middle], part)
+                    if len((header + trial).encode("utf-8")) <= max_bytes:
+                        low = middle
+                    else:
+                        high = middle - 1
+                if low == 0:
+                    raise ValueError("Um rótulo excede o limite do documento")
+                current += render(section, label, remaining[:low], part)
+                pages.append(current.encode("utf-8"))
+                current = header
+                position += low
+                part += 1
+                if position == len(value):
+                    break
+    if current != header:
+        pages.append(current.encode("utf-8"))
+    return pages

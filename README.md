@@ -69,7 +69,7 @@ A primeira consulta de um ID ou username publica apenas um **resumo** com identi
 
 Após a consulta, o bot envia:
 - **Todas as categorias e todos os campos retornados** em uma ou mais mensagens ricas com tabelas e numeração `Parte N/M`, usando `rich_pages`. Se rich messages falharem, usa as páginas do fallback HTML.
-- **Anexo `.md` em UTF-8**, enviado via Bot API `sendDocument`, com identificação, todos os campos e observações. Valores não são abreviados no arquivo. Para documentos maiores do que o limite seguro de 40 MiB, o arquivo é fracionado em várias partes Markdown preservando todos os bytes em ordem; a divisão só ocorre no limite técnico.
+- **Anexo `.md` em UTF-8**, enviado via Bot API `sendDocument`, com identificação, todos os campos e observações. Valores não são abreviados no arquivo. Para documentos maiores do que o limite seguro de 40 MiB, o relatório é repartido em arquivos `.md` individualmente válidos. Cada arquivo tem cabeçalho e blocos de texto completos; valores longos são divididos em trechos numerados, preservando os caracteres e a ordem do conteúdo original (não por concatenação literal dos arquivos).
 - **Foto de perfil**, quando disponível, incorporada à Rich Message se a Bot API permitir, ou enviada separadamente.
 
 O resumo original não é sobrescrito no modo completo. No modo rico, o botão fica dentro do cartão; se o servidor não aceitar o formato rico, existe também um botão inline convencional **Completo + Markdown** no resumo HTML. A ação é restrita ao chat privado do usuário que a acionou.

@@ -60,10 +60,17 @@ class TesteFichaCompleta(unittest.TestCase):
         partes = markdown_files([("ID", "456")], secoes, [], max_bytes=2048)
         self.assertGreater(len(partes), 1)
         esperado = markdown_document([("ID", "456")], secoes, []).encode("utf-8")
-        self.assertEqual(b"".join(partes), esperado)
         self.assertTrue(all(len(p) <= 2048 for p in partes))
         for p in partes:
-            p.decode("utf-8")
+            self.assertTrue(p.decode("utf-8").startswith("# Infocard"))
+        textos = [
+            trecho
+            for pagina in partes
+            for trecho in re.findall(r"~{3,}text\n(.*?)\n~{3,}",
+                                     pagina.decode("utf-8"), flags=re.DOTALL)
+        ]
+        self.assertEqual("".join(textos), bio)
+        self.assertIn("Bio", "".join(p.decode("utf-8") for p in partes))
 
     def test_html_escapado_e_fallback_em_paginas(self):
         original = '<IMG> & "A"' * 1000
@@ -75,6 +82,10 @@ class TesteFichaCompleta(unittest.TestCase):
         self.assertIn("&lt;IMG&gt;", "".join(ricos))
         self.assertNotIn("<IMG>", "".join(ricos))
         self.assertIn("Parte", simples[-1])
+        conteudo = "\n".join(simples)
+        trechos = re.findall(r"<b>Bio:</b> ([^\n]+)", conteudo)
+        self.assertEqual("".join(html.unescape(t) for t in trechos), original)
+        self.assertNotIn("&amp;lt;IMG", conteudo)
 
 
 if __name__ == "__main__":

@@ -1,3 +1,17 @@
+# AUDITORIA — 2026-11-02: fonte oficial, comentários e fidelidade dos arquivos
+
+**Referência normativa:** Bot API em https://core.telegram.org/bots/api e banco de peers MTProto em https://core.telegram.org/api/peers. O código antigo é usado apenas para regressões; uma execução verde sem consulta e entrega reais não comprova funcionamento do botão.
+
+**VERIFICADO (antes desta correção):** CI passou seis testes de paginação/Markdown e o deploy publicou os módulos; a execução 41529276863, anterior ao botão de download, executou Telethon, identificou um bot, editou a ficha e registrou foto incorporada. A execução 41530877958 foi apenas healthcheck (Telethon ignorado). **NÃO VERIFICADO:** clique no botão `f:`, reconsulta com `modo=completo` e entrega de `sendDocument` ao Telegram após o último deploy.
+
+**ERRO IDENTIFICADO:** o fallback HTML fazia novo escape em texto já escapado quando o valor era muito longo, modificando o conteúdo exibido. A divisão do `.md` acima do limite preservava bytes quando concatenados, mas podia produzir anexos separados com cercas Markdown incompletas. A correção prepara cada parte como documento Markdown válido e divide valores por caracteres UTF-8, sem cortes de dados. Verificação simulada por testes Python não equivale a entrega Bot API real.
+
+**CONFLITO COM DECISÕES EXISTENTES:** `AGENTS.md` contém "Sem comentários no código" e "Sem testes escritos por quem escreveu o código". O projeto já inclui comentários/docstrings em `scripts/ficha_completa.py` e testes `scripts/test_ficha_completa.py`. Não há registro de mudança da decisão do dono. A presença desses arquivos não é evidência de autorização. Não modificar `AGENTS.md` sem confirmação expressa do dono.
+
+**PRÓXIMA PROVA DE PONTA A PONTA:** consultar perfil conhecido; ver o resumo; clicar `Completo + Markdown`; confirmar workflow não-healthcheck com `MODO=completo`; confirmar logs de `sendRichMessage` e `sendDocument` com respostas `ok=true`; conferir recebimento e conteúdo do(s) anexo(s) no chat. Usar um perfil público de teste e não exibir dados particulares nos logs.
+
+---
+
 # Atualização — 2026-11-02: opção para receber relatório completo e Markdown
 
 Foi adicionado callback `f:alvo` ao cartão de resumo, opção de workflow `modo=completo`, nova coleta MTProto, envio paginado do relatório completo e anexos `.md` por `sendDocument`, com preservação de UTF-8 e de valores sem truncamento. A ficha completa é enviada em mensagens separadas, sem sobrescrever a mensagem original de resumo. O botão também existe no fallback HTML. Rate limit por chat ajustado para dois disparos por minuto, preservando o limite global de seis. O módulo Python agora conecta efetivamente `rich_pages` e `basic_pages` ao resolver. **Implementado, sujeito a CI/deploy e teste real de callback/anexo**.
