@@ -55,7 +55,7 @@ def rich_pages(identity, sections, observations, controls):
         groups.append(("🔎 Origem e observações", _expand(
             [("Observação " + str(i), note) for i, note in enumerate(observations, 1)]
         )))
-    prefix = "<h2>📇 Infocard · Relatório oficial</h2>"
+    prefix = "<h2>📇 Infocard · dados coletados</h2>"
     controls = controls or ""
     safe_budget = RICH_BYTES - 1500 - len(controls.encode("utf-8"))
     if safe_budget < 7000:
@@ -97,10 +97,10 @@ def rich_pages(identity, sections, observations, controls):
     total = len(pages)
     for ix, body in enumerate(pages, 1):
         foot = (
-            "<hr/><footer>Telegram MTProto • somente dados retornados • "
+            "<hr/><footer>Dados retornados pelas APIs do Telegram • "
             f"Parte {ix}/{total}</footer>"
         )
-        html_result = (prefix + f"<p><b>✅ Resultado verificado · parte {ix}/{total}</b></p>"
+        html_result = (prefix + f"<p><b>Dados desta consulta · parte {ix}/{total}</b></p>"
                        + "".join(body) + foot + controls)
         if len(html_result.encode("utf-8")) > RICH_BYTES:
             raise ValueError("A paginação gerou uma Rich Message acima do tamanho seguro")
@@ -116,7 +116,7 @@ def basic_pages(identity, sections, observations):
             ("Observação " + str(i), note) for i, note in enumerate(observations, 1)
         ]))
     limit = BASIC_CHARS - 140
-    header = "<b>📇 Infocard · Telegram MTProto</b>"
+    header = "<b>📇 Infocard · dados coletados</b>"
     lines = [header]
     for title, rows in groups:
         lines.append("<b>" + escape(title) + "</b>")
