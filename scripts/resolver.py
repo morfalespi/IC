@@ -72,7 +72,7 @@ def chamar(metodo, corpo, cabecalhos):
         espera = min(120, max(1, espera))
         print("Bot API: nova tentativa", metodo, "status", estado, "após", espera, "s")
         time.sleep(espera)
-    return {"ok": False, "error_code": 0, "description": "Tentativas esgotadas"
+    return {"ok": False, "error_code": 0, "description": "Tentativas esgotadas"}
 
 def postar(chat_id, texto, formatado, teclado=None):
     carga = {"chat_id": int(chat_id), "text": texto}
