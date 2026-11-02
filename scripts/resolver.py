@@ -1218,6 +1218,7 @@ async def principal():
             foto_incorporada = False
             primeira_rica_id = None
             primeira_rica_nova = False
+            primeira_rica_confirmada = False
             mensagens_ricas_extra = []
             avisos_fallback = []
             rich_ok = False
@@ -1244,6 +1245,8 @@ async def principal():
                             mensagens_ricas_extra.append(retorno["result"].get("message_id"))
                     if not ok:
                         continue
+                    if indice == 0:
+                        primeira_rica_confirmada = True
                     entregues_ricos += 1
                     print("Rich Message confirmada:", entregues_ricos, "/", total_ricos)
                 rich_ok = entregues_ricos == total_ricos
@@ -1276,7 +1279,7 @@ async def principal():
                                 **({"reply_markup": teclado_fallback} if teclado_fallback else {}),
                             })
                         if not retorno or not confirmacao_mensagem(retorno):
-                            if indice == 0 and entregues_ricos > 0:
+                            if indice == 0 and primeira_rica_confirmada:
                                 avisos_fallback.append("A página HTML inicial não substituiu a página rica anterior; o fallback pode duplicar conteúdo.")
                             retorno = postar(chat, pagina, True,
                                              teclado_fallback if indice == 0 else None)
