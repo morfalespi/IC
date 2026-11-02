@@ -1,10 +1,14 @@
+import atexit
 import asyncio
 import base64
 import html
 import hashlib
 import json
+import mimetypes
 import os
 import re
+import shutil
+import tempfile
 import sys
 import traceback
 import time
@@ -14,13 +18,14 @@ import uuid
 
 import telethon
 from ficha_completa import rich_pages, basic_pages, markdown_files, jsonl_files
+from mtproto_export import build_media_archives
 from telethon import TelegramClient, errors, utils
 from telethon.sessions import StringSession
-from telethon.tl.functions.channels import GetFullChannelRequest, GetChannelsRequest
+from telethon.tl.functions.channels import GetFullChannelRequest, GetChannelsRequest, GetParticipantsRequest
 from telethon.tl.functions.contacts import ResolveUsernameRequest
 from telethon.tl.functions.messages import GetChatsRequest, GetFullChatRequest
 from telethon.tl.functions.users import GetFullUserRequest, GetUsersRequest
-from telethon.tl.types import Channel, Chat, InputChannel, InputUser, PeerChannel, PeerChat, PeerUser, User
+from telethon.tl.types import Channel, Chat, ChannelParticipantsRecent, InputChannel, InputUser, PeerChannel, PeerChat, PeerUser, User
 
 ESPERA_TOTAL = 600
 USERNAME_VALIDO = re.compile(r"[A-Za-z0-9_]{1,32}")
@@ -210,6 +215,72 @@ def enviar_documento_md(chat, conteudo, id_entidade, indice, total):
 
 
 
+
+
+def registrar_midia(dados, categoria, nome, caminho=None, status="downloaded", erro=None):
+    item = {"category": categoria, "name": nome, "status": status}
+    if erro:
+        item["error"] = erro
+    if caminho and os.path.isfile(caminho):
+        resumo = hashlib.sha256()
+        tamanho = 0
+        with open(caminho, "rb") as arquivo:
+            while True:
+                bloco = arquivo.read(1024 * 1024)
+                if not bloco:
+                    break
+                tamanho += len(bloco)
+                resumo.update(bloco)
+        item["path"] = caminho
+        item["bytes"] = tamanho
+        item["sha256"] = resumo.hexdigest()
+    dados.setdefault("midias", []).append(item)
+    return item
+
+
+async def baixar_midia(cliente, objeto, dados, categoria, nome):
+    caminho = os.path.join(dados["midias_dir"], nome)
+    try:
+        retorno = await com_espera(lambda: cliente.download_media(objeto, file=caminho))
+        if retorno and os.path.isfile(caminho):
+            return registrar_midia(dados, categoria, nome, caminho)
+        return registrar_midia(dados, categoria, nome, status="unavailable", erro="Telegram não retornou o arquivo")
+    except Exception as erro:
+        return registrar_midia(dados, categoria, nome, status="failed", erro=type(erro).__name__)
+
+
+def enviar_documento_arquivo(chat, caminho, id_entidade, indice, total):
+    with open(caminho, "rb") as arquivo:
+        conteudo = arquivo.read()
+    limite = uuid.uuid4().hex
+    filename = "infocard_" + str(id_entidade).replace("-", "n") + "_midias"
+    if total > 1:
+        filename += f"_parte_{indice}_de_{total}"
+    filename += ".zip"
+    resumo_hash = hashlib.sha256(conteudo).hexdigest()
+    campos = {"chat_id": str(int(chat)), "caption": "🖼️ Mídia MTProto exportada" +
+              (f" · parte {indice}/{total}" if total > 1 else "") +
+              "\nSHA-256: " + resumo_hash}
+    if ORIGEM_ID:
+        campos["reply_parameters"] = json.dumps({"message_id": ORIGEM_ID})
+    partes = []
+    for chave, valor in campos.items():
+        partes.append((f'--{limite}\r\nContent-Disposition: form-data; name="{chave}"'
+                       f'\r\n\r\n{valor}\r\n').encode("utf-8"))
+    partes.extend([
+        (f'--{limite}\r\nContent-Disposition: form-data; name="document"; '
+         f'filename="{filename}"\r\nContent-Type: application/zip'
+         f'\r\n\r\n').encode("utf-8"),
+        conteudo,
+        f'\r\n--{limite}--\r\n'.encode("utf-8"),
+    ])
+    resposta = chamar("sendDocument", b"".join(partes),
+                     {"Content-Type": f"multipart/form-data; boundary={limite}"})
+    if not confirmacao_mensagem(resposta):
+        raise RuntimeError("Envio do pacote de mídia recusado: " + str(resposta.get("error_code")) +
+                           " " + str(resposta.get("description", ""))[:180])
+    print(f"pacote de mídia {indice}/{total} confirmado: {len(conteudo)} bytes")
+
 def enviar_documento_jsonl(chat, conteudo, id_entidade, indice, total):
     limite = uuid.uuid4().hex
     filename = "infocard_" + str(id_entidade).replace("-", "n") + "_mtproto"
@@ -392,6 +463,8 @@ def registros_mtproto(dados, alvo, info):
         "resposta_completa": dados.get("resposta_completa"),
         "fotos_perfil": dados.get("fotos_mtproto", []),
         "musicas_perfil": dados.get("musicas_mtproto", []),
+        "participantes": dados.get("participantes_mtproto", []),
+        "midias": [{chave: valor for chave, valor in item.items() if chave != "path"} for item in dados.get("midias", [])],
     }
     def folhas(valor, caminho):
         serializado = valor_mtproto(valor)
@@ -482,15 +555,47 @@ async def coletar(alvo):
     try:
         await com_espera(lambda: cliente.start(bot_token=os.environ["BOT_TOKEN"]))
         entidade, origem = await resolver_alvo(cliente, alvo)
+        if dados["midias_dir"]:
+            atexit.register(shutil.rmtree, dados["midias_dir"], ignore_errors=True)
         atualizar_status("1/2 · Identificação confirmada; buscando campos adicionais", entidade)
-        dados = {"entidade": entidade, "completo": None, "resposta_completa": None, "foto": None, "notas": [origem], "fotos_info": None, "musicas_info": None, "fotos_mtproto": [], "musicas_mtproto": []}
+        dados = {"entidade": entidade, "completo": None, "resposta_completa": None, "foto": None, "notas": [origem], "fotos_info": None, "musicas_info": None, "fotos_mtproto": [], "musicas_mtproto": [], "participantes_mtproto": [], "midias": [], "pacotes_midias": [], "midias_dir": tempfile.mkdtemp(prefix="infocard_mtproto_") if MODO == "completo" and CHAT_DESTINO else None}
         try:
             dados["resposta_completa"] = await com_espera(lambda: completo(cliente, entidade))
             dados["completo"] = objeto_completo(dados["resposta_completa"])
+            if MODO == "completo" and isinstance(entidade, Channel):
+                if getattr(dados["completo"], "can_view_participants", False) and not getattr(dados["completo"], "participants_hidden", False):
+                    try:
+                        offset_participantes = 0
+                        while True:
+                            pagina_participantes = await com_espera(
+                                lambda offset=offset_participantes: cliente(GetParticipantsRequest(
+                                    channel=entidade,
+                                    filter=ChannelParticipantsRecent(),
+                                    offset=offset,
+                                    limit=100,
+                                    hash=0,
+                                ))
+                            )
+                            dados["participantes_mtproto"].append(pagina_participantes)
+                            lista_participantes = getattr(pagina_participantes, "participants", []) or []
+                            if not lista_participantes:
+                                break
+                            offset_participantes += len(lista_participantes)
+                            if len(lista_participantes) < 100:
+                                break
+                    except Exception as erro_participantes:
+                        dados["notas"].append(f"Participantes indisponíveis: {type(erro_participantes).__name__}")
+                else:
+                    dados["notas"].append("Lista de participantes não disponível segundo os campos de acesso retornados pelo Telegram.")
         except Exception as erro:
             dados["notas"].append(f"Dados completos indisponíveis: {type(erro).__name__}: {erro}")
         try:
             dados["foto"] = await com_espera(lambda: cliente.download_profile_photo(entidade, file=bytes))
+            if dados["foto"] and dados["midias_dir"]:
+                caminho_foto = os.path.join(dados["midias_dir"], "foto_perfil_atual.jpg")
+                with open(caminho_foto, "wb") as arquivo_foto:
+                    arquivo_foto.write(dados["foto"])
+                registrar_midia(dados, "foto_perfil_atual", "foto_perfil_atual.jpg", caminho_foto)
         except Exception as erro:
             dados["notas"].append(f"Foto não baixada: {type(erro).__name__}: {erro}")
         if isinstance(entidade, User):
@@ -502,7 +607,7 @@ async def coletar(alvo):
                     while True:
                         fotos = await com_espera(
                             lambda offset=offset: cliente(GetUserPhotosRequest(
-                                user_id=entidade, offset=offset, max_id=0, limit=100
+                                user_id=entidade, offset=offset, max_id=0, limit=(100 if MODO == "completo" else 1)
                             ))
                         )
                         dados["fotos_mtproto"].append(fotos)
@@ -513,9 +618,20 @@ async def coletar(alvo):
                         if not lista_fotos:
                             break
                         offset += len(lista_fotos)
-                        if len(lista_fotos) < 100 or (total is not None and offset >= total):
+                        if MODO != "completo" or len(lista_fotos) < 100 or (total is not None and offset >= total):
                             break
                     obtidas = sum(len(getattr(pagina, "photos", []) or []) for pagina in dados["fotos_mtproto"])
+                    if dados["midias_dir"]:
+                        fotos_itens = [
+                            foto
+                            for pagina in dados["fotos_mtproto"]
+                            for foto in (getattr(pagina, "photos", []) or [])
+                        ]
+                        for indice, foto_mtproto in enumerate(fotos_itens, 1):
+                            await baixar_midia(
+                                cliente, foto_mtproto, dados, "foto_perfil",
+                                f"foto_perfil_{indice:04d}.jpg"
+                            )
                     if total is not None:
                         dados["fotos_info"] = f"{obtidas} de {total} (fotos acessíveis informadas pelo Telegram)"
                     elif obtidas:
@@ -530,7 +646,7 @@ async def coletar(alvo):
                     while True:
                         musicas = await com_espera(
                             lambda offset=offset: cliente(GetSavedMusicRequest(
-                                id=entidade, offset=offset, limit=100, hash=0
+                                id=entidade, offset=offset, limit=(100 if MODO == "completo" else 1), hash=0
                             ))
                         )
                         dados["musicas_mtproto"].append(musicas)
@@ -541,9 +657,21 @@ async def coletar(alvo):
                         if not documentos:
                             break
                         offset += len(documentos)
-                        if len(documentos) < 100 or (total is not None and offset >= total):
+                        if MODO != "completo" or len(documentos) < 100 or (total is not None and offset >= total):
                             break
                     obtidas = sum(len(getattr(pagina, "documents", []) or []) for pagina in dados["musicas_mtproto"])
+                    if dados["midias_dir"]:
+                        musicas_itens = [
+                            documento
+                            for pagina in dados["musicas_mtproto"]
+                            for documento in (getattr(pagina, "documents", []) or [])
+                        ]
+                        for indice, documento in enumerate(musicas_itens, 1):
+                            extensao = mimetypes.guess_extension(getattr(documento, "mime_type", "") or "") or ".bin"
+                            await baixar_midia(
+                                cliente, documento, dados, "musica_perfil",
+                                f"musica_perfil_{indice:04d}{extensao}"
+                            )
                     if total is not None:
                         dados["musicas_info"] = f"{obtidas} de {total} música(s) acessível(is) no perfil"
                     elif obtidas:
@@ -753,6 +881,9 @@ async def principal():
             info = descrever(dados["entidade"], dados["completo"], alvo)
             if dados["fotos_info"]:
                 info["campos"].append(("Fotos de perfil no MTProto", dados["fotos_info"]))
+            if dados["participantes_mtproto"]:
+                total_participantes = sum(len(getattr(pagina, "participants", []) or []) for pagina in dados["participantes_mtproto"])
+                info["campos"].append(("Participantes detalhados acessíveis", str(total_participantes)))
             if dados["musicas_info"]:
                 info["campos"].append(("Músicas de perfil no MTProto", dados["musicas_info"]))
 
@@ -874,7 +1005,19 @@ async def principal():
             arquivos_entregues = 0
             json_previstos = 0
             json_entregues = 0
+            pacotes_midias = []
+            midias_previstas = 0
+            midias_entregues = 0
+            falhas_midias = 0
             if completo:
+                if dados.get("midias_dir"):
+                    try:
+                        pacotes_midias = build_media_archives(dados.get("midias", []), dados["midias_dir"])
+                        dados["pacotes_midias"] = pacotes_midias
+                    except Exception as erro_pacotes:
+                        notas.append(f"Pacotes de mídia indisponíveis: {type(erro_pacotes).__name__}")
+                    falhas_midias = sum(1 for item in dados.get("midias", []) if item.get("status") != "packaged")
+                    midias_previstas = len(pacotes_midias)
                 try:
                     arquivos = markdown_files(identidade, categorias, notas)
                     arquivos_previstos = len(arquivos)
@@ -903,10 +1046,18 @@ async def principal():
                                   type(erro_parte).__name__)
                 except Exception as erro_json:
                     print("Exportação JSONL indisponível:", type(erro_json).__name__)
+                for indice, caminho_pacote in enumerate(pacotes_midias, 1):
+                    time.sleep(1.1)
+                    try:
+                        enviar_documento_arquivo(chat, caminho_pacote, info["id"], indice, len(pacotes_midias))
+                        midias_entregues += 1
+                    except Exception as erro_midia:
+                        print("Pacote de mídia recusado:", indice, "/", len(pacotes_midias), type(erro_midia).__name__)
             sucesso_final = (rich_ok or html_ok) and (
                 not completo or (
                     arquivos_previstos > 0 and arquivos_entregues == arquivos_previstos and
-                    json_previstos > 0 and json_entregues == json_previstos
+                    json_previstos > 0 and json_entregues == json_previstos and
+                    midias_entregues == midias_previstas and falhas_midias == 0
                 )
             )
             if sucesso_final:
@@ -922,6 +1073,8 @@ async def principal():
                     f"Rich Messages: {entregues_ricos}/{total_ricos}.\n"
                     f"HTML: {entregues_html}/{total_html}.\n"
                     f"Arquivos Markdown: {arquivos_entregues}/{arquivos_previstos}.\n"
+                    f"Arquivos JSONL: {json_entregues}/{json_previstos}.\n"
+                    f"Pacotes de mídia: {midias_entregues}/{midias_previstas}; itens indisponíveis: {falhas_midias}.\n"
                     "Faça nova consulta para tentar obter as partes restantes."
                 )
                 enviar(chat, aviso)
