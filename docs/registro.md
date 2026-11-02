@@ -1,3 +1,13 @@
+# Implementado no branch — 2026-11-02: leituras adicionais da Bot API
+
+**IMPLEMENTADO NO CÓDIGO:** a exportação completa agora tenta `getChat`, pagina `getUserProfilePhotos` e `getUserProfileAudios`, obtém as últimas mensagens do chat pessoal do perfil, e consulta administradores e membros para grupos/canais. Preserva respostas e falhas no JSONL, tenta baixar mídia via `getFile`, deduplica arquivos e limita o download à capacidade da Bot API. Leituras idempotentes repetem 429 e 5xx; envios mantêm apenas a retentativa 429.
+
+**NÃO VERIFICADO EM EXECUÇÃO REAL:** acesso do bot a cada método, arquivo JSONL recebido/aberto e cobertura completa. Os erros retornados pelos métodos ficam registrados e são apresentados como cobertura parcial; não são filtros prévios para deixar de tentar os endpoints.
+
+**FONTES OFICIAIS:** https://core.telegram.org/bots/api#available-methods ; https://core.telegram.org/bots/api#userprofilephotos ; https://core.telegram.org/bots/api#userprofileaudios ; https://core.telegram.org/bots/api#getuserpersonalchatmessages ; https://core.telegram.org/bots/api#file
+
+---
+
 # Revisão da entrega eficaz — 2026-11-02
 
 **IMPLEMENTADO:** confirmação das mensagens pelo objeto `Message.message_id` da Bot API, SHA-256 nos anexos Markdown, contagem separada de páginas ricas/HTML e arquivos, 429 com retry_after e timeout de 30 minutos. Erros 5xx de envios com resultado incerto não são automaticamente repetidos para evitar duplicações. **PENDENTE DE PROVA REAL:** clicar no botão de Markdown e verificar recebimento no Telegram. O arquivo citado como `partners.md` não foi encontrado; nenhum requisito seu foi presumido.
