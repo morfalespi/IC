@@ -10,7 +10,7 @@ A cobertura deve preservar objetos TL completos, respostas JSON Bot API, wrapper
 
 | API | Métodos | Tipo de entidade | Uso na exportação completa |
 |---|---|---|---|
-| Bot API | `getChat` | Usuário, grupo, supergrupo ou canal | Preserva `ChatFullInfo` completo retornado, inclusive campos aninhados. |
+| Bot API | `getChat` | Usuário, grupo, supergrupo ou canal | Preserva `ChatFullInfo` completo e tenta obter também chats pessoais, pais ou vinculados indicados na resposta. |
 | Bot API | `getUserProfilePhotos`, `getUserProfileAudios` | Usuário | Pagina as coleções e tenta baixar a maior foto de cada perfil e cada áudio. |
 | Bot API | `getUserPersonalChatMessages` | Usuário | Preserva até 20 mensagens do chat pessoal atualmente indicado no perfil e tenta baixar anexos compatíveis. |
 | Bot API | `getChatAdministrators`, `getChatMemberCount` | Grupo, supergrupo ou canal | Preserva a lista de administradores e a contagem informada. |
