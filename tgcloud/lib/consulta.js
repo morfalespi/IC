@@ -23,8 +23,8 @@ export async function consultar(texto, contexto) {
   try {
     const pendente = relatorioBuscando(entrada);
     if (contexto.modo === 'completo') {
-      pendente.html = '<b>Preparando relatório completo e arquivo Markdown…</b>\n' +
-        'Os dados serão consultados por MTProto e enviados em partes, se necessário.';
+      pendente.html = '<b>Preparando exportação completa…</b>\n' +
+        'Respostas MTProto e mídia acessível serão entregues em arquivos e páginas legíveis.';
     }
     if (mensagemId) {
       await editarCartao(contexto.chatId, mensagemId, cartaoPesquisa(entrada, contexto.dadosCompartilhados, contexto.modo), pendente.html);
