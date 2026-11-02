@@ -1,3 +1,9 @@
+# Complementação — 2026-11-02: novas fontes MTProto
+
+**IMPLEMENTADO NO CÓDIGO, SUJEITO À CONFIRMAÇÃO EM PESQUISA REAL.** Foi acrescentada a coleta opcional do total ou amostra de fotos com `photos.getUserPhotos`, e do total de músicas com `users.getSavedMusic` quando a ficha completa indica música disponível. Foram expostos novos campos condicionais já presentes em `userFull` (`stars_rating`, `saved_music`, `business_work_hours`) e `channelFull`. Falhas de consultas opcionais não devem impedir a ficha principal. A documentação oficial confirma a existência dos métodos e sua disponibilidade a bots; isso não confirma que uma conta específica retornará valores. A evidência de execução deve ser coletada no resolver após o próximo teste real.
+
+---
+
 # Ajuste de robustez — 2026-11-02: resultado parcial das referências do Telegram
 
 O handler passa a aproveitar imediatamente os campos opcionais recebidos pelo Telegram em `users_shared`, `chat_shared`, encaminhamentos, contatos e menções, sem consultar perfis pela Bot API. Campos de seleção são exibidos com origem, separados do resultado posterior do MTProto. Também foram acrescentados seletores de canal e grupo. Esse comportamento só está **IMPLEMENTADO** até teste manual do bot. O servidor pode recusar enriquecimento por ID; nenhum dado adicional é fabricado. Persistência de sessão e base de peers foram identificadas como aperfeiçoamento arquitetural futuro, não implementado nem recomendado em repositório público sem medidas de proteção.

@@ -14,3 +14,12 @@ Atualizado em 2026-11-02. O fluxo de pesquisa usa MTProto/Telethon; a Bot API s�
 - Dispatch: https://docs.github.com/en/rest/actions/workflows#create-a-workflow-dispatch-event — requer permissão Actions: write no GitHub token.
 
 A existência desses métodos oficiais não garante retorno de dados para quaisquer IDs. O projeto mantém verificação explícita de ID contra username em consultas por referência composta.
+
+## Dados adicionais no relatório (2026-11-02)
+
+- `photos.getUserPhotos`: https://core.telegram.org/method/photos.getUserPhotos — usuários e bots podem solicitar as fotos acessíveis; respostas podem conter amostra ou total.
+- `users.getSavedMusic`: https://core.telegram.org/method/users.getSavedMusic — usuários e bots podem solicitar músicas do perfil, sujeitas à privacidade.
+- `userFull`: https://core.telegram.org/constructor/userFull — contém `stars_rating`, `saved_music`, `business_work_hours` e outros campos condicionais.
+- `channelFull`: https://core.telegram.org/constructor/channelFull — campos opcionais de canais e supergrupos.
+- `Peer database`: https://core.telegram.org/api/peers — um ID sem referência conhecida não garante acesso; `access_hash` depende do contexto da autenticação.
+- `Telethon Session`: https://docs.telethon.dev/en/stable/concepts/sessions.html — uma sessão persistida pode reutilizar entidades já vistas, mas exige armazenamento seguro.

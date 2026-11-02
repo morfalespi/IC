@@ -168,7 +168,7 @@ async def coletar(alvo):
     try:
         await com_espera(lambda: cliente.start(bot_token=os.environ["BOT_TOKEN"]))
         entidade, origem = await resolver_alvo(cliente, alvo)
-        dados = {"entidade": entidade, "completo": None, "foto": None, "notas": [origem]}
+        dados = {"entidade": entidade, "completo": None, "foto": None, "notas": [origem], "fotos_info": None, "musicas_info": None}
         try:
             dados["completo"] = await com_espera(lambda: completo(cliente, entidade))
         except Exception as erro:
@@ -177,6 +177,31 @@ async def coletar(alvo):
             dados["foto"] = await com_espera(lambda: cliente.download_profile_photo(entidade, file=bytes))
         except Exception as erro:
             dados["notas"].append(f"Foto não baixada: {type(erro).__name__}: {erro}")
+        if isinstance(entidade, User):
+            if getattr(entidade, "photo", None) is not None:
+                try:
+                    from telethon.tl.functions.photos import GetUserPhotosRequest
+                    fotos = await com_espera(
+                        lambda: cliente(GetUserPhotosRequest(user_id=entidade, offset=0, max_id=0, limit=1))
+                    )
+                    total = getattr(fotos, "count", None)
+                    if isinstance(total, int):
+                        dados["fotos_info"] = f"{total} (total acessível informado pelo Telegram)"
+                    elif len(getattr(fotos, "photos", []) or []) > 0:
+                        dados["fotos_info"] = "pelo menos 1 foto acessível"
+                except Exception as erro:
+                    dados["notas"].append(f"Contagem de fotos indisponível: {type(erro).__name__}")
+            if getattr(dados["completo"], "saved_music", None) is not None:
+                try:
+                    from telethon.tl.functions.users import GetSavedMusicRequest
+                    musicas = await com_espera(
+                        lambda: cliente(GetSavedMusicRequest(id=entidade, offset=0, limit=1, hash=0))
+                    )
+                    total = getattr(musicas, "count", None)
+                    if isinstance(total, int):
+                        dados["musicas_info"] = f"{total} música(s) acessível(is) no perfil"
+                except Exception as erro:
+                    dados["notas"].append(f"Contagem de músicas indisponível: {type(erro).__name__}")
         return dados
     finally:
         await cliente.disconnect()
@@ -186,6 +211,16 @@ def campos_presentes(objeto):
     if objeto is None:
         return []
     return sorted(chave for chave, valor in objeto.to_dict().items() if valor not in (None, False, [], "", 0) and chave not in ("phone", "access_hash"))
+
+
+def descricao_musica(documento):
+    for atributo in getattr(documento, "attributes", []) or []:
+        if type(atributo).__name__ == "DocumentAttributeAudio":
+            titulo = getattr(atributo, "title", None)
+            artista = getattr(atributo, "performer", None)
+            if titulo or artista:
+                return " — ".join(corte(parte, 100) for parte in (titulo, artista) if parte)
+    return None
 
 
 def descrever(entidade, completo_, alvo):
@@ -211,6 +246,8 @@ def descrever(entidade, completo_, alvo):
         marcas = (("verificado", "verified"), ("premium", "premium"), ("scam", "scam"), ("fake", "fake"), ("restrito", "restricted"), ("suporte", "support"), ("conta excluída", "deleted"))
         add("Restrições", ", ".join(restricoes))
         add("Idioma", getattr(entidade, "lang_code", None))
+        add("Mini App principal do bot", "sim" if getattr(entidade, "bot_has_main_app", False) else None)
+        add("Emoji de status", "configurado" if getattr(entidade, "emoji_status", None) else None)
         if entidade.bot:
             add("Placeholder inline", getattr(entidade, "bot_inline_placeholder", None))
             add("Usuários ativos do bot", getattr(entidade, "bot_active_users", None))
@@ -231,6 +268,19 @@ def descrever(entidade, completo_, alvo):
             if local:
                 add("Endereço comercial", getattr(local, "address", None))
             add("Presentes recebidos", getattr(completo_, "stargifts_count", None))
+            avaliacao = getattr(completo_, "stars_rating", None)
+            if avaliacao:
+                add("Nível Telegram Stars", getattr(avaliacao, "level", None), zero=True)
+            musica = getattr(completo_, "saved_music", None)
+            if musica:
+                add("Música destacada no perfil", descricao_musica(musica) or "disponível, sem título informado")
+            horario = getattr(completo_, "business_work_hours", None)
+            if horario:
+                add("Fuso dos horários comerciais", getattr(horario, "timezone_id", None))
+                periodos = getattr(horario, "weekly_open", None)
+                if periodos:
+                    add("Intervalos de atendimento registrados", len(periodos), zero=True)
+
             add("Nome nos encaminhamentos", getattr(completo_, "private_forward_name", None))
             add("Mensagens de voz", "bloqueadas" if getattr(completo_, "voice_messages_forbidden", False) else None)
             info_bot = getattr(completo_, "bot_info", None)
@@ -255,6 +305,9 @@ def descrever(entidade, completo_, alvo):
             lento = getattr(completo_, "slowmode_seconds", None)
             add("Modo lento", f"{lento} s" if lento else None)
             add("Boosts aplicados", getattr(completo_, "boosts_applied", None))
+            add("Nível de boosts do canal", getattr(entidade, "level", None))
+            add("Presentes recebidos pelo canal", getattr(completo_, "stargifts_count", None))
+            add("Limite de reações distintas", getattr(completo_, "reactions_limit", None))
             local = getattr(completo_, "location", None)
             if local:
                 add("Localização", getattr(local, "address", None))
@@ -332,6 +385,11 @@ async def principal():
                 except Exception as erro:
                     notas.append(f"Foto não enviada: {erro}")
             info = descrever(dados["entidade"], dados["completo"], alvo)
+            if dados["fotos_info"]:
+                info["campos"].append(("Fotos de perfil no MTProto", dados["fotos_info"]))
+            if dados["musicas_info"]:
+                info["campos"].append(("Músicas de perfil no MTProto", dados["musicas_info"]))
+
             texto = relatorio(info, notas, estado_da_foto(info, foto_enviada, bool(chat)))
             print("tipo resolvido:", info["tipo"], "| campos extras:", len(info["campos"]))
             codigo = 0

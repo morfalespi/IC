@@ -33,6 +33,16 @@
 - Confira erros de runtime do `request_chat` no SDK, pois CI e deploy validam publicação e sintaxe, não a compatibilidade de cada botão com o cliente Telegram.
 - Na pesquisa por ID digitado, confirme que uma recusa do servidor gera explicação útil, sem dados inventados.
 
+## Enriquecimento real — testes adicionais
+
+- Execute uma pesquisa de usuário com `ID @username` já confirmado e confira que os campos extraídos do MTProto permanecem corretos.
+- Se `stars_rating` vier presente, verifique se o relatório exibe o nível. Nunca interprete campo ausente como nível zero.
+- Se `saved_music` vier presente, confira a música destacada e, quando autorizada, a contagem de músicas via método oficial.
+- Se o Telegram fornecer fotos, confira se `photos.getUserPhotos` retornou total ou apenas amostra; ambos devem ser apresentados com rótulos diferentes.
+- Teste um bot público e verifique os campos de `bot_info`, sem expor informações internas.
+- Simule uma resposta sem dados adicionais para confirmar que o relatório básico continua disponível. A execução do CI garante sintaxe, mas **não substitui** os testes reais da API.
+- A solução não utiliza scraping, gerações de dados por IA nem consultas não oficiais para inventar campos.
+
 ## Limites
 
 Um `access_hash` é específico do contexto MTProto e não é fornecido universalmente a partir de IDs. O valor zero é uma forma documentada de referência para bots em certas condições, não um método para contornar restrições. Não prometa que qualquer ID terá resultado.

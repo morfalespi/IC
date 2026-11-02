@@ -20,6 +20,21 @@ O seletor oficial oferece **Escolher usuário**, **Escolher canal** e **Escolher
 
 Para **ID digitado isoladamente**, somente o número está disponível; nenhuma API oficial garante descobrir nome, foto ou username de uma conta desconhecida. A solução estrutural para recuperar entidades já conhecidas em consultas futuras é um worker MTProto de longa duração com base de peers e sessão autenticada persistente, protegida fora do Git e de artefatos públicos. Não armazene sessões ou access hashes em GitHub Actions logs, código ou secrets genéricos sem um projeto específico de proteção e rotação.
 
+## Enriquecimento verificável (2026-11-02)
+
+Para perfis de usuário e bot resolvidos por MTProto, o relatório tenta aproveitar **todos os valores úteis efetivamente fornecidos**, sem criar campos por inferência:
+
+- `users.getFullUser`: mantém nome, bio, aniversário, canal pessoal, presentes e informações do bot quando presentes. Acrescenta o nível `stars_rating.level`, música de destaque (`saved_music`) e indicadores de horários comerciais quando o Telegram os entregar.
+- `photos.getUserPhotos`: consulta opcional da contagem de fotos acessíveis. Se a resposta só contiver uma amostra, informa **pelo menos uma**, nunca apresenta a amostra como quantidade total.
+- `users.getSavedMusic`: consulta opcional do total de músicas visíveis, executada somente se a ficha completa indicar música no perfil. A ausência desse campo não prova que a pessoa não possua músicas.
+- `channels.getFullChannel`: mantém informação de membros, descrição, administradores e reforços, e acrescenta outros campos opcionais de canais, quando retornados.
+
+Falhas nas consultas adicionais não invalidam a ficha principal. Um campo só aparece quando há valor observado; valores omitidos não significam que o dado inexiste. Os logs e resultados são referentes à conta autenticada como bot, não a uma visão irrestrita de todos os perfis.
+
+Fontes: https://core.telegram.org/method/users.getFullUser , https://core.telegram.org/method/photos.getUserPhotos , https://core.telegram.org/method/users.getSavedMusic e https://core.telegram.org/method/channels.getFullChannel .
+
+**Limite:** o ID isolado de uma entidade desconhecida ainda pode ser recusado pelo Telegram. Nem `access_hash=0` nem pesquisa externa permitem garantir a identificação. O cache persistente de peers exigiria uma sessão MTProto protegida e uma arquitetura distinta; **não está implementado**.
+
 ## Arquitetura
 
 - `tgcloud/handlers/message.js`: entrada privada, referências compartilhadas e comandos.
