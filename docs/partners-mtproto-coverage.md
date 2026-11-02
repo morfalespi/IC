@@ -2,37 +2,43 @@
 
 ## Decisão de objetivo
 
-Aplicar Partners como método obrigatório de evolução. O resultado desejado é entregar a cobertura máxima e verificável dos dados de leitura que o Telegram MTProto disponibiliza à sessão de bot para a entidade consultada. Código e campos já exibidos servem como inventário do estado atual, não como limite normativo.
+Aplicar Partners como método obrigatório de evolução. O resultado desejado é entregar, para a referência consultada, todos os campos e conteúdos de leitura que o Telegram MTProto realmente disponibiliza à sessão de bot, sem reduzir o escopo aos campos já exibidos pelo projeto. Código anterior é inventário, não padrão normativo.
 
-A cobertura deve incluir campos escalares e aninhados, listas, metadados e conteúdo retornado por métodos de leitura elegíveis para bots. Resultados paginados devem ser percorridos até o fim ou receber um estado explícito de incompletude. A entrega deve preservar dados vazios, zero e falso quando esses valores fizerem parte da resposta; ausência de campo não significa valor falso nem inexistência da entidade.
+A cobertura deve preservar objetos TL completos, wrappers de resposta, campos escalares e aninhados, listas, metadados e conteúdo de mídia devolvido pelos métodos elegíveis. Coleções pagináveis devem ser lidas até o fim ou identificadas como parciais. A exportação estruturada preserva também valores vazios, zero e falso quando retornados.
 
-## Limites oficiais do modelo de bot
+## Limites oficiais da sessão de bot
 
-- `users.getFullUser`, `channels.getFullChannel`, `messages.getFullChat`, `photos.getUserPhotos` e `users.getSavedMusic` aceitam autorização de bot.
-- `channels.getParticipants` aceita bots, mas o Telegram pode exigir administração e a lista pode estar oculta ou indisponível.
-- `messages.getHistory` e `stories.getPeerStories` são métodos exclusivos de contas de usuário. Não prometer histórico de mensagens nem stories ativos enquanto o projeto usar `BOT_TOKEN`.
-- Recursos privados, removidos, inacessíveis ao bot, bloqueados por privacidade ou limitados por flood wait devem ser reportados como indisponíveis ou parciais, com motivo observável; não inferir que não existem.
-- Não converter método de leitura em método de alteração. O escopo é leitura da entidade solicitada e recursos associados necessários ao relatório.
+- As chamadas de leitura usadas nesta primeira entrega são `users.getFullUser`, `channels.getFullChannel`, `messages.getFullChat`, `photos.getUserPhotos`, `users.getSavedMusic` e, quando o Telegram indicar capacidade, `channels.getParticipants`.
+- `channels.getParticipants` aceita bots, mas pode exigir administração; canais também podem ocultar ou restringir participantes.
+- `messages.getHistory` e `stories.getPeerStories` são exclusivos de sessões de usuário. Como a pessoa decidiu manter autenticação de bot, o Infocard registra esses limites e não promete histórico ou stories ativos.
+- Permissões, privacidade, FloodWait, ausência de dados e diferenças de layer podem limitar a resposta. Campo ausente não significa que o dado não exista.
+- Escopo é leitura da entidade e das coleções que os métodos acima retornam. Nenhuma chamada de alteração é incluída.
 
-## Estado observado antes desta evolução
+## Estado da implementação na branch
 
-- O resolver autentica Telethon com `bot_token`.
-- Os métodos completos retornam conjuntos de campos de usuário, canal e grupo; o código apresenta apenas alguns campos mapeados.
-- A resolução descarta os wrappers de resposta completos de `users.getFullUser`, `channels.getFullChannel` e `messages.getFullChat`.
-- Fotos de perfil e músicas são consultadas com limite inicial de um item; a implementação registra contagens, não percorre os recursos completos.
-- Não existe exportação estruturada de todas as respostas MTProto.
+| Capacidade | Estado no código | Limite atual |
+|---|---|---|
+| Entidade resolvida e objeto de perfil completo | Implementado | As respostas completas são serializadas; isso ainda precisa de execução real após a alteração |
+| Fotos de perfil | Paginação no modo completo | Paginação e download dependem do que Telegram disponibilizar |
+| Música salva no perfil | Paginação no modo completo | Só consultada quando `saved_music` existe no perfil completo |
+| Participantes de canal | Tentativa paginada | Somente se os flags do objeto completo indicarem acesso; Telegram ainda pode recusar |
+| Dados estruturados | JSONL sem mapeamento manual, dividido em anexos | Confirmação da Bot API não prova que o arquivo recebido abre ou preserva todo conteúdo |
+| Foto e arquivos de mídia baixáveis | ZIP com manifesto e hash | Itens indisponíveis ou acima do limite são explicitados; não contam como sucesso integral |
+| Histórico de mensagens e stories ativos | Fora do acesso de bot | Métodos exigem sessão de usuário; não serão habilitados mantendo a decisão de autenticação atual |
+| Inventário de todos os outros métodos MTProto elegíveis por tipo de peer | Ainda não concluído | A exportação atual preserva respostas dos métodos chamados, mas não cobre por si só todos os métodos relacionados possíveis |
 
-Estes itens descrevem o estado inspecionado e não justificam manter o recorte atual.
+## O que substitui
 
-## Plano de evolução
+Antes desta evolução, o resolver mapeava uma seleção de campos, consultava no máximo uma foto e uma música, e não entregava uma exportação bruta completa. A implementação atual acrescenta preservação de respostas TL, paginação de fotos e músicas, tentativa de listar participantes, exportação JSONL e pacotes de mídia. Isso amplia materialmente a cobertura, mas não conclui a meta de inventariar e chamar todos os métodos de leitura relevantes.
 
-1. Inventariar os métodos de leitura e todos os campos dos tipos TL usados, confrontando a versão instalada de Telethon com a layer oficial.
-2. Preservar wrappers e objetos associados retornados pelo Telegram, além da entidade principal e do objeto `full_user`/`full_chat`.
-3. Percorrer listas elegíveis por paginação, respeitando autorização, permissões, limites e FloodWait.
-4. Gerar uma exportação estruturada que preserve os valores retornados e entregue itens em partes sem truncamento silencioso; manter uma apresentação legível para consulta.
-5. Registrar a cobertura de cada método como concluída, parcial, recusada ou não suportada nesta autenticação.
-6. Só declarar resultado completo após evidência da resposta MTProto, aceitação de cada página/anexo pela Bot API e inspeção do conteúdo recebido no Telegram.
+## Próximos passos necessários
+
+1. Inventariar, por tipo de peer, os métodos oficiais de leitura que podem ser chamados por bot e quais dados adicionais cada método fornece. Comparar com a layer realmente instalada do Telethon.
+2. Implementar as chamadas relevantes que ainda não existem, registrar por método o estado `concluído`, `sem dados`, `sem permissão`, `não suportado para bot` ou `falha`, e paginar até o fim.
+3. Confirmar que cada resposta chamada está presente no JSONL, que as mídias acessíveis foram empacotadas e que arquivos acima do limite aparecem como parciais.
+4. Executar no Telegram com referência pública de teste; inspecionar os JSONL e os pacotes realmente recebidos. CI, sintaxe e `ok=true` de envio são verificações intermediárias.
+5. Só declarar cobertura total dentro do escopo definido quando o inventário de métodos e a prova de ponta a ponta estiverem concluídos. Dados que a API não conceder devem aparecer como limite observado, nunca ser inferidos.
 
 ## Critério de sucesso sustentado
 
-Para cada consulta, os campos e recursos elegíveis retornados pela sessão de bot estão presentes na exportação; coleções pagináveis foram consumidas até o fim; cada parte obrigatória teve confirmação da Bot API; campos omitidos por acesso, privacidade, versão ou limite aparecem no relatório de cobertura com o motivo. O sucesso é limitado ao acesso que o Telegram realmente concedeu à sessão de bot.
+Para cada execução completa, todas as respostas dos métodos de leitura inventariados e elegíveis foram serializadas sem perda, as coleções acessíveis foram paginadas até o fim, os anexos obrigatórios foram aceitos e inspecionados no Telegram, e cada campo ou coleção indisponível tem um estado e motivo explícitos. O sucesso continua limitado ao acesso realmente concedido pelo Telegram à sessão de bot.
