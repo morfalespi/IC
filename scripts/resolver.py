@@ -454,7 +454,7 @@ def registros_mtproto(dados, alvo, info):
         "telethon": telethon.__version__,
         "referencia": alvo,
         "tipo": info.get("tipo"),
-        "metodos_nao_disponiveis_para_bot": ["messages.getHistory", "stories.getPeerStories"],
+        "metodos_nao_disponiveis_para_bot": ["messages.getHistory", "stories.getPeerStories", "messages.getCommonChats", "messages.getPeerSettings"],
         "capturado_unix": int(time.time()),
     }
     objetos = {
@@ -564,31 +564,28 @@ async def coletar(alvo):
             dados["resposta_completa"] = await com_espera(lambda: completo(cliente, entidade))
             dados["completo"] = objeto_completo(dados["resposta_completa"])
             if MODO == "completo" and isinstance(entidade, Channel):
-                if getattr(dados["completo"], "can_view_participants", False) and not getattr(dados["completo"], "participants_hidden", False):
-                    try:
-                        offset_participantes = 0
-                        while True:
-                            pagina_participantes = await com_espera(
-                                lambda offset=offset_participantes: cliente(GetParticipantsRequest(
-                                    channel=entidade,
-                                    filter=ChannelParticipantsRecent(),
-                                    offset=offset,
-                                    limit=100,
-                                    hash=0,
-                                ))
-                            )
-                            dados["participantes_mtproto"].append(pagina_participantes)
-                            lista_participantes = getattr(pagina_participantes, "participants", []) or []
-                            if not lista_participantes:
-                                break
-                            offset_participantes += len(lista_participantes)
-                            if len(lista_participantes) < 100:
-                                break
-                    except Exception as erro_participantes:
-                        dados["falhas_coleta"].append({"method": "channels.getParticipants", "error": type(erro_participantes).__name__})
-                        dados["notas"].append(f"Participantes indisponíveis: {type(erro_participantes).__name__}")
-                else:
-                    dados["notas"].append("Lista de participantes não disponível segundo os campos de acesso retornados pelo Telegram.")
+                try:
+                    offset_participantes = 0
+                    while True:
+                        pagina_participantes = await com_espera(
+                            lambda offset=offset_participantes: cliente(GetParticipantsRequest(
+                                channel=entidade,
+                                filter=ChannelParticipantsRecent(),
+                                offset=offset,
+                                limit=100,
+                                hash=0,
+                            ))
+                        )
+                        dados["participantes_mtproto"].append(pagina_participantes)
+                        lista_participantes = getattr(pagina_participantes, "participants", []) or []
+                        if not lista_participantes:
+                            break
+                        offset_participantes += len(lista_participantes)
+                        if len(lista_participantes) < 100:
+                            break
+                except Exception as erro_participantes:
+                    dados["falhas_coleta"].append({"method": "channels.getParticipants", "error": type(erro_participantes).__name__})
+                    dados["notas"].append(f"Participantes indisponíveis: {type(erro_participantes).__name__}")
         except Exception as erro:
             dados["falhas_coleta"].append({"method": "getFull", "error": type(erro).__name__})
             dados["notas"].append(f"Dados completos indisponíveis: {type(erro).__name__}: {erro}")
@@ -602,87 +599,85 @@ async def coletar(alvo):
         except Exception as erro:
             dados["notas"].append(f"Foto não baixada: {type(erro).__name__}: {erro}")
         if isinstance(entidade, User):
-            if getattr(entidade, "photo", None) is not None:
-                try:
-                    from telethon.tl.functions.photos import GetUserPhotosRequest
-                    offset = 0
-                    total = None
-                    while True:
-                        fotos = await com_espera(
-                            lambda offset=offset: cliente(GetUserPhotosRequest(
-                                user_id=entidade, offset=offset, max_id=0, limit=(100 if MODO == "completo" else 1)
-                            ))
+            try:
+                from telethon.tl.functions.photos import GetUserPhotosRequest
+                offset = 0
+                total = None
+                while True:
+                    fotos = await com_espera(
+                        lambda offset=offset: cliente(GetUserPhotosRequest(
+                            user_id=entidade, offset=offset, max_id=0, limit=(100 if MODO == "completo" else 1)
+                        ))
+                    )
+                    dados["fotos_mtproto"].append(fotos)
+                    lista_fotos = getattr(fotos, "photos", []) or []
+                    contagem = getattr(fotos, "count", None)
+                    if total is None and isinstance(contagem, int):
+                        total = contagem
+                    if not lista_fotos:
+                        break
+                    offset += len(lista_fotos)
+                    if MODO != "completo" or len(lista_fotos) < 100 or (total is not None and offset >= total):
+                        break
+                obtidas = sum(len(getattr(pagina, "photos", []) or []) for pagina in dados["fotos_mtproto"])
+                if dados["midias_dir"]:
+                    fotos_itens = [
+                        foto
+                        for pagina in dados["fotos_mtproto"]
+                        for foto in (getattr(pagina, "photos", []) or [])
+                    ]
+                    for indice, foto_mtproto in enumerate(fotos_itens, 1):
+                        await baixar_midia(
+                            cliente, foto_mtproto, dados, "foto_perfil",
+                            f"foto_perfil_{indice:04d}.jpg"
                         )
-                        dados["fotos_mtproto"].append(fotos)
-                        lista_fotos = getattr(fotos, "photos", []) or []
-                        contagem = getattr(fotos, "count", None)
-                        if total is None and isinstance(contagem, int):
-                            total = contagem
-                        if not lista_fotos:
-                            break
-                        offset += len(lista_fotos)
-                        if MODO != "completo" or len(lista_fotos) < 100 or (total is not None and offset >= total):
-                            break
-                    obtidas = sum(len(getattr(pagina, "photos", []) or []) for pagina in dados["fotos_mtproto"])
-                    if dados["midias_dir"]:
-                        fotos_itens = [
-                            foto
-                            for pagina in dados["fotos_mtproto"]
-                            for foto in (getattr(pagina, "photos", []) or [])
-                        ]
-                        for indice, foto_mtproto in enumerate(fotos_itens, 1):
-                            await baixar_midia(
-                                cliente, foto_mtproto, dados, "foto_perfil",
-                                f"foto_perfil_{indice:04d}.jpg"
-                            )
-                    if total is not None:
-                        dados["fotos_info"] = f"{obtidas} de {total} (fotos acessíveis informadas pelo Telegram)"
-                    elif obtidas:
-                        dados["fotos_info"] = f"{obtidas} foto(s) acessível(is)"
-                except Exception as erro:
-                    dados["falhas_coleta"].append({"method": "photos.getUserPhotos", "error": type(erro).__name__})
-                    dados["notas"].append(f"Contagem de fotos indisponível: {type(erro).__name__}")
-            if getattr(dados["completo"], "saved_music", None) is not None:
-                try:
-                    from telethon.tl.functions.users import GetSavedMusicRequest
-                    offset = 0
-                    total = None
-                    while True:
-                        musicas = await com_espera(
-                            lambda offset=offset: cliente(GetSavedMusicRequest(
-                                id=entidade, offset=offset, limit=(100 if MODO == "completo" else 1), hash=0
-                            ))
+                if total is not None:
+                    dados["fotos_info"] = f"{obtidas} de {total} (fotos acessíveis informadas pelo Telegram)"
+                elif obtidas:
+                    dados["fotos_info"] = f"{obtidas} foto(s) acessível(is)"
+            except Exception as erro:
+                dados["falhas_coleta"].append({"method": "photos.getUserPhotos", "error": type(erro).__name__})
+                dados["notas"].append(f"Contagem de fotos indisponível: {type(erro).__name__}")
+            try:
+                from telethon.tl.functions.users import GetSavedMusicRequest
+                offset = 0
+                total = None
+                while True:
+                    musicas = await com_espera(
+                        lambda offset=offset: cliente(GetSavedMusicRequest(
+                            id=entidade, offset=offset, limit=(100 if MODO == "completo" else 1), hash=0
+                        ))
+                    )
+                    dados["musicas_mtproto"].append(musicas)
+                    documentos = getattr(musicas, "documents", []) or []
+                    contagem = getattr(musicas, "count", None)
+                    if total is None and isinstance(contagem, int):
+                        total = contagem
+                    if not documentos:
+                        break
+                    offset += len(documentos)
+                    if MODO != "completo" or len(documentos) < 100 or (total is not None and offset >= total):
+                        break
+                obtidas = sum(len(getattr(pagina, "documents", []) or []) for pagina in dados["musicas_mtproto"])
+                if dados["midias_dir"]:
+                    musicas_itens = [
+                        documento
+                        for pagina in dados["musicas_mtproto"]
+                        for documento in (getattr(pagina, "documents", []) or [])
+                    ]
+                    for indice, documento in enumerate(musicas_itens, 1):
+                        extensao = mimetypes.guess_extension(getattr(documento, "mime_type", "") or "") or ".bin"
+                        await baixar_midia(
+                            cliente, documento, dados, "musica_perfil",
+                            f"musica_perfil_{indice:04d}{extensao}"
                         )
-                        dados["musicas_mtproto"].append(musicas)
-                        documentos = getattr(musicas, "documents", []) or []
-                        contagem = getattr(musicas, "count", None)
-                        if total is None and isinstance(contagem, int):
-                            total = contagem
-                        if not documentos:
-                            break
-                        offset += len(documentos)
-                        if MODO != "completo" or len(documentos) < 100 or (total is not None and offset >= total):
-                            break
-                    obtidas = sum(len(getattr(pagina, "documents", []) or []) for pagina in dados["musicas_mtproto"])
-                    if dados["midias_dir"]:
-                        musicas_itens = [
-                            documento
-                            for pagina in dados["musicas_mtproto"]
-                            for documento in (getattr(pagina, "documents", []) or [])
-                        ]
-                        for indice, documento in enumerate(musicas_itens, 1):
-                            extensao = mimetypes.guess_extension(getattr(documento, "mime_type", "") or "") or ".bin"
-                            await baixar_midia(
-                                cliente, documento, dados, "musica_perfil",
-                                f"musica_perfil_{indice:04d}{extensao}"
-                            )
-                    if total is not None:
-                        dados["musicas_info"] = f"{obtidas} de {total} música(s) acessível(is) no perfil"
-                    elif obtidas:
-                        dados["musicas_info"] = f"{obtidas} música(s) acessível(is) no perfil"
-                except Exception as erro:
-                    dados["falhas_coleta"].append({"method": "users.getSavedMusic", "error": type(erro).__name__})
-                    dados["notas"].append(f"Contagem de músicas indisponível: {type(erro).__name__}")
+                if total is not None:
+                    dados["musicas_info"] = f"{obtidas} de {total} música(s) acessível(is) no perfil"
+                elif obtidas:
+                    dados["musicas_info"] = f"{obtidas} música(s) acessível(is) no perfil"
+            except Exception as erro:
+                dados["falhas_coleta"].append({"method": "users.getSavedMusic", "error": type(erro).__name__})
+                dados["notas"].append(f"Contagem de músicas indisponível: {type(erro).__name__}")
         atualizar_status("2/2 · Dados aprofundados processados; consolidando ficha", entidade)
         return dados
     finally:
