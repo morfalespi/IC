@@ -1,3 +1,11 @@
+## Correção de confiança na paginação — PR #5 integrado
+
+A revisão identificou que páginas menores que o limite de 100 encerravam algumas coletas mesmo quando a resposta informava um total maior. Agora os coletores continuam conforme o total e registram incompletude quando não o alcançam; essa marca entra no JSONL e impede que o modo completo classifique a coleta como sem falhas.
+
+Os logs e títulos passaram a distinguir dados coletados de envios aceitos pelo servidor Telegram. O CI do PR #5 passou checagens sintáticas e placeholders. Não houve execução real com bot para confirmar acesso aos dados ou inspeção dos anexos.
+
+---
+
 ## Complemento integrado — mensagens fixadas MTProto
 
 **IMPLEMENTADO NO CÓDIGO:** em modo completo, quando `getFullChat` ou `getFullChannel` retorna `pinned_msg_id`, o resolver tenta obter a mensagem por `messages.getMessages` ou `channels.getMessages`, preserva a resposta integral no JSONL e empacota mídia baixável.
