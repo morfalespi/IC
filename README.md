@@ -1,6 +1,6 @@
 # Infocard — Telegram Serverless + MTProto
 
-O Infocard recebe uma referência de Telegram no privado, cria uma ficha de andamento, solicita o resolver MTProto no GitHub Actions e entrega os **campos mapeados que o Telegram efetivamente retornou**. Não consulta perfis pelo Bot API getChat. Um ID arbitrário não garante acesso.
+O Infocard recebe uma referência de Telegram no privado e solicita um resolver MTProto no GitHub Actions. A cobertura atual é parcial: mostra campos mapeados. A meta ativa é expandir para todos os campos e recursos de leitura que o Telegram disponibiliza à sessão de bot, com coleta paginada e entrega sem truncamento silencioso. Não consulta perfis pelo Bot API getChat. Um ID arbitrário não garante acesso.
 
 ## Uso
 
@@ -28,7 +28,7 @@ O formato ID @username é convenção de entrada **deste bot**. Não utilizar o 
 3. **Obter Markdown completo:** ação opcional que faz uma nova consulta, repete as informações na tela em páginas ricas e envia o anexo .md em UTF-8. Se a API recusar Rich Messages, tenta HTML convencional paginado; se recusar a mídia embutida, tenta foto separada.
 4. **Falhas:** mensagem de erro e possibilidade de nova pesquisa. Quando o Telegram/GitHub estiver indisponível, a notificação não é garantida.
 
-Os campos possíveis incluem nome, ID, usernames, bio, informações de bot, indicadores públicos, dados comerciais, métricas Telegram Stars retornadas, fotos e músicas acessíveis, informações de canais e grupos básicos (incluindo messages.getFullChat quando disponível). **Não são todos os campos possíveis do MTProto**: são os que scripts/resolver.py extrai e que a API disponibiliza à sessão do bot. Campo ausente não equivale a inexistência.
+**A cobertura atual não inclui todos os campos e recursos acessíveis ao MTProto.** O trabalho ativo é ampliar a extração e entrega, guiado por Partners e pelas especificações oficiais. A autenticação permanece como bot: o Telegram reserva messages.getHistory e stories.getPeerStories a contas de usuário; a leitura de participantes de canais pode exigir privilégios de administrador. Campo ausente não equivale a inexistência. Consulte [a matriz de cobertura e os critérios](docs/partners-mtproto-coverage.md).
 
 Os dados opcionais compartilhados no seletor podem ser mostrados no cartão inicial, mas não são preservados em armazenamento temporário independente; uma edição posterior pode substituí-los. O relatório MTProto só apresenta aquilo que o worker confirmou no protocolo.
 
