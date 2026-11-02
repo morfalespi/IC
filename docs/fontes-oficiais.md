@@ -34,3 +34,13 @@ A existência desses métodos oficiais não garante retorno de dados para quaisq
 - `sendRichMessageDraft`: https://core.telegram.org/bots/api#sendrichmessagedraft — rascunho temporário, não usado como ficha persistente.
 
 O SDK do TGCloud encaminha nomes de métodos Bot API dinamicamente. A nova edição com tabela e mídia precisa de verificação manual real porque CI apenas compila o código.
+
+## Capacidade e limites reais da Rich Message
+
+- Limites de 32.768 caracteres, 500 blocos, 16 níveis, 50 anexos, 20 colunas: https://core.telegram.org/bots/api#rich-message-formatting-options
+- `sendRichMessage`, `editMessageText` (com `rich_message`), `InputRichMessageMedia`: https://core.telegram.org/bots/api
+- `userFull` e campos condicionais: https://core.telegram.org/constructor/userFull
+- `channelFull` e campos condicionais: https://core.telegram.org/constructor/channelFull
+- Pontuação Telegram Stars: https://core.telegram.org/api/stars
+
+Mesmo com paginação, o relatório só contém campos oficialmente recebidos; o Telegram não garante acesso irrestrito a IDs desconhecidos.

@@ -1,3 +1,18 @@
+# Verificações de relatório integral
+
+1. Confira que `npm run check` executou também `test_ficha_completa.py` e não só a sintaxe dos arquivos.
+2. Faça uma consulta por `ID @username` cuja correspondência já foi verificada; compare cada campo retornado com a ficha final.
+3. Use um usuário/bot com bio, dados adicionais e foto, observando cada campo dentro de seção apropriada.
+4. Em caso de muitos campos, confirme `Parte 1/N`, `Parte 2/N` etc. **Nenhuma seção pode desaparecer ou ser truncada**.
+5. Confirme a foto incorporada ou enviada separadamente e os botões de Atualizar, Copiar ID e Abrir perfil.
+6. Em caso de erro do formato rico, confirme que o modo HTML clássico envia todas as partes.
+7. Confira que o worker nunca transmite `access_hash`, telefone, `API_ID`, `API_HASH`, sessões ou tokens como conteúdo do relatório.
+8. Registre sucesso apenas com uma execução real de `resolver.yml` que tenha enviado o relatório ao Telegram; deploy e healthcheck não são prova de sucesso em consulta.
+
+## Limites oficiais
+
+A Bot API 10.3 admite até 32.768 caracteres UTF-8, 500 blocos, 16 níveis, 50 mídias e 20 colunas por Rich Message. Ao exceder qualquer teto, o resultado deve continuar na próxima mensagem, sem descarte: https://core.telegram.org/bots/api#rich-message-formatting-options.
+
 # Checklist — cartão rico Telegram Bot API 10.3
 
 - Enviar `@BotFather` no privado: mensagem inicial precisa ser um cartão com título, tabela e botão **Atualizar**.

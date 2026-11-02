@@ -63,6 +63,19 @@ O bot agora apresenta as consultas em **Rich Messages** nativas do Telegram:
 
 Referências: https://core.telegram.org/bots/api#sendrichmessage, https://core.telegram.org/bots/api#editmessagetext, https://core.telegram.org/bots/api#rich-messages e https://core.telegram.org/bots/api#inputrichmessage.
 
+## Relatório integral com paginação oficial — 2026-11-02
+
+O Infocard reúne identificação confirmada, todos os campos úteis que o resolver MTProto efetivamente extraiu, detalhes da conta/bot/canal, foto e notas de acesso. **Nenhum campo coletado é descartado pelo layout só por exceder 13 linhas ou pelo comprimento de uma bio.** O próprio relatório é dividido em quantas páginas ricas forem necessárias quando atingir o limite oficial; as partes subsequentes aparecem como respostas ao cartão original, identificadas por `Parte X/Y`.
+
+- O **primeiro cartão** é atualizado em seu `message_id` existente. As **continuidades** são enviadas por `sendRichMessage`, com tabelas compactas, títulos, botões e numeração.
+- Cada página respeita margem para os limites documentados: até **32.768 caracteres UTF-8**, **500 blocos**, 16 níveis de aninhamento e 50 mídias por mensagem. Os cortes são exclusivamente técnicos e **não omitem valores**; uma descrição muito longa é enviada em partes numeradas.
+- A primeira página tenta incluir a foto como mídia nativa da Rich Message. Se a API não aceitar a incorporação na edição, a foto pode ser enviada à parte. Não são inventadas imagens ou outras mídias ausentes.
+- O modo de compatibilidade usa mensagens HTML convencionais **também paginadas**, de modo que um erro de Rich Messages não apague os dados.
+- Campos adicionais de `userFull` e `channelFull` incluem Stars e suas pontuações, recursos comerciais, permissões disponíveis na sessão do bot, presença de recursos de canal e estatísticas apenas quando os valores são realmente retornados. Dados de sessão, telefone e `access_hash` não são expostos.
+- Foram adicionados testes automáticos de paginação, campos longos, caracteres especiais e ausência de truncamentos, executados no `npm run check`.
+
+**Limitação de origem:** nem toda conta permite obter todos os campos; IDs numéricos sem referência continuam sujeitos ao acesso autorizado do Telegram. O formato integral evita perder dados **já obtidos**, mas não cria direitos de consulta nem contorna a privacidade.
+
 ## Arquitetura
 
 - `tgcloud/handlers/message.js`: entrada privada, referências compartilhadas e comandos.

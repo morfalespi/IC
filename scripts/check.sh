@@ -5,7 +5,8 @@ while IFS= read -r -d '' arquivo; do
   node --check "$arquivo"
 done < <(find tgcloud -type f -name '*.js' -print0 | sort -z)
 
-python -m py_compile scripts/resolver.py
+python -m py_compile scripts/resolver.py scripts/ficha_completa.py
+python -m unittest discover -s scripts -p "test_*.py"
 
 python - <<'PY'
 from pathlib import Path

@@ -1,3 +1,9 @@
+# Implementação — 2026-11-02: paginação integral do Infocard
+
+Foi criado `scripts/ficha_completa.py`, que agrupa todos os campos extraídos em páginas de Rich Messages, com continuidade numerada e margem para os limites oficiais. O primeiro cartão é editado; eventuais páginas adicionais são enviadas como respostas, sem perder dados por exceder 13 linhas, 4.096 caracteres da mensagem clássica, ou tamanhos individuais de campo. O fallback HTML clássico também pagina os dados e tem testes próprios em `scripts/test_ficha_completa.py`. Foram expostos novos campos condicionais de estrelas, negócios, perfil e canais retornados oficialmente, sem mostrar credenciais. **Estado: implementado; necessário CI aprovado e teste real no Telegram antes de afirmar resultado de produção**.
+
+---
+
 # Implementado — 2026-11-02: ficha consolidada por categorias
 
 A ficha rica final passou a mostrar identificação básica + todos os dados adicionais disponibilizados via MTProto em categorias distintas; os blocos após os primeiros 13 campos deixaram de ser um agrupamento único. O formato HTML de fallback também apresenta seções e evita recortar uma tag na metade. O processo mostra fases intermediárias de coleta e então substitui o cartão pelo resultado final. **CI aprovado no commit 80eaa4d83b3aacf37f5402879e6c92b0877fce08; renderização final dessa revisão ainda depende de uma consulta real.** A execução 41525872904 confirmou que o fluxo Rich Message anterior editava a mensagem sem foto, mas não valida esta nova organização de categorias. O compartilhamento inicial de dados não é transportado de forma persistente para o worker; a ficha MTProto só contém o que foi confirmado no próprio protocolo.

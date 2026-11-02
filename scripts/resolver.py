@@ -518,6 +518,9 @@ def descrever(entidade, completo_, alvo):
             avaliacao = getattr(completo_, "stars_rating", None)
             if avaliacao:
                 add("Nível Telegram Stars", getattr(avaliacao, "level", None), zero=True)
+                add("Stars no nível atual", getattr(avaliacao, "current_level_stars", None), zero=True)
+                add("Pontuação Stars", getattr(avaliacao, "stars", None), zero=True)
+                add("Stars para o próximo nível", getattr(avaliacao, "next_level_stars", None), zero=True)
             musica = getattr(completo_, "saved_music", None)
             if musica:
                 add("Música destacada no perfil", descricao_musica(musica) or "disponível, sem título informado")
@@ -528,6 +531,15 @@ def descrever(entidade, completo_, alvo):
                 if periodos:
                     add("Intervalos de atendimento registrados", len(periodos), zero=True)
 
+            add("Mensagens pagas (Stars)", getattr(completo_, "send_paid_messages_stars", None), zero=True)
+            add("Mensagem automática de boas-vindas", "configurada" if getattr(completo_, "business_greeting_message", None) else None)
+            add("Mensagem comercial de ausência", "configurada" if getattr(completo_, "business_away_message", None) else None)
+            add("Observação de privacidade das leituras", "datas exatas restritas" if getattr(completo_, "read_dates_private", False) else None)
+            add("Recebe chamadas de voz", "disponível" if getattr(completo_, "phone_calls_available", False) else None)
+            add("Recebe chamadas de vídeo", "disponível" if getattr(completo_, "video_calls_available", False) else None)
+            add("Permite agendamento de mensagens", "sim" if getattr(completo_, "has_scheduled", False) else None)
+            add("Exige Premium para novo contato", "sim" if getattr(completo_, "contact_require_premium", False) else None)
+            add("Stories fixados acessíveis", "sim" if getattr(completo_, "stories_pinned_available", False) else None)
             add("Nome nos encaminhamentos", getattr(completo_, "private_forward_name", None))
             add("Mensagens de voz", "bloqueadas" if getattr(completo_, "voice_messages_forbidden", False) else None)
             info_bot = getattr(completo_, "bot_info", None)
@@ -555,6 +567,13 @@ def descrever(entidade, completo_, alvo):
             add("Nível de boosts do canal", getattr(entidade, "level", None))
             add("Presentes recebidos pelo canal", getattr(completo_, "stargifts_count", None))
             add("Limite de reações distintas", getattr(completo_, "reactions_limit", None))
+            add("Lista de membros visualizável", "sim" if getattr(completo_, "can_view_participants", False) else None)
+            add("Estatísticas acessíveis", "sim" if getattr(completo_, "can_view_stats", False) else None)
+            add("Lista de membros oculta", "sim" if getattr(completo_, "participants_hidden", False) else None)
+            add("Antispam nativo", "ativo" if getattr(completo_, "antispam", False) else None)
+            add("Mensagens agendadas disponíveis", "sim" if getattr(completo_, "has_scheduled", False) else None)
+            add("Histórico anterior oculto", "sim" if getattr(completo_, "hidden_prehistory", False) else None)
+            add("Stories fixados", "disponíveis" if getattr(completo_, "stories_pinned_available", False) else None)
             local = getattr(completo_, "location", None)
             if local:
                 add("Localização", getattr(local, "address", None))
