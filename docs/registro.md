@@ -1,3 +1,11 @@
+# Implementado — 2026-11-02: entrega integral, MTProto e Bot API 10.3
+
+**IMPLEMENTADO NO CÓDIGO:** retirada da abreviação dos nove campos no resultado normal, ampliação de campos opcionais oficiais de usuários/bots/canais, suporte ao método `messages.getFullChat` para grupos básicos e entrega rica paginada com fallback HTML. Transporte trata `retry_after`, tenta partes subsequentes mesmo após recusa parcial e envia o Markdown em uma etapa independente. Relatório só é classificado completo quando o conjunto obrigatório foi aceito pela Bot API. Sem testes autorais nem comentários/docstrings adicionados ao código, conforme AGENTS.md.
+
+**NÃO COMPROVADO AO VIVO AINDA:** os novos campos e todo o fluxo de falhas parciais. Provar com execução MTProto não-healthcheck e inspeção das mensagens e do arquivo no Telegram.
+
+---
+
 # Auditoria corretiva — 2026-11-02
 
 **IMPLEMENTADO:** correção do botão de cartão de erro, remoção de código de formatação obsoleto e seus truncamentos, correção da mensagem de ID esperado inválido e atualização do texto do workflow. **REVISADO:** AGENTS.md, README.md, SECURITY.md e docs/launch-checklist.md com inventário em docs/auditoria-operacional.md. Preservadas as decisões sem comentários em código e sem testes autorais.

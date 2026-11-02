@@ -30,7 +30,7 @@ Repositórios de terceiros, exemplos, versões anteriores deste projeto e coment
 - botões usam callback_data tipado (r ou f), validado em tgcloud/lib/entrada.js; não reutilizar conteúdo opaco de callback como texto digitado.
 - O TGCloud envia alvo e expected_id como parâmetros separados a resolver.yml, que aciona scripts/resolver.py.
 - MTProto tenta resolução por ID com as limitações de access_hash do Telegram; username passa por contacts.resolveUsername e, se houver expected_id, exige correspondência exata do peer.
-- O modo resumo pode abreviar campos deliberadamente; o botão Completo + Markdown solicita outra consulta MTProto e gera páginas ricas e anexo .md com campos mapeados e efetivamente retornados, não todas as propriedades existentes do protocolo.
+- A busca comum exibe todos os campos mapeados que o MTProto efetivamente retornou, em páginas ricas, sem corte fixo de quantidade. O botão Obter Markdown completo faz outra consulta e entrega também o anexo .md; isso não significa coletar todas as propriedades possíveis do protocolo.
 - Dados compartilhados por seletores e encaminhamentos podem aparecer no cartão inicial, mas o worker não possui armazenamento de contexto persistente para conservá-los se a ficha for sobrescrita.
 - O modo inline orienta a conversa privada; não faz consulta MTProto dentro de outro chat.
 - Sem Mini App nem endpoints próprios. Existe a tabela disparos para limitar requisições; limites atuais em tgcloud/lib/limite.js.

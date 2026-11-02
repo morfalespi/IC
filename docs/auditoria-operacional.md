@@ -90,3 +90,7 @@ Por decisão expressa do proprietário, não são criados testes escritos pelo p
 7. Conferir login e permissões do Telegram e erros de Bot API, sem divulgar dados pessoais nos logs ou issues.
 
 Esta auditoria não autoriza inferir novos campos do Telegram nem contornar restrições de privacidade.
+
+## Revisão de entrega integral — 2026-11-02
+
+Foi removido o corte fixo de nove campos da apresentação usual, mantendo paginação integral. O método MTProto `messages.getFullChat` foi introduzido para grupos básicos acessíveis. O transporte da Bot API agora respeita `retry_after` e tenta novamente respostas 429 e 5xx; erros ambíguos de rede não são repetidos automaticamente. Se a Rich Message for recusada, há tentativa de envio paginado em HTML; os arquivos Markdown são tentados independentemente da formatação das mensagens. O sucesso exige todas as partes obrigatórias aceitas pela Bot API. Ainda é necessário demonstrar esse comportamento na execução real posterior ao commit, especialmente o botão de Markdown.
