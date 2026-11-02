@@ -460,6 +460,7 @@ def registros_mtproto(dados, alvo, info):
     objetos = {
         "metadados": metadados,
         "entidade": dados.get("entidade"),
+        "resposta_resolucao": dados.get("resposta_resolucao"),
         "resposta_completa": dados.get("resposta_completa"),
         "fotos_perfil": dados.get("fotos_mtproto", []),
         "musicas_perfil": dados.get("musicas_mtproto", []),
@@ -533,14 +534,15 @@ async def resolver_id(cliente, id_marcado):
             "O Telegram não retornou uma entidade acessível para este ID. "
             "Experimente 'ID @username' ou compartilhe o usuário como referência."
         )
-    return entidade
+    return entidade, candidatos
 
 
 async def resolver_alvo(cliente, alvo):
     if re.fullmatch(r"-?\d{1,16}", alvo):
         if EXPECTED_ID:
             raise ValueError("ID esperado exige um username público para a verificação.")
-        return await resolver_id(cliente, int(alvo)), "Consulta MTProto por ID, sujeita às permissões do Telegram"
+        entidade, resposta = await resolver_id(cliente, int(alvo))
+        return entidade, "Consulta MTProto por ID, sujeita às permissões do Telegram", resposta
     resultado = await com_espera(lambda: cliente(ResolveUsernameRequest(alvo)))
     entidade = entidade_de(resultado)
     if entidade is None:
@@ -548,15 +550,15 @@ async def resolver_alvo(cliente, alvo):
     if EXPECTED_ID:
         if utils.get_peer_id(entidade) != int(EXPECTED_ID):
             raise LookupError("O username foi resolvido, mas o ID retornado pelo Telegram não corresponde ao ID esperado.")
-        return entidade, "ID confirmado por contacts.resolveUsername"
-    return entidade, "Referência obtida por contacts.resolveUsername"
+        return entidade, "ID confirmado por contacts.resolveUsername", resultado
+    return entidade, "Referência obtida por contacts.resolveUsername", resultado
 
 async def coletar(alvo):
     cliente = TelegramClient(StringSession(), int(os.environ["API_ID"]), os.environ["API_HASH"])
     try:
         await com_espera(lambda: cliente.start(bot_token=os.environ["BOT_TOKEN"]))
-        entidade, origem = await resolver_alvo(cliente, alvo)
-        dados = {"entidade": entidade, "completo": None, "resposta_completa": None, "foto": None, "notas": [origem], "fotos_info": None, "musicas_info": None, "fotos_mtproto": [], "musicas_mtproto": [], "participantes_mtproto": [], "midias": [], "pacotes_midias": [], "falhas_coleta": [], "midias_dir": tempfile.mkdtemp(prefix="infocard_mtproto_") if MODO == "completo" and CHAT_DESTINO else None}
+        entidade, origem, resposta_resolucao = await resolver_alvo(cliente, alvo)
+        dados = {"entidade": entidade, "completo": None, "resposta_completa": None, "resposta_resolucao": resposta_resolucao, "foto": None, "notas": [origem], "fotos_info": None, "musicas_info": None, "fotos_mtproto": [], "musicas_mtproto": [], "participantes_mtproto": [], "midias": [], "pacotes_midias": [], "falhas_coleta": [], "midias_dir": tempfile.mkdtemp(prefix="infocard_mtproto_") if MODO == "completo" and CHAT_DESTINO else None}
         if dados["midias_dir"]:
             atexit.register(shutil.rmtree, dados["midias_dir"], ignore_errors=True)
         atualizar_status("1/2 · Identificação confirmada; buscando campos adicionais", entidade)
