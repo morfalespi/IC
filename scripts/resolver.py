@@ -180,7 +180,7 @@ def callback_data(acao, alvo):
 def botao_completo(alvo):
     dados = callback_data("f", alvo)
     return ('<tg-button type="callback_data" style="primary" data="' +
-            esc(dados) + '">📄 Obter Markdown completo</tg-button>') if dados else ""
+            esc(dados) + '">📥 Exportação completa</tg-button>') if dados else ""
 
 def enviar_documento_md(chat, conteudo, id_entidade, indice, total):
     limite = uuid.uuid4().hex
