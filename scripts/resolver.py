@@ -1058,14 +1058,15 @@ async def principal():
                         midias_entregues += 1
                     except Exception as erro_midia:
                         print("Pacote de mídia recusado:", indice, "/", len(pacotes_midias), type(erro_midia).__name__)
-            sucesso_final = (rich_ok or html_ok) and (
+            entrega_ok = (rich_ok or html_ok) and (
                 not completo or (
-                    not dados.get("falhas_coleta") and
                     arquivos_previstos > 0 and arquivos_entregues == arquivos_previstos and
                     json_previstos > 0 and json_entregues == json_previstos and
-                    midias_entregues == midias_previstas and falhas_midias == 0
+                    midias_entregues == midias_previstas
                 )
             )
+            cobertura_ok = not dados.get("falhas_coleta") and falhas_midias == 0
+            sucesso_final = entrega_ok and (not completo or cobertura_ok)
             if sucesso_final:
                 marcar_notificado()
                 print("RELATÓRIO ENTREGUE:", len(info["campos"]), "campos,",
@@ -1075,17 +1076,27 @@ async def principal():
                       json_entregues, "/", json_previstos, "arquivos JSONL,",
                       midias_entregues, "/", midias_previstas, "pacotes de mídia")
             else:
-                aviso = (
-                    "<b>⚠️ Entrega incompleta</b>\n"
-                    "Algumas partes não puderam ser enviadas nesta execução.\n"
-                    f"Rich Messages: {entregues_ricos}/{total_ricos}.\n"
-                    f"HTML: {entregues_html}/{total_html}.\n"
-                    f"Arquivos Markdown: {arquivos_entregues}/{arquivos_previstos}.\n"
-                    f"Arquivos JSONL: {json_entregues}/{json_previstos}.\n"
-                    f"Pacotes de mídia: {midias_entregues}/{midias_previstas}; itens indisponíveis: {falhas_midias}.\n"
-                    "Faça nova consulta para tentar obter as partes restantes."
-                )
-                enviar(chat, aviso)
+                linhas_aviso = []
+                if not entrega_ok:
+                    linhas_aviso.extend([
+                        "<b>⚠️ Entrega incompleta</b>",
+                        "Algumas partes do relatório não foram confirmadas pelo Telegram.",
+                        f"Rich Messages: {entregues_ricos}/{total_ricos}.",
+                        f"HTML: {entregues_html}/{total_html}.",
+                        f"Arquivos Markdown: {arquivos_entregues}/{arquivos_previstos}.",
+                        f"Arquivos JSONL: {json_entregues}/{json_previstos}.",
+                        f"Pacotes de mídia enviados: {midias_entregues}/{midias_previstas}.",
+                    ])
+                if completo and not cobertura_ok:
+                    if entrega_ok:
+                        linhas_aviso.append("<b>⚠️ Resultado parcial enviado</b>")
+                    linhas_aviso.append("Alguns dados disponíveis não puderam ser incluídos nesta consulta.")
+                    if dados.get("falhas_coleta"):
+                        linhas_aviso.append(f"Métodos sem resposta completa: {len(dados['falhas_coleta'])}.")
+                    if falhas_midias:
+                        linhas_aviso.append(f"Itens de mídia indisponíveis: {falhas_midias}.")
+                linhas_aviso.append("As observações no relatório indicam os dados que faltaram.")
+                enviar(chat, "\\n".join(linhas_aviso))
                 codigo = 1
         else:
             causa = re.sub(r"<[^>]*>", "", texto)
