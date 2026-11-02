@@ -302,7 +302,7 @@ async def baixar_arquivo_bot_api(dados, file_id, categoria, file_unique_id=None)
 
 
 async def coletar_bot_api(dados, entidade, info):
-    chat_id = "@" + info["username"] if info.get("username") else info.get("id")
+    chat_id = "@" + info["username"] if isinstance(entidade, (Channel, Chat)) and info.get("username") else info.get("id")
     if not chat_id:
         return
     chat = await bot_api_leitura(dados, "getChat", {"chat_id": chat_id})
@@ -399,7 +399,7 @@ def enviar_documento_arquivo(chat, caminho, id_entidade, indice, total):
         filename += f"_parte_{indice}_de_{total}"
     filename += ".zip"
     resumo_hash = hashlib.sha256(conteudo).hexdigest()
-    campos = {"chat_id": str(int(chat)), "caption": "🖼️ Mídia MTProto exportada" +
+    campos = {"chat_id": str(int(chat)), "caption": "🖼️ Mídia Telegram exportada" +
               (f" · parte {indice}/{total}" if total > 1 else "") +
               "\nSHA-256: " + resumo_hash}
     if ORIGEM_ID:
