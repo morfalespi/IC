@@ -98,3 +98,8 @@ Foi removido o corte fixo de nove campos da apresentação usual, mantendo pagin
 ## Revisão de confirmação da entrega — 2026-11-02
 
 **IMPLEMENTADO:** exigir o `result.message_id` retornado pelo servidor Bot API nos métodos de envio/edição em chat, adicionar hash SHA-256 à legenda de cada Markdown, contar partes de Rich Messages, HTML e anexos separadamente, respeitar `retry_after` em 429 sem repetir 5xx de resultado de envio ambíguo e ampliar timeout do job para 30 minutos. **NÃO VERIFICADO EM PRODUÇÃO:** falhas reais de todas as modalidades e recebimento do arquivo após esta revisão. CI e healthcheck são insuficientes. O arquivo referenciado pelo usuário como `partners.md` não estava disponível na árvore main nem nas peças desta conversa; não foi tomado como fonte normativa nem inventado. Referências oficiais: https://core.telegram.org/bots/api e https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax.
+
+
+## Escopo ativo decidido em 2026-11-02
+
+A meta agora é ampliar o Infocard para entregar a cobertura máxima e verificável dos dados de leitura acessíveis à sessão MTProto de bot, em vez de limitar o produto aos campos já mapeados. A autenticação permanece como bot. Os métodos `messages.getHistory` e `stories.getPeerStories` são exclusivos de contas de usuário; `channels.getParticipants` pode exigir administração. A cobertura técnica precisa ser inventariada campo a campo e método a método conforme a layer oficial e o Telethon instalado. Não alegar conclusão até que os dados retornados, a paginação e a entrega recebida no Telegram sejam confirmados. Ver [docs/partners-mtproto-coverage.md](partners-mtproto-coverage.md).
