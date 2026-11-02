@@ -9,8 +9,8 @@ A cobertura deve preservar objetos TL completos, wrappers de resposta, campos es
 ## Limites oficiais da sessão de bot
 
 - As chamadas de leitura usadas nesta primeira entrega são `users.getFullUser`, `channels.getFullChannel`, `messages.getFullChat`, `photos.getUserPhotos`, `users.getSavedMusic` e, quando o Telegram indicar capacidade, `channels.getParticipants`.
-- `channels.getParticipants` aceita bots, mas pode exigir administração; canais também podem ocultar ou restringir participantes.
-- `messages.getHistory` e `stories.getPeerStories` são exclusivos de sessões de usuário. Como a pessoa decidiu manter autenticação de bot, o Infocard registra esses limites e não promete histórico ou stories ativos.
+- `channels.getParticipants`, `photos.getUserPhotos` e `users.getSavedMusic` aceitam bots. O worker agora tenta essas leituras no modo completo sem depender de flags parciais; a resposta do Telegram determina o que a sessão realmente pode ler. Participantes podem exigir administração.
+- `messages.getHistory`, `stories.getPeerStories`, `messages.getCommonChats` e `messages.getPeerSettings` são exclusivos de sessões de usuário. Como a pessoa decidiu manter autenticação de bot, o Infocard registra esses limites e não promete histórico ou stories ativos.
 - Permissões, privacidade, FloodWait, ausência de dados e diferenças de layer podem limitar a resposta. Campo ausente não significa que o dado não exista.
 - Escopo é leitura da entidade e das coleções que os métodos acima retornam. Nenhuma chamada de alteração é incluída.
 
@@ -19,9 +19,9 @@ A cobertura deve preservar objetos TL completos, wrappers de resposta, campos es
 | Capacidade | Estado no código | Limite atual |
 |---|---|---|
 | Entidade resolvida e objeto de perfil completo | Implementado | As respostas completas são serializadas; isso ainda precisa de execução real após a alteração |
-| Fotos de perfil | Paginação no modo completo | Paginação e download dependem do que Telegram disponibilizar |
-| Música salva no perfil | Paginação no modo completo | Só consultada quando `saved_music` existe no perfil completo |
-| Participantes de canal | Tentativa paginada | Somente se os flags do objeto completo indicarem acesso; Telegram ainda pode recusar |
+| Fotos de perfil | Consultada e paginada no modo completo para todo usuário resolvido | Paginação e download dependem do que Telegram disponibilizar |
+| Música salva no perfil | Consultada e paginada no modo completo para todo usuário resolvido | A resposta do Telegram informa a coleção acessível, inclusive vazia |
+| Participantes de canal | Tentativa paginada no modo completo | A chamada não é pulada por flags; Telegram ainda pode recusar por permissão |
 | Dados estruturados | JSONL sem mapeamento manual, dividido em anexos | Confirmação da Bot API não prova que o arquivo recebido abre ou preserva todo conteúdo |
 | Foto e arquivos de mídia baixáveis | ZIP com manifesto e hash | Itens indisponíveis ou acima do limite são explicitados; não contam como sucesso integral |
 | Histórico de mensagens e stories ativos | Fora do acesso de bot | Métodos exigem sessão de usuário; não serão habilitados mantendo a decisão de autenticação atual |
