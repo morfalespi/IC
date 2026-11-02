@@ -24,7 +24,7 @@ on:
         required: false
         default: ""
       modo:
-        description: "Resumo do cartão ou relatório completo com documento Markdown"
+        description: "Resumo do cartão ou exportação completa com Markdown, JSONL e mídia"
         required: false
         default: "resumo"
       origem_id:
