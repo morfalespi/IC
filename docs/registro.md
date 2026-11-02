@@ -1,3 +1,9 @@
+# Ajuste de robustez — 2026-11-02: resultado parcial das referências do Telegram
+
+O handler passa a aproveitar imediatamente os campos opcionais recebidos pelo Telegram em `users_shared`, `chat_shared`, encaminhamentos, contatos e menções, sem consultar perfis pela Bot API. Campos de seleção são exibidos com origem, separados do resultado posterior do MTProto. Também foram acrescentados seletores de canal e grupo. Esse comportamento só está **IMPLEMENTADO** até teste manual do bot. O servidor pode recusar enriquecimento por ID; nenhum dado adicional é fabricado. Persistência de sessão e base de peers foram identificadas como aperfeiçoamento arquitetural futuro, não implementado nem recomendado em repositório público sem medidas de proteção.
+
+---
+
 # Atualização vigente — 2026-11-02: IDs e referências oficiais
 
 A pesquisa por ID **não é mais rejeitada no handler**. O resolver usa as formas oficiais de referência do MTProto: métodos de usuário, canal ou grupo, com `access_hash=0` somente quando previsto para bots e permitido pelo Telegram; alternativa `ID @username` com comparação estrita da identidade devolvida por `contacts.resolveUsername`; e seleção/encaminhamento oficial fornecendo ID e eventual username. O Telegram pode negar a consulta por ID isolado. Não há pesquisa de perfis via `api.getChat`; o Bot API só transporta mensagens e referências compartilhadas. A seção histórica abaixo descreve versões substituídas. Evidência operacional exige uma busca real, não apenas CI, deploy ou healthcheck.

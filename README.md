@@ -12,6 +12,14 @@ A consulta de entidades do Telegram usa **MTProto por Telethon**, sem chamada a 
 
 IDs numéricos são aceitos como solicitações de pesquisa, mas **não existe consulta universal e garantida por ID**, pois o Telegram controla a disponibilidade de `access_hash` e referências por conta/sessão. Se um ID não for reconhecido, tente `ID @username` ou o seletor oficial de usuário.
 
+## Resultados úteis quando o MTProto não consegue enriquecer o ID
+
+O bot não descarta mais os campos recebidos em `users_shared`, `chat_shared`, contato, encaminhamento ou menção. Ele mostra imediatamente os valores efetivamente fornecidos pelo Telegram (ID, nome/título, username e indicação de foto quando presentes), identificando **a origem do compartilhamento**, além de tentar o enriquecimento por MTProto. Dados compartilhados e resposta da pesquisa são apresentados separadamente: um não prova o outro.
+
+O seletor oficial oferece **Escolher usuário**, **Escolher canal** e **Escolher grupo**. Isso aumenta a chance de produzir informação útil sem criar um serviço de coleta de perfis ou inventar `access_hash`. Mesmo assim, a documentação do Telegram adverte que o bot pode não conseguir consultar o chat ou o usuário apenas pelo ID compartilhado.
+
+Para **ID digitado isoladamente**, somente o número está disponível; nenhuma API oficial garante descobrir nome, foto ou username de uma conta desconhecida. A solução estrutural para recuperar entidades já conhecidas em consultas futuras é um worker MTProto de longa duração com base de peers e sessão autenticada persistente, protegida fora do Git e de artefatos públicos. Não armazene sessões ou access hashes em GitHub Actions logs, código ou secrets genéricos sem um projeto específico de proteção e rotação.
+
 ## Arquitetura
 
 - `tgcloud/handlers/message.js`: entrada privada, referências compartilhadas e comandos.

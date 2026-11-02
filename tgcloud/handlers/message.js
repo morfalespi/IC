@@ -2,51 +2,88 @@ import { consultar } from '../lib/consulta.js';
 import { enviarMensagem } from '../lib/envio.js';
 import { relatorioErro, relatorioAjuda, relatorioInvalido } from '../lib/relatorio.js';
 
-function referenciaPorUsuario(usuario) {
-  const id = usuario?.user_id ?? usuario?.id;
-  if (!Number.isSafeInteger(Number(id)) || Number(id) <= 0) return null;
-  return String(id) + (usuario.username ? ' @' + usuario.username : '');
+function esc(valor) {
+  return String(valor).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function entradaDeMensagem(message) {
+function reduzir(valor, limite = 160) {
+  return Array.from(String(valor)).slice(0, limite).join('');
+}
+
+function referencia(objeto, origem, tipo = 'usuario') {
+  const idBruto = tipo === 'chat' ? objeto?.chat_id ?? objeto?.id : objeto?.user_id ?? objeto?.id;
+  const id = Number(idBruto);
+  if (!Number.isSafeInteger(id) || id === 0) return null;
+  const username = typeof objeto?.username === 'string' && /^[A-Za-z0-9_]{1,32}$/.test(objeto.username) ? objeto.username : null;
+  const nome = tipo === 'chat'
+    ? objeto?.title
+    : [objeto?.first_name, objeto?.last_name].filter(v => typeof v === 'string' && v.trim()).join(' ');
+  return {
+    entrada: String(id) + (username ? ' @' + username : ''),
+    id: String(id),
+    username,
+    nome: nome ? reduzir(nome) : null,
+    origem,
+    fotoInformada: Array.isArray(objeto?.photo) && objeto.photo.length > 0,
+  };
+}
+
+function referenciaCompartilhada(message) {
   if (message.users_shared) {
-    const escolhido = message.users_shared.users?.[0];
-    return referenciaPorUsuario(escolhido);
+    return referencia(message.users_shared.users?.[0], 'Seleção de usuário no Telegram');
+  }
+  if (message.chat_shared) {
+    return referencia(message.chat_shared, 'Seleção de chat no Telegram', 'chat');
   }
   if (message.forward_origin) {
     const origem = message.forward_origin;
-    if (origem.type === 'user') return referenciaPorUsuario(origem.sender_user);
-    if (origem.type === 'channel' || origem.type === 'chat') {
-      const chat = origem.chat ?? origem.sender_chat;
-      if (chat?.id) return String(chat.id) + (chat.username ? ' @' + chat.username : '');
-    }
+    if (origem.type === 'user') return referencia(origem.sender_user, 'Mensagem encaminhada com remetente identificado');
+    if (origem.type === 'chat') return referencia(origem.sender_chat, 'Mensagem encaminhada de chat', 'chat');
+    if (origem.type === 'channel') return referencia(origem.chat, 'Mensagem encaminhada de canal', 'chat');
     return null;
   }
-  if (message.contact) return referenciaPorUsuario(message.contact);
+  if (message.contact) {
+    return referencia(message.contact, 'Contato compartilhado');
+  }
   const mencao = [...(message.entities || []), ...(message.caption_entities || [])]
     .find(item => item.type === 'text_mention' && item.user);
-  return mencao ? referenciaPorUsuario(mencao.user) : undefined;
+  return mencao ? referencia(mencao.user, 'Menção oficial a usuário') : undefined;
+}
+
+function adicionarDadosCompartilhados(resposta, dados) {
+  const linhas = [
+    '<b>Informações fornecidas pelo Telegram</b>',
+    'Origem: ' + esc(dados.origem),
+    'ID: <code>' + esc(dados.id) + '</code>',
+  ];
+  if (dados.nome) linhas.push('Nome ou título: ' + esc(dados.nome));
+  if (dados.username) linhas.push('Username informado: @' + esc(dados.username));
+  if (dados.fotoInformada) linhas.push('Foto: o Telegram forneceu uma referência de foto.');
+  linhas.push('Esses dados vieram do compartilhamento, não de uma consulta MTProto. Podem mudar depois do compartilhamento.');
+  linhas.push('', resposta.html);
+  return { ...resposta, html: linhas.join('\n') };
 }
 
 export default async function (message) {
   if (message.chat.type !== 'private') return;
-
   let resposta;
   try {
-    const referencia = entradaDeMensagem(message);
-    if (referencia === null) {
-      resposta = relatorioInvalido({ rotulo: '', erro: 'A referência compartilhada não inclui um ID identificável. Se houver @username público, envie-o diretamente.' });
-    } else if (referencia) {
-      resposta = await consultar(referencia, { canal: 'privado', chatId: message.chat.id });
+    const compartilhamento = referenciaCompartilhada(message);
+    if (compartilhamento === null) {
+      resposta = relatorioInvalido({
+        rotulo: '',
+        erro: 'O Telegram não forneceu um ID acessível nessa referência. Compartilhe um usuário ou chat com remetente identificado.',
+      });
+    } else if (compartilhamento) {
+      const consulta = await consultar(compartilhamento.entrada, { canal: 'privado', chatId: message.chat.id });
+      resposta = adicionarDadosCompartilhados(consulta, compartilhamento);
     } else {
       const texto = message.text || '';
       const inicio = /^\/start(?:@\w+)?(?:\s+(\S+))?\s*$/.exec(texto);
       const ajuda = /^\/help(?:@\w+)?\s*$/.test(texto);
-      if ((inicio && !inicio[1]) || ajuda) {
-        resposta = relatorioAjuda();
-      } else {
-        resposta = await consultar(inicio?.[1] ?? texto, { canal: 'privado', chatId: message.chat.id });
-      }
+      resposta = ((inicio && !inicio[1]) || ajuda)
+        ? relatorioAjuda()
+        : await consultar(inicio?.[1] ?? texto, { canal: 'privado', chatId: message.chat.id });
     }
   } catch (erro) {
     console.error('falha ao montar a resposta:', erro);

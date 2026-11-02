@@ -25,6 +25,14 @@
 7. Confira que nenhuma consulta de perfil usa `api.getChat`.
 8. Verifique execução e logs de `Resolver entidade (MTProto)`.
 
+## Teste de retorno parcial verificável
+
+- Escolha um usuário usando o botão oficial e confirme que a primeira resposta exibe **Informações fornecidas pelo Telegram**, ID e nome/username se presentes, independentemente de sucesso do resolver.
+- Escolha um canal e um grupo. Verifique os dados `chat_shared` e a tentativa separada de enriquecimento por MTProto.
+- Não confunda campos fornecidos em uma seleção com campos confirmados pelo MTProto.
+- Confira erros de runtime do `request_chat` no SDK, pois CI e deploy validam publicação e sintaxe, não a compatibilidade de cada botão com o cliente Telegram.
+- Na pesquisa por ID digitado, confirme que uma recusa do servidor gera explicação útil, sem dados inventados.
+
 ## Limites
 
 Um `access_hash` é específico do contexto MTProto e não é fornecido universalmente a partir de IDs. O valor zero é uma forma documentada de referência para bots em certas condições, não um método para contornar restrições. Não prometa que qualquer ID terá resultado.
