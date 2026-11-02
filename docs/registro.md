@@ -314,3 +314,8 @@ Na branch `codex/partners-mtproto-coverage`, o resolver passou a preservar os wr
 **NÃO VERIFICADO:** compatibilidade de execução com a versão instalada do Telethon, execução real com bot após estas mudanças, abertura/inspeção dos anexos recebidos e cobertura de todos os métodos MTProto de leitura elegíveis para cada tipo de peer. A matriz em `docs/partners-mtproto-coverage.md` identifica isso como trabalho restante. Portanto esta mudança é uma etapa de ampliação, não cobertura total nem sucesso comprovado em produção.
 
 Limites de autenticação: o Telegram documenta `messages.getHistory` e `stories.getPeerStories` como métodos exclusivos de usuário; a sessão permanece de bot por decisão da pessoa. `channels.getParticipants` pode depender de privilégios e permissões do chat. A resposta da API não concede acesso a dados privados ou ocultos.
+
+
+## 2026-11-02 — CORREÇÃO: distinguir cobertura de dados e entrega
+
+A primeira versão da branch usava uma única condição para combinar falhas de coleta com falhas de envio e, em ambos os casos, respondia “Entrega incompleta”. Isso descrevia incorretamente uma execução em que todos os arquivos foram entregues, mas algum dado não pôde ser obtido. O código agora mantém estados distintos: entrega confirmada mede páginas/anexos aceitos e cobertura mede os dados disponíveis; o bot pode informar “Resultado parcial enviado” quando a entrega ocorreu e a coleta teve lacunas. Também foi restaurada a regra local contra testes escritos pelo próprio implementador, que não conflita com Partners e não precisava ter sido removida.
