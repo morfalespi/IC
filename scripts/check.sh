@@ -5,7 +5,15 @@ while IFS= read -r -d '' arquivo; do
   node --check "$arquivo"
 done < <(find tgcloud -type f -name '*.js' -print0 | sort -z)
 
-python -m py_compile scripts/resolver.py scripts/ficha_completa.py
+python -m py_compile scripts/resolver.py scripts/ficha_completa.py scripts/mtproto_export.py
+
+PYTHONPATH=scripts python - <<'PY'
+from telethon.tl.functions.channels import GetParticipantsRequest
+from telethon.tl.functions.photos import GetUserPhotosRequest
+from telethon.tl.functions.users import GetSavedMusicRequest
+from telethon.tl.types import ChannelParticipantsRecent
+assert GetParticipantsRequest and GetUserPhotosRequest and GetSavedMusicRequest and ChannelParticipantsRecent
+PY
 
 python - <<'PY'
 from pathlib import Path
