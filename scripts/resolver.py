@@ -937,7 +937,7 @@ async def principal():
             teclado_fallback = None
             if MODO == "resumo" and callback_data("f", alvo_disparo):
                 teclado_fallback = {"inline_keyboard": [[{
-                    "text": "📥 Exportação completa (Markdown + JSONL)",
+                    "text": "📥 Exportação completa",
                     "callback_data": callback_data("f", alvo_disparo),
                 }]]}
             total_ricos = 0
