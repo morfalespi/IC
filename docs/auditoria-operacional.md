@@ -114,7 +114,7 @@ O bot separa a entrega de anexos da cobertura dos dados. Quando o Telegram receb
 
 **IMPLEMENTADO NO CÓDIGO:** a exportação completa tenta leituras Bot API adicionais por entidade: `getChat` e `getChat` dos chats pessoais, pais ou vinculados indicados por `ChatFullInfo`; para usuários, pagina fotos e áudios de perfil e obtém até 20 mensagens do chat pessoal indicado no perfil; para grupos e canais, obtém administradores e contagem. As respostas completas e falhas de método são incluídas no JSONL junto às respostas MTProto. Arquivos compatíveis são baixados por `getFile`, deduplicados e agrupados nos ZIPs; downloads Bot API acima de 20 MiB são marcados indisponíveis. Retentativas 5xx ficam restritas a leituras idempotentes.
 
-**REVISADO:** README, AGENTS, matriz de cobertura e registro passaram a descrever as duas APIs. Foram removidas afirmações normativas antigas que excluíam `getChat` e campos MTProto repetidos no relatório. PRs #2, #3, #4 e #5 foram integrados à `main`; CI passou nas verificações automatizadas.
+**REVISADO:** README, AGENTS, matriz de cobertura e registro passaram a descrever as duas APIs. Foram removidas afirmações normativas antigas que excluíam `getChat` e campos MTProto repetidos no relatório. PRs #2, #3, #4, #5 e #6 foram integrados à `main`; CI passou nas verificações automatizadas.
 
 **IMPLEMENTADO NO CÓDIGO:** o modo completo busca também a mensagem fixada por ID via `messages.getMessages`/`channels.getMessages` quando o objeto MTProto a informa, preserva sua resposta no JSONL e tenta baixar sua mídia.
 
@@ -124,3 +124,8 @@ O bot separa a entrega de anexos da cobertura dos dados. Quando o Telegram receb
 ## Calibração de coleta e confirmação — PR #5
 
 A revisão encontrou que fotos/áudios da Bot API, fotos/músicas MTProto e participantes podiam parar após uma página curta, sem comparar o acumulado ao total retornado. O código agora prossegue até o total ou registra a discrepância no JSONL e no estado parcial. O relatório também usa texto que distingue dados coletados de envios aceitos pelo servidor. **CI passou; acesso real a cada endpoint e recebimento/inspeção dos arquivos continuam sem prova.**
+
+
+## Coleta paginada sem total explícito — PR #6
+
+O coletor Bot API não encerra mais uma lista apenas porque a página veio curta quando não há `total_count`. Continua até uma resposta vazia, para não inferir exaustão pelo tamanho da página. CI passou; não houve consulta real após a integração.
