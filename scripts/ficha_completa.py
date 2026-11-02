@@ -163,8 +163,8 @@ def basic_pages(identity, sections, observations):
 def markdown_document(identity, sections, observations):
 
     linhas = [
-        "# Infocard — relatório completo", "",
-        "Fonte: respostas oficiais do Telegram MTProto acessíveis à sessão do bot.",
+        "# Infocard — dados coletados nesta consulta", "",
+        "Fonte: campos mapeados a partir das respostas MTProto e Bot API coletadas; respostas brutas no JSONL.",
         "Campos ausentes não foram retornados; não implicam inexistência.", "",
     ]
     for titulo, campos in [("Identificação confirmada", identity)] + list(sections):
@@ -213,8 +213,8 @@ def markdown_files(identity, sections, observations, max_bytes=40 * 1024 * 1024)
         return [whole]
 
     header = (
-        "# Infocard — relatório completo (continuação)\n\n"
-        "Fonte: dados oficialmente acessíveis à sessão MTProto do bot.\n\n"
+        "# Infocard — dados coletados nesta consulta (continuação)\n\n"
+        "Fonte: campos mapeados nesta exportação; respostas brutas no JSONL.\n\n"
     )
     groups = [("Identificação confirmada", identity)] + list(sections)
     if observations:
