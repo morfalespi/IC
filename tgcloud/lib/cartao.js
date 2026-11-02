@@ -13,10 +13,10 @@ function controles(alvo) {
     '</tg-button-row>';
 }
 
-export function cartaoPesquisa(entrada, dados = null) {
+export function cartaoPesquisa(entrada, dados = null, modo = 'resumo') {
   const linhas = [
     linha('Consulta', entrada.rotulo),
-    linha('Etapa', 'Aguardando resolução MTProto'),
+    linha('Etapa', modo === 'completo' ? 'Preparando relatório completo e arquivo Markdown' : 'Aguardando resolução MTProto'),
   ];
   if (dados) {
     linhas.push(linha('Origem', dados.origem));
@@ -28,7 +28,9 @@ export function cartaoPesquisa(entrada, dados = null) {
   return '<h2>🔎 Infocard</h2>' +
     '<p><b>⏳ Pesquisando…</b></p>' +
     '<table bordered compact><tr><th>Campo</th><th>Valor</th></tr>' + linhas.join('') + '</table>' +
-    '<p><i>A ficha será atualizada após a consulta oficial ao Telegram.</i></p>' +
+    '<p><i>' + (modo === 'completo'
+      ? 'As páginas completas e o arquivo Markdown serão enviados após a consulta oficial.'
+      : 'A ficha será atualizada após a consulta oficial ao Telegram.') + '</i></p>' +
     controles(entrada.alvo);
 }
 

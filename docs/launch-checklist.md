@@ -1,3 +1,13 @@
+# Teste do botão: Completo + Markdown
+
+1. Envie `@username` ou `ID @username` e confira que o bot apresenta um **resumo** com **📚 Completo + Markdown**.
+2. Toque no botão imediatamente: deve surgir uma nova ficha de andamento, mantendo o resumo anterior. O dispatch usa `modo=completo`.
+3. Confira no GitHub Actions a execução real de `resolver.yml`, sem `healthcheck`. Depois devem chegar todas as páginas ricas, numeradas e, separadamente, um documento `.md` do mesmo perfil.
+4. Abra o `.md` e confira nome, ID, bio, campos extras e observações completas; textos com acentos, quebras de linha e emojis devem permanecer intactos.
+5. Simule um relatório longo: o Markdown deve ser dividido em arquivos somente se o total exceder 40 MiB; nenhuma parte pode ser omitida.
+6. Teste em cliente Telegram que não renderiza Rich Message: o resumo HTML deve oferecer o mesmo botão inline.
+7. Confirme que clicar duas vezes rapidamente respeita o limite global de solicitações e que não são exportadas credenciais ou telefones não obtidos pelo protocolo.
+
 # Verificações de relatório integral
 
 1. Confira que `npm run check` executou também `test_ficha_completa.py` e não só a sintaxe dos arquivos.

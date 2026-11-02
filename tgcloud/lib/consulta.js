@@ -22,14 +22,18 @@ export async function consultar(texto, contexto) {
   let mensagemId = contexto.mensagemId ?? null;
   try {
     const pendente = relatorioBuscando(entrada);
+    if (contexto.modo === 'completo') {
+      pendente.html = '<b>Preparando relatório completo e arquivo Markdown…</b>\n' +
+        'Os dados serão consultados por MTProto e enviados em partes, se necessário.';
+    }
     if (mensagemId) {
-      await editarCartao(contexto.chatId, mensagemId, cartaoPesquisa(entrada, contexto.dadosCompartilhados), pendente.html);
+      await editarCartao(contexto.chatId, mensagemId, cartaoPesquisa(entrada, contexto.dadosCompartilhados, contexto.modo), pendente.html);
     } else {
-      const mensagem = await enviarCartao(contexto.chatId, cartaoPesquisa(entrada, contexto.dadosCompartilhados), pendente.html);
+      const mensagem = await enviarCartao(contexto.chatId, cartaoPesquisa(entrada, contexto.dadosCompartilhados, contexto.modo), pendente.html);
       mensagemId = mensagem?.message_id;
       if (!Number.isSafeInteger(mensagemId)) throw new Error('O Telegram não retornou message_id para acompanhar a consulta.');
     }
-    await dispararBusca(entrada.alvo, contexto.chatId, mensagemId);
+    await dispararBusca(entrada.alvo, contexto.chatId, mensagemId, contexto.modo, contexto.origemMensagemId);
     return { enviado: true, mensagemId };
   } catch (erroDespacho) {
     console.error('pesquisa ou despacho falhou:', erroDespacho);

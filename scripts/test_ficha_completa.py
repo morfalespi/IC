@@ -5,7 +5,7 @@ import sys
 import unittest
 
 sys.path.insert(0, os.path.dirname(__file__))
-from ficha_completa import rich_pages, basic_pages, RICH_BYTES
+from ficha_completa import rich_pages, basic_pages, markdown_document, markdown_files, RICH_BYTES
 
 
 class TesteFichaCompleta(unittest.TestCase):
@@ -39,6 +39,31 @@ class TesteFichaCompleta(unittest.TestCase):
             r"<th>Bio(?: \(parte [^<]+\))?</th><td>([^<]+)</td>", "".join(paginas)
         )
         self.assertEqual("".join(html.unescape(p) for p in partes), original)
+
+    def test_markdown_preserva_campos_e_texto_original(self):
+        dados = [
+            ("Bio", "<teste> & conteúdo" + "🇧🇷" * 1200),
+            ("Comandos", "/a — primeira linha\n/b — segunda linha"),
+            ("Texto com markdown", "código de exemplo com " + chr(96) * 5),
+        ]
+        documento = markdown_document([("ID", "123")], [("Perfil", dados)],
+                                      ["Origem verificada no Telegram"])
+        for nome, valor in dados:
+            self.assertIn(nome, documento)
+            self.assertIn(valor, documento)
+        self.assertIn("Origem verificada no Telegram", documento)
+        self.assertNotIn("API_HASH", documento)
+
+    def test_markdown_fatiado_sem_perder_utf8(self):
+        bio = "📄✨漢字" * 2400
+        secoes = [("Dados", [("Bio", bio)])]
+        partes = markdown_files([("ID", "456")], secoes, [], max_bytes=2048)
+        self.assertGreater(len(partes), 1)
+        esperado = markdown_document([("ID", "456")], secoes, []).encode("utf-8")
+        self.assertEqual(b"".join(partes), esperado)
+        self.assertTrue(all(len(p) <= 2048 for p in partes))
+        for p in partes:
+            p.decode("utf-8")
 
     def test_html_escapado_e_fallback_em_paginas(self):
         original = '<IMG> & "A"' * 1000

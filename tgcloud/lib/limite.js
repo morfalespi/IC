@@ -3,7 +3,7 @@ import { and, eq, gt, lt, sql } from 'sdk/db';
 import { disparos } from '../schema.js';
 
 const JANELA_SEGUNDOS = 60;
-const POR_CHAT = 1;
+const POR_CHAT = 2;
 const NO_TOTAL = 6;
 const RETENCAO_SEGUNDOS = 3600;
 

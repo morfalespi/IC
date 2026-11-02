@@ -63,6 +63,23 @@ O bot agora apresenta as consultas em **Rich Messages** nativas do Telegram:
 
 Referências: https://core.telegram.org/bots/api#sendrichmessage, https://core.telegram.org/bots/api#editmessagetext, https://core.telegram.org/bots/api#rich-messages e https://core.telegram.org/bots/api#inputrichmessage.
 
+## Escolha sob demanda: relatório completo + arquivo Markdown
+
+A primeira consulta de um ID ou username publica apenas um **resumo** com identificação confirmada, destaques e botões. O botão **📚 Completo + Markdown** (callback `f:`) abre **uma nova ficha de andamento**, sem apagar o resumo original, e solicita ao workflow MTProto uma nova coleta oficial da mesma referência.
+
+Após a consulta, o bot envia:
+- **Todas as categorias e todos os campos retornados** em uma ou mais mensagens ricas com tabelas e numeração `Parte N/M`, usando `rich_pages`. Se rich messages falharem, usa as páginas do fallback HTML.
+- **Anexo `.md` em UTF-8**, enviado via Bot API `sendDocument`, com identificação, todos os campos e observações. Valores não são abreviados no arquivo. Para documentos maiores do que o limite seguro de 40 MiB, o arquivo é fracionado em várias partes Markdown preservando todos os bytes em ordem; a divisão só ocorre no limite técnico.
+- **Foto de perfil**, quando disponível, incorporada à Rich Message se a Bot API permitir, ou enviada separadamente.
+
+O resumo original não é sobrescrito no modo completo. No modo rico, o botão fica dentro do cartão; se o servidor não aceitar o formato rico, existe também um botão inline convencional **Completo + Markdown** no resumo HTML. A ação é restrita ao chat privado do usuário que a acionou.
+
+**Por segurança e para não reter perfis em bancos públicos**, o botão faz uma nova consulta MTProto. Os valores podem mudar entre a emissão do resumo e o relatório completo. Para permitir o resumo seguido do download sem esperar um minuto, o limite passa a 2 pesquisas por chat por 60 segundos, com total global de 6 por 60 segundos; pesquisas posteriores continuam sujeitas aos limites de Telegram e GitHub.
+
+Apenas os campos oficialmente obtidos e disponíveis à sessão do bot aparecem. Não há consulta universal por ID desconhecido, nem exportação de `access_hash`, telefones privados ou tokens. O arquivo `.md` é um relatório legível, não uma exportação de dados internos/credenciais.
+
+Referência para anexos Bot API: https://core.telegram.org/bots/api#senddocument e https://core.telegram.org/bots/faq.
+
 ## Relatório integral com paginação oficial — 2026-11-02
 
 O Infocard reúne identificação confirmada, todos os campos úteis que o resolver MTProto efetivamente extraiu, detalhes da conta/bot/canal, foto e notas de acesso. **Nenhum campo coletado é descartado pelo layout só por exceder 13 linhas ou pelo comprimento de uma bio.** O próprio relatório é dividido em quantas páginas ricas forem necessárias quando atingir o limite oficial; as partes subsequentes aparecem como respostas ao cartão original, identificadas por `Parte X/Y`.

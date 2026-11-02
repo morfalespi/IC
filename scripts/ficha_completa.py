@@ -143,3 +143,50 @@ def basic_pages(identity, sections, observations):
     if current:
         pages.append("\n".join(current))
     return [page + f"\n<i>Parte {n}/{len(pages)}</i>" for n, page in enumerate(pages, 1)]
+
+
+def markdown_document(identity, sections, observations):
+    """Exporta os valores originais em Markdown UTF-8, sem resumir ou cortar."""
+    linhas = [
+        "# Infocard — relatório completo", "",
+        "Fonte: respostas oficiais do Telegram MTProto acessíveis à sessão do bot.",
+        "Campos ausentes não foram retornados; não implicam inexistência.", "",
+    ]
+    for titulo, campos in [("Identificação confirmada", identity)] + list(sections):
+        if not campos:
+            continue
+        linhas.extend(["## " + str(titulo), ""])
+        for nome, valor in campos:
+            rotulo = str(nome).replace("\r", " ").replace("\n", " ")
+            original = str(valor)
+            max_fence = max((len(m.group(0)) for m in re.finditer(r"\x60+", original)), default=0)
+            fence = chr(96) * max(3, max_fence + 1)
+            linhas.extend(["### " + rotulo, "", fence + "text", original, fence, ""])
+    if observations:
+        linhas.extend(["## Origem e observações", ""])
+        for i, nota in enumerate(observations, 1):
+            original = str(nota)
+            max_fence = max((len(m.group(0)) for m in re.finditer(r"\x60+", original)), default=0)
+            fence = chr(96) * max(3, max_fence + 1)
+            linhas.extend([f"### Observação {i}", "", fence + "text", original, fence, ""])
+    return "\n".join(linhas) + "\n"
+
+
+def markdown_files(identity, sections, observations, max_bytes=40 * 1024 * 1024):
+    """Documentos inteiros; divisão em partes preserva todos os bytes UTF-8."""
+    if max_bytes < 1024:
+        raise ValueError("max_bytes muito pequeno")
+    encoded = markdown_document(identity, sections, observations).encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return [encoded]
+    arquivos, atual = [], bytearray()
+    for char in encoded.decode("utf-8"):
+        raw = char.encode("utf-8")
+        if len(atual) + len(raw) > max_bytes:
+            arquivos.append(bytes(atual))
+            atual.clear()
+        atual.extend(raw)
+    if atual:
+        arquivos.append(bytes(atual))
+    assert b"".join(arquivos) == encoded
+    return arquivos

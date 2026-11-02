@@ -5,11 +5,13 @@ import os
 import re
 import sys
 import traceback
+import time
 import urllib.error
 import urllib.request
 import uuid
 
 import telethon
+from ficha_completa import rich_pages, basic_pages, markdown_files
 from telethon import TelegramClient, errors, utils
 from telethon.sessions import StringSession
 from telethon.tl.functions.channels import GetFullChannelRequest, GetChannelsRequest
@@ -26,6 +28,9 @@ CHAT_VALIDO = re.compile(r"-?[0-9]{1,16}")
 MENSAGEM_ID = os.environ.get("MESSAGE_ID", "").strip()
 CHAT_DESTINO = os.environ.get("CHAT_ID", "").strip()
 ID_MENSAGEM = int(MENSAGEM_ID) if MENSAGEM_ID.isdigit() and int(MENSAGEM_ID) > 0 else None
+MODO = "completo" if os.environ.get("MODO") == "completo" else "resumo"
+REFERENCIA = os.environ.get("ORIGEM_ID", "")
+ORIGEM_ID = int(REFERENCIA) if REFERENCIA.isdigit() and int(REFERENCIA) > 0 else None
 
 
 
@@ -57,10 +62,12 @@ def chamar(metodo, corpo, cabecalhos):
         return {"ok": False, "error_code": codigo, "description": f"resposta não é JSON: {bruto[:200]!r}"}
 
 
-def postar(chat_id, texto, formatado):
+def postar(chat_id, texto, formatado, teclado=None):
     carga = {"chat_id": int(chat_id), "text": texto}
     if formatado:
         carga["parse_mode"] = "HTML"
+    if teclado:
+        carga["reply_markup"] = teclado
     return chamar("sendMessage", json.dumps(carga).encode(), {"Content-Type": "application/json"})
 
 
@@ -132,6 +139,59 @@ def editar_ficha_rica(conteudo, foto=None, definitiva=False):
         return True, False
     print("ficha rica indisponível:", resposta.get("error_code"), corte(resposta.get("description"), 180))
     return False, False
+
+
+def botao_completo(alvo):
+    if not re.fullmatch(r"[A-Za-z0-9_|-]{1,55}", alvo):
+        return ""
+    return '<tg-button type="callback_data" style="primary" data="f:' + esc(alvo) + '">📚 Completo + Markdown</tg-button>'
+
+
+def resumo_categoria(categorias, maximo=9):
+    selecionados, restantes = [], maximo
+    for titulo, campos in categorias:
+        if restantes <= 0:
+            break
+        escolhidos = []
+        for label, valor in campos[:3]:
+            if restantes <= 0:
+                break
+            bruto = str(valor)
+            pequeno = bruto if len(bruto) <= 280 else bruto[:279] + "…"
+            escolhidos.append((label, pequeno))
+            restantes -= 1
+        if escolhidos:
+            selecionados.append((titulo, escolhidos))
+    return selecionados
+
+
+def enviar_documento_md(chat, conteudo, id_entidade, indice, total):
+    limite = uuid.uuid4().hex
+    filename = "infocard_" + str(id_entidade).replace("-", "n") + "_completo"
+    if total > 1:
+        filename += f"_parte_{indice}_de_{total}"
+    filename += ".md"
+    campos = {"chat_id": str(int(chat)), "caption": "📄 Relatório MTProto completo" +
+              (f" · parte {indice}/{total}" if total > 1 else "")}
+    if ORIGEM_ID:
+        campos["reply_parameters"] = json.dumps({"message_id": ORIGEM_ID})
+    partes = []
+    for chave, valor in campos.items():
+        partes.append((f'--{limite}\r\nContent-Disposition: form-data; name="{chave}"'
+                       f'\r\n\r\n{valor}\r\n').encode("utf-8"))
+    partes.extend([
+        (f'--{limite}\r\nContent-Disposition: form-data; name="document"; '
+         f'filename="{filename}"\r\nContent-Type: text/markdown; charset=utf-8'
+         f'\r\n\r\n').encode("utf-8"),
+        conteudo,
+        f'\r\n--{limite}--\r\n'.encode("utf-8"),
+    ])
+    resposta = chamar("sendDocument", b"".join(partes),
+                     {"Content-Type": f"multipart/form-data; boundary={limite}"})
+    if not resposta.get("ok"):
+        raise RuntimeError("Envio Markdown recusado: " + str(resposta.get("error_code")) +
+                           " " + str(resposta.get("description", ""))[:180])
+    print(f"documento Markdown {indice}/{total} enviado: {len(conteudo)} bytes")
 
 
 def botao_atualizar(alvo):
@@ -466,7 +526,7 @@ def descricao_musica(documento):
             titulo = getattr(atributo, "title", None)
             artista = getattr(atributo, "performer", None)
             if titulo or artista:
-                return " — ".join(corte(parte, 100) for parte in (titulo, artista) if parte)
+                return " — ".join(str(parte) for parte in (titulo, artista) if parte)
     return None
 
 
@@ -484,7 +544,7 @@ def descrever(entidade, completo_, alvo):
     def add(rotulo, valor, limite=400, zero=False):
         if valor is None or valor is False or valor == "" or valor == [] or (valor == 0 and not zero):
             return
-        info["campos"].append((rotulo, corte(valor, limite)))
+        info["campos"].append((rotulo, str(valor)))
 
     restricoes = [f"{r.platform}: {r.reason}" for r in (getattr(entidade, "restriction_reason", None) or [])]
     if isinstance(entidade, User):
@@ -546,7 +606,7 @@ def descrever(entidade, completo_, alvo):
             if info_bot:
                 add("Descrição do bot", getattr(info_bot, "description", None), 500)
                 comandos = [f"/{c.command} — {c.description}" for c in (getattr(info_bot, "commands", None) or [])]
-                add("Comandos", "; ".join(comandos[:10]) + (f"; +{len(comandos) - 10}" if len(comandos) > 10 else ""), 700)
+                add("Comandos", "; ".join(comandos))
                 add("Política de privacidade", getattr(info_bot, "privacy_policy_url", None))
     elif isinstance(entidade, Channel):
         info["tipo"] = "supergrupo" if entidade.megagroup else "canal"
@@ -679,17 +739,99 @@ async def principal():
             codigo = 1
     if chat:
         if codigo == 0:
-            rico = ficha_final(info, notas, dados["foto"])
-            ok, foto_enviada = editar_ficha_rica(rico, dados["foto"], definitiva=True)
-            if ok and dados["foto"] and not foto_enviada:
-                try:
-                    enviar_foto(chat, dados["foto"])
-                    print("foto enviada separadamente por incompatibilidade da mídia rica")
-                except Exception as erro:
-                    print("foto adicional indisponível:", type(erro).__name__)
-            if not ok:
-                enviar(chat, texto)
-                print("ficha convencional enviada por fallback")
+            identidade = dados_basicos(info)
+            categorias = agrupar_campos(info)
+            alvo_disparo = os.environ.get("ALVO", "").strip().lstrip("@")
+            controles = '<tg-button-row align="center">'
+            controles += botao_atualizar(alvo_disparo)
+            controles += ('<tg-button type="copy_text" text="' + esc(info["id"]) +
+                          '">📋 Copiar ID</tg-button>')
+            username = info["username"]
+            if username and re.fullmatch(r"[A-Za-z0-9_]{1,32}", username):
+                controles += ('<tg-button type="url" url="https://t.me/' + esc(username) +
+                              '">🔗 Abrir perfil</tg-button>')
+            if MODO == "resumo":
+                controles += botao_completo(alvo_disparo)
+            controles += '</tg-button-row>'
+            completo = MODO == "completo"
+            secoes = categorias if completo else resumo_categoria(categorias)
+            notas_publicadas = notas if completo else notas[:2]
+            if not completo:
+                visiveis = sum(len(c) for _, c in secoes)
+                total_campos = sum(len(c) for _, c in categorias)
+                notas_publicadas = list(notas_publicadas) + [
+                    f"Resumo: {visiveis}/{total_campos} campos adicionais exibidos. "
+                    "Toque em 'Completo + Markdown' para receber tudo."
+                ]
+            paginas = rich_pages(identidade, secoes, notas_publicadas, controles)
+            paginas_html = basic_pages(identidade, secoes, notas_publicadas)
+            teclado_fallback = None
+            if MODO == "resumo" and re.fullmatch(r"[A-Za-z0-9_|-]{1,55}", alvo_disparo):
+                teclado_fallback = {"inline_keyboard": [[{
+                    "text": "📚 Completo + Markdown",
+                    "callback_data": "f:" + alvo_disparo,
+                }]]}
+            print("modo:", MODO, "| páginas ricas:", len(paginas),
+                  "| páginas HTML:", len(paginas_html), "| campos totais:", len(info["campos"]))
+            todas_entregues = True
+            foto_incorporada = False
+            for indice, pagina in enumerate(paginas):
+                if indice > 0:
+                    time.sleep(1.1)
+                if indice == 0:
+                    sucesso, foto_incorporada = editar_ficha_rica(pagina, dados["foto"])
+                else:
+                    detalhes = {"chat_id": int(chat), "rich_message": {"html": pagina}}
+                    resposta_id = ORIGEM_ID if completo else ID_MENSAGEM
+                    if resposta_id:
+                        detalhes["reply_parameters"] = {"message_id": resposta_id}
+                    resposta = solicitar_bot_api("sendRichMessage", detalhes)
+                    sucesso = bool(resposta.get("ok"))
+                    if not sucesso:
+                        print("parte rica", indice + 1, "recusada:",
+                              resposta.get("error_code"), corte(resposta.get("description"), 180))
+                if not sucesso:
+                    todas_entregues = False
+                    break
+                print("parte rica", indice + 1, "de", len(paginas), "entregue")
+            if todas_entregues:
+                if dados["foto"] and not foto_incorporada:
+                    try:
+                        enviar_foto(chat, dados["foto"])
+                        print("foto enviada separadamente")
+                    except Exception as erro_foto:
+                        print("foto indisponível:", type(erro_foto).__name__)
+            else:
+                print("Rich Message recusada: modo HTML de compatibilidade")
+                for indice, pagina in enumerate(paginas_html):
+                    if indice > 0:
+                        time.sleep(1.1)
+                    if indice == 0 and ID_MENSAGEM:
+                        resposta = solicitar_bot_api("editMessageText", {
+                            "chat_id": int(chat), "message_id": ID_MENSAGEM,
+                            "text": pagina, "parse_mode": "HTML",
+                            **({"reply_markup": teclado_fallback} if indice == 0 and teclado_fallback else {}),
+                        })
+                        if not resposta.get("ok"):
+                            resposta = postar(chat, pagina, True, teclado_fallback if indice == 0 else None)
+                    else:
+                        resposta = postar(chat, pagina, True, teclado_fallback if indice == 0 else None)
+                    if not resposta.get("ok"):
+                        raise RuntimeError("Falha ao entregar HTML parte " + str(indice + 1) +
+                                           ": " + str(resposta.get("description")))
+                    print("parte HTML", indice + 1, "de", len(paginas_html), "entregue")
+                if dados["foto"]:
+                    try:
+                        enviar_foto(chat, dados["foto"])
+                    except Exception as erro_foto:
+                        print("foto indisponível:", type(erro_foto).__name__)
+            if completo:
+                arquivos = markdown_files(identidade, categorias, notas)
+                print("documentos Markdown:", len(arquivos))
+                for indice, arquivo in enumerate(arquivos, 1):
+                    time.sleep(1.1)
+                    enviar_documento_md(chat, arquivo, info["id"], indice, len(arquivos))
+            marcar_notificado()
         else:
             causa = re.sub(r"<[^>]*>", "", texto)
             ok, _ = editar_ficha_rica(ficha_falha(alvo, causa), definitiva=True)

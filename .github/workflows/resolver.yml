@@ -19,6 +19,14 @@ on:
         description: "ID da ficha rica já enviada ao chat para edição progressiva"
         required: false
         default: ""
+      modo:
+        description: "Resumo do cartão ou relatório completo com documento Markdown"
+        required: false
+        default: "resumo"
+      origem_id:
+        description: "ID da mensagem original que solicitou o relatório completo"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -34,6 +42,8 @@ jobs:
       ALVO: ${{ inputs.alvo }}
       CHAT_ID: ${{ inputs.chat }}
       MESSAGE_ID: ${{ inputs.message_id }}
+      MODO: ${{ inputs.modo }}
+      ORIGEM_ID: ${{ inputs.origem_id }}
     steps:
       - name: Healthcheck do dispatch
         if: ${{ inputs.healthcheck }}

@@ -1,3 +1,9 @@
+# Atualização — 2026-11-02: opção para receber relatório completo e Markdown
+
+Foi adicionado callback `f:alvo` ao cartão de resumo, opção de workflow `modo=completo`, nova coleta MTProto, envio paginado do relatório completo e anexos `.md` por `sendDocument`, com preservação de UTF-8 e de valores sem truncamento. A ficha completa é enviada em mensagens separadas, sem sobrescrever a mensagem original de resumo. O botão também existe no fallback HTML. Rate limit por chat ajustado para dois disparos por minuto, preservando o limite global de seis. O módulo Python agora conecta efetivamente `rich_pages` e `basic_pages` ao resolver. **Implementado, sujeito a CI/deploy e teste real de callback/anexo**.
+
+---
+
 # Implementação — 2026-11-02: paginação integral do Infocard
 
 Foi criado `scripts/ficha_completa.py`, que agrupa todos os campos extraídos em páginas de Rich Messages, com continuidade numerada e margem para os limites oficiais. O primeiro cartão é editado; eventuais páginas adicionais são enviadas como respostas, sem perder dados por exceder 13 linhas, 4.096 caracteres da mensagem clássica, ou tamanhos individuais de campo. O fallback HTML clássico também pagina os dados e tem testes próprios em `scripts/test_ficha_completa.py`. Foram expostos novos campos condicionais de estrelas, negócios, perfil e canais retornados oficialmente, sem mostrar credenciais. **Estado: implementado; necessário CI aprovado e teste real no Telegram antes de afirmar resultado de produção**.
