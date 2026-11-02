@@ -397,10 +397,7 @@ async def coletar_bot_api(dados, entidade, info):
                         dados, item.get("file_id"), categoria, item.get("file_unique_id")
                     )
                 offset += len(itens)
-                if total is not None:
-                    if offset >= total:
-                        break
-                elif len(itens) < 100:
+                if total is not None and offset >= total:
                     break
             registrar_paginacao_incompleta(dados, metodo, total, offset)
         mensagens = await bot_api_leitura(
