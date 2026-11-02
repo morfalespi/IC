@@ -555,10 +555,10 @@ async def coletar(alvo):
     try:
         await com_espera(lambda: cliente.start(bot_token=os.environ["BOT_TOKEN"]))
         entidade, origem = await resolver_alvo(cliente, alvo)
+        dados = {"entidade": entidade, "completo": None, "resposta_completa": None, "foto": None, "notas": [origem], "fotos_info": None, "musicas_info": None, "fotos_mtproto": [], "musicas_mtproto": [], "participantes_mtproto": [], "midias": [], "pacotes_midias": [], "midias_dir": tempfile.mkdtemp(prefix="infocard_mtproto_") if MODO == "completo" and CHAT_DESTINO else None}
         if dados["midias_dir"]:
             atexit.register(shutil.rmtree, dados["midias_dir"], ignore_errors=True)
         atualizar_status("1/2 · Identificação confirmada; buscando campos adicionais", entidade)
-        dados = {"entidade": entidade, "completo": None, "resposta_completa": None, "foto": None, "notas": [origem], "fotos_info": None, "musicas_info": None, "fotos_mtproto": [], "musicas_mtproto": [], "participantes_mtproto": [], "midias": [], "pacotes_midias": [], "midias_dir": tempfile.mkdtemp(prefix="infocard_mtproto_") if MODO == "completo" and CHAT_DESTINO else None}
         try:
             dados["resposta_completa"] = await com_espera(lambda: completo(cliente, entidade))
             dados["completo"] = objeto_completo(dados["resposta_completa"])
@@ -1065,7 +1065,9 @@ async def principal():
                 print("RELATÓRIO ENTREGUE:", len(info["campos"]), "campos,",
                       entregues_ricos, "/", total_ricos, "páginas ricas,",
                       entregues_html, "/", total_html, "páginas HTML,",
-                      arquivos_entregues, "/", arquivos_previstos, "documentos")
+                      arquivos_entregues, "/", arquivos_previstos, "arquivos Markdown,",
+                      json_entregues, "/", json_previstos, "arquivos JSONL,",
+                      midias_entregues, "/", midias_previstas, "pacotes de mídia")
             else:
                 aviso = (
                     "<b>⚠️ Entrega incompleta</b>\n"
