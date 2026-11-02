@@ -110,10 +110,10 @@ A meta é ampliar o Infocard para entregar a cobertura máxima e verificável do
 O bot separa a entrega de anexos da cobertura dos dados. Quando o Telegram recebeu as partes montadas, mas um método não retornou dados, a resposta é “Resultado parcial enviado”; “Entrega incompleta” fica reservado a páginas/anexos sem confirmação. A lacuna continua explícita no relatório e o resultado não é tratado como integral. A regra do proprietário contra testes escritos pelo próprio implementador foi preservada, pois não conflitava com Partners.
 
 
-## Ampliação da cobertura de leitura — branch codex/bot-api-profile-coverage
+## Ampliação da cobertura de leitura — PRs #2 e #3 integrados
 
-**IMPLEMENTADO NO CÓDIGO:** a exportação completa tenta leituras Bot API adicionais por entidade: `getChat`; para usuários, pagina fotos e áudios de perfil e obtém até 20 mensagens do chat pessoal indicado no perfil; para grupos e canais, obtém administradores e contagem. As respostas completas e falhas de método são incluídas no JSONL junto às respostas MTProto. Arquivos compatíveis são baixados por `getFile`, deduplicados e agrupados nos ZIPs; downloads Bot API acima de 20 MiB são marcados indisponíveis. Retentativas 5xx ficam restritas a leituras idempotentes.
+**IMPLEMENTADO NO CÓDIGO:** a exportação completa tenta leituras Bot API adicionais por entidade: `getChat` e `getChat` dos chats pessoais, pais ou vinculados indicados por `ChatFullInfo`; para usuários, pagina fotos e áudios de perfil e obtém até 20 mensagens do chat pessoal indicado no perfil; para grupos e canais, obtém administradores e contagem. As respostas completas e falhas de método são incluídas no JSONL junto às respostas MTProto. Arquivos compatíveis são baixados por `getFile`, deduplicados e agrupados nos ZIPs; downloads Bot API acima de 20 MiB são marcados indisponíveis. Retentativas 5xx ficam restritas a leituras idempotentes.
 
-**REVISADO:** README, AGENTS e matriz de cobertura passaram a descrever as duas APIs. Foram removidas afirmações normativas antigas que excluíam `getChat` e campos MTProto repetidos no relatório.
+**REVISADO:** README, AGENTS, matriz de cobertura e registro passaram a descrever as duas APIs. Foram removidas afirmações normativas antigas que excluíam `getChat` e campos MTProto repetidos no relatório. PRs #2 e #3 foram integrados à `main`; CI passou nas verificações automatizadas.
 
 **NÃO VERIFICADO:** execução real com o bot e inspeção do JSONL, campos obtidos, mídias e anexos recebidos. Um endpoint que falhar em uma entidade fica registrado como falha/limite e não prova inexistência do dado.
