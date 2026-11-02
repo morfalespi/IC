@@ -1,49 +1,58 @@
-# Infocard
+# Infocard — consulta MTProto com referências oficiais
 
-Bot de Telegram cuja **única forma de pesquisa de perfis é MTProto (Telethon)**. O Telegram Serverless recebe mensagens e entrega respostas usando a Bot API, mas não realiza consultas de perfis com `getChat` nem tenta uma pesquisa alternativa por Bot API.
+A consulta de entidades do Telegram usa **MTProto por Telethon**, sem chamada a `getChat` para busca de perfis. A Bot API é usada somente para receber mensagens, receber referências compartilhadas oficialmente e entregar resultados.
 
-## Como funciona
+## Pesquisas suportadas
 
-1. No privado, envie `@username` público (usuário, bot, supergrupo ou canal) ou `/start username`.
-2. O Serverless valida a entrada, aplica limite de solicitações (1 por chat e 6 no total por 60 segundos) e dispara `.github/workflows/resolver.yml` no próprio repositório.
-3. O GitHub Actions utiliza `API_ID`, `API_HASH` e `BOT_TOKEN` para autenticar o bot por MTProto com Telethon e executar `contacts.resolveUsername`.
-4. O resultado ou o motivo da falha é entregue ao mesmo chat. O Telegram define quais campos serão acessíveis.
+- `@username`: usa `contacts.resolveUsername` e consulta os dados autorizados pelo Telegram.
+- `ID`: **tenta** o método oficial adequado ao tipo de entidade com `access_hash=0` quando permitido a bots. Esse valor não é um token, não é um segredo e não garante acesso; o servidor pode recusar IDs desconhecidos.
+- `ID @username`: resolve o username pelo método oficial e **verifica se o ID corresponde ao peer retornado**. Em caso de divergência, não entrega dados de outra entidade.
+- **Escolher usuário como referência**: usa `KeyboardButtonRequestUsers` e o `users_shared` oficial do Telegram para receber ID e, quando disponível, username. O bot utiliza essa referência no resolver MTProto, sem pesquisa por `getChat`.
+- **Encaminhar uma mensagem com remetente identificado** ou compartilhar contato/menção: extrai exclusivamente o ID e eventual username fornecidos pelo Telegram e aciona a mesma pesquisa MTProto. Remetente oculto não pode ser identificado por esse fluxo.
 
-**IDs numéricos isolados não são pesquisáveis de modo confiável por MTProto sem `access_hash` ou contexto correspondente.** Não há fallback pela Bot API. Encaminhamentos, compartilhamentos de contatos e o antigo botão "Escolher usuário" não são usados como fonte alternativa de dados.
-
-### Modo inline
-
-Uma pesquisa inline não executa a consulta imediatamente: ela exibe a opção de abrir o privado com `/start username`, onde o workflow de MTProto pode ser disparado. Mensagens normais de grupos são ignoradas.
+IDs numéricos são aceitos como solicitações de pesquisa, mas **não existe consulta universal e garantida por ID**, pois o Telegram controla a disponibilidade de `access_hash` e referências por conta/sessão. Se um ID não for reconhecido, tente `ID @username` ou o seletor oficial de usuário.
 
 ## Arquitetura
 
-- `tgcloud/handlers/message.js`: recebe comandos e usernames no privado.
-- `tgcloud/handlers/inline_query.js`: apresenta a opção de continuar no privado.
-- `tgcloud/lib/entrada.js` e `consulta.js`: validação, rate limit e acionamento do resolver.
-- `tgcloud/lib/despacho.js`: chamada ao GitHub Actions no repositório obtido dinamicamente.
-- `scripts/resolver.py`: resolução por Telethon/MTProto, relatório e entrega da resposta.
-- `.github/workflows/ci.yml`: verificações de sintaxe e placeholders.
-- `.github/workflows/deploy.yml`: publicação no TGCloud.
-- `.github/workflows/resolver.yml`: pesquisa MTProto sob demanda.
+- `tgcloud/handlers/message.js`: entrada privada, referências compartilhadas e comandos.
+- `tgcloud/handlers/inline_query.js`: oferece a continuação no privado.
+- `tgcloud/lib/entrada.js`: parsing de username, ID e referência composta.
+- `tgcloud/lib/consulta.js`: limite de disparos e criação do workflow; não usa `getChat`.
+- `tgcloud/lib/despacho.js`: dispara o workflow pelo `github.repository` injetado no deploy.
+- `scripts/resolver.py`: `contacts.resolveUsername`, `users.getUsers`, `channels.getChannels` e `messages.getChats` via Telethon; consulta informações adicionais quando possível e devolve o resultado ao chat.
+- `.github/workflows/resolver.yml`: execução sob demanda, com verificação de secrets e entrega do resultado.
+- `.github/workflows/deploy.yml`: publicação no Telegram Serverless.
 
-## Segredos
+O bot só processa pesquisas em conversas privadas. Inline exibe uma opção para continuar no privado. O limite operacional é 1 disparo por chat e 6 no total a cada 60 segundos.
 
-Nunca grave tokens no Git. `tgcloud/lib/segredos.js` só contém placeholders vazios no repositório. No deploy, o workflow insere temporariamente `GH_DISPATCH_TOKEN` e a referência de repositório derivada de `github.repository` no runner.
+## Segredos e segurança
 
-| GitHub Actions Secret | Uso |
+**Nunca** versione tokens ou sessões. `tgcloud/lib/segredos.js` contém apenas placeholders vazios no Git; o deploy injeta `GH_DISPATCH_TOKEN` de Actions Secrets e o nome do repositório a partir de `github.repository`.
+
+| Secret | Uso |
 |---|---|
-| `TGCLOUD_TOKEN` | Autenticar o CLI de publicação TGCloud |
-| `GH_DISPATCH_TOKEN` | Disparar `resolver.yml`, restrito ao repositório com Actions Read/Write |
-| `API_ID` | Autenticação MTProto |
-| `API_HASH` | Autenticação MTProto |
-| `BOT_TOKEN` | Autenticação do bot no Telethon e entrega de mensagens |
+| `API_ID` | Aplicação MTProto |
+| `API_HASH` | Aplicação MTProto |
+| `BOT_TOKEN` | Autenticação do bot no Telethon e envio dos resultados |
+| `GH_DISPATCH_TOKEN` | Disparar o resolver do GitHub Actions |
+| `TGCLOUD_TOKEN` | Deploy no Telegram Serverless |
 
-## Verificação e publicação
+`API_HASH` não é `access_hash`. Não informe `access_hash` manualmente nem copie valores de outra conta/sessão.
 
-Em Node.js 22 / Python 3.12: `npm ci` e `npm run check`.
+## Testes do primeiro deploy
 
-O CI verifica sintaxe e placeholders. A publicação ocorre automaticamente na `main` quando arquivos do runtime são alterados; o deploy executa migração segura, publica módulos e valida o token de dispatch por um healthcheck sem contato com o MTProto.
+1. Rode `npm ci` e `npm run check` ou confira CI.
+2. Confira o deploy TGCloud e o healthcheck do dispatch.
+3. Envie `/start`, `@BotFather`, um ID numérico conhecido e `ID @username` correspondente em conversa privada.
+4. Use o botão **Escolher usuário como referência**.
+5. Verifique o run **Resolver entidade (MTProto)** realmente executando o Telethon; o healthcheck não exercita a consulta.
+6. Em casos de falha, examine os logs e a mensagem devolvida ao chat.
 
-Para o primeiro teste real, envie `/start` e depois `@BotFather` no privado. A resposta inicial deve indicar que a pesquisa MTProto foi solicitada; acompanhe a execução do resolver no GitHub Actions e espere a resposta final na conversa. Healthcheck e deploy verdes não comprovam pesquisa real.
+## Documentação oficial
 
-O código respeita as informações que o Telegram disponibiliza e suas regras de privacidade. Consulte `docs/launch-checklist.md` e as fontes em `docs/fontes-oficiais.md`. `docs/registro.md` preserva resultados históricos, inclusive de uma implementação anterior com Bot API, que não é mais o fluxo operacional.
+- Referências MTProto e `access_hash`: https://core.telegram.org/api/peers
+- `users.getUsers`: https://core.telegram.org/method/users.getUsers
+- `contacts.resolveUsername`: https://core.telegram.org/method/contacts.resolveUsername
+- `KeyboardButtonRequestUsers` e `users_shared`: https://core.telegram.org/bots/api#keyboardbuttonrequestusers
+
+O registro em `docs/registro.md` documenta versões anteriores e deve ser lido como histórico, não como uma instrução para retornar à pesquisa de perfis por Bot API.

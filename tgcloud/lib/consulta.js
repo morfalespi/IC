@@ -18,7 +18,7 @@ export async function consultar(texto, contexto) {
   if (!reserva.permitido) return relatorioFalha(entrada, reserva.motivo);
 
   try {
-    await dispararBusca(entrada.username, contexto.chatId);
+    await dispararBusca(entrada.alvo, contexto.chatId);
     return relatorioBuscando(entrada);
   } catch (erroDespacho) {
     console.error('dispararBusca falhou:', erroDespacho);

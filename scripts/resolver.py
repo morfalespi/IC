@@ -12,14 +12,16 @@ import uuid
 import telethon
 from telethon import TelegramClient, errors, utils
 from telethon.sessions import StringSession
-from telethon.tl.functions.channels import GetFullChannelRequest
+from telethon.tl.functions.channels import GetFullChannelRequest, GetChannelsRequest
 from telethon.tl.functions.contacts import ResolveUsernameRequest
-from telethon.tl.functions.users import GetFullUserRequest
-from telethon.tl.types import Channel, PeerChannel, PeerUser, User
+from telethon.tl.functions.messages import GetChatsRequest
+from telethon.tl.functions.users import GetFullUserRequest, GetUsersRequest
+from telethon.tl.types import Channel, InputChannel, InputUser, PeerChannel, PeerChat, PeerUser, User
 
 ESPERA_TOTAL = 600
 LIMITE_TEXTO = 4000
 USERNAME_VALIDO = re.compile(r"[A-Za-z0-9_]{1,32}")
+ALVO_VALIDO = re.compile(r"(?:[A-Za-z0-9_]{1,32}|-?\d{1,16}|-?\d{1,16}\|[A-Za-z0-9_]{1,32})")
 CHAT_VALIDO = re.compile(r"-?[0-9]{1,16}")
 
 
@@ -112,17 +114,64 @@ async def com_espera(operacao):
             await asyncio.sleep(espera)
 
 
+async def resolver_id(cliente, id_marcado):
+    if abs(id_marcado) > 4503599627370495 or id_marcado == 0:
+        raise LookupError("ID fora do intervalo aceito pelo Telegram.")
+
+    id_real, tipo = utils.resolve_id(id_marcado)
+    try:
+        if tipo is PeerUser:
+            candidatos = await com_espera(lambda: cliente(GetUsersRequest([InputUser(id_real, 0)])))
+            entidade = next((u for u in candidatos if isinstance(u, User) and u.id == id_real), None)
+        elif tipo is PeerChannel:
+            candidatos = await com_espera(lambda: cliente(GetChannelsRequest([InputChannel(id_real, 0)])))
+            entidade = next((c for c in candidatos.chats if isinstance(c, Channel) and c.id == id_real), None)
+        elif tipo is PeerChat:
+            candidatos = await com_espera(lambda: cliente(GetChatsRequest([id_real])))
+            entidade = next((c for c in candidatos.chats if getattr(c, "id", None) == id_real), None)
+        else:
+            entidade = None
+    except errors.RPCError as erro:
+        raise LookupError(
+            "O Telegram não permitiu resolver este ID sem contexto suficiente "
+            f"({type(erro).__name__}). Use 'ID @username' para uma referência pública "
+            "verificável ou compartilhe o usuário pelo botão oficial do Telegram."
+        ) from erro
+    if entidade is None:
+        raise LookupError(
+            "O Telegram não retornou uma entidade acessível para este ID. "
+            "Experimente 'ID @username' ou compartilhe o usuário como referência."
+        )
+    return entidade
+
+
+async def resolver_alvo(cliente, alvo):
+    if "|" in alvo:
+        numero, username = alvo.split("|", 1)
+        resolvido = entidade_de(await com_espera(lambda: cliente(ResolveUsernameRequest(username))))
+        if resolvido is None:
+            raise LookupError("O Telegram não retornou uma entidade para esta referência.")
+        if utils.get_peer_id(resolvido) != int(numero):
+            raise LookupError("O ID informado não corresponde ao @username no Telegram. Nenhum resultado foi atribuído ao ID.")
+        return resolvido, "ID confirmado por @username oficial"
+    if re.fullmatch(r"-?\d{1,16}", alvo):
+        return await resolver_id(cliente, int(alvo)), "Consulta por ID com access_hash zero permitido a bots quando o servidor aceitar"
+    resultado = await com_espera(lambda: cliente(ResolveUsernameRequest(alvo)))
+    entidade = entidade_de(resultado)
+    if entidade is None:
+        raise LookupError("O Telegram não devolveu os dados dessa entrada.")
+    return entidade, "Referência obtida por contacts.resolveUsername"
+
+
 async def coletar(alvo):
     cliente = TelegramClient(StringSession(), int(os.environ["API_ID"]), os.environ["API_HASH"])
     try:
         await com_espera(lambda: cliente.start(bot_token=os.environ["BOT_TOKEN"]))
-        entidade = entidade_de(await com_espera(lambda: cliente(ResolveUsernameRequest(alvo))))
-        if entidade is None:
-            raise LookupError("O Telegram não devolveu os dados dessa entrada.")
-        dados = {"entidade": entidade, "completo": None, "foto": None, "notas": []}
+        entidade, origem = await resolver_alvo(cliente, alvo)
+        dados = {"entidade": entidade, "completo": None, "foto": None, "notas": [origem]}
         try:
             dados["completo"] = await com_espera(lambda: completo(cliente, entidade))
-        except errors.RPCError as erro:
+        except Exception as erro:
             dados["notas"].append(f"Dados completos indisponíveis: {type(erro).__name__}: {erro}")
         try:
             dados["foto"] = await com_espera(lambda: cliente.download_profile_photo(entidade, file=bytes))
@@ -142,7 +191,7 @@ def campos_presentes(objeto):
 def descrever(entidade, completo_, alvo):
     foto = getattr(entidade, "photo", None)
     info = {
-        "consultado": f"@{alvo}",
+        "consultado": alvo.replace("|", " @") if re.search(r"\d\|", alvo) else (alvo if re.fullmatch(r"-?\d{1,16}", alvo) else f"@{alvo}"),
         "id": utils.get_peer_id(entidade),
         "username": getattr(entidade, "username", None),
         "usernames": [u.username for u in (getattr(entidade, "usernames", None) or []) if getattr(u, "active", False)],
@@ -253,7 +302,7 @@ def relatorio(info, notas, foto):
 
 
 def falha(alvo, motivo):
-    entrada = f"@{alvo} (username)"
+    entrada = alvo.replace("|", " @") if "|" in alvo else (alvo if re.fullmatch(r"-?\d{1,16}", alvo) else f"@{alvo}")
     return f"<b>Não foi possível ler</b>\nEntrada: {esc(entrada)}\n{esc(motivo)}"
 
 
@@ -264,8 +313,8 @@ async def principal():
     if chat and not CHAT_VALIDO.fullmatch(chat):
         print("CHAT_ID inválido")
         return 1
-    if not USERNAME_VALIDO.fullmatch(alvo):
-        texto = falha(alvo or "(vazio)", "Entrada inválida: use um username (1 a 32 letras, números ou _).")
+    if not ALVO_VALIDO.fullmatch(alvo):
+        texto = falha(alvo or "(vazio)", "Entrada inválida: use @username, ID numérico ou ID @username.")
         print("entrada inválida")
         codigo = 1
     else:

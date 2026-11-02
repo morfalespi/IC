@@ -4,12 +4,14 @@ Orientação para assistentes de IA e pessoas neste repositório. As afirmaçõe
 
 ## O que é
 
-Bot de Telegram no Telegram Serverless. Recebe `@username` público para consulta exclusivamente por MTProto, no privado. O modo inline orienta abrir o privado; IDs numéricos isolados são rejeitados sem consulta. A Bot API é usada apenas para receber updates e enviar respostas. Sem Mini App nem endpoints. O banco tem a tabela `disparos`.
+Bot de Telegram no Telegram Serverless. Recebe `@username`, ID numérico ou `ID @username` em conversa privada para consulta por MTProto. O modo inline orienta abrir o privado. IDs podem ser tentados com referência de hash zero oficial para bots, sem garantia de acesso. A Bot API recebe updates, referências compartilhadas e envia respostas; não consulta perfis por `getChat`. Sem Mini App nem endpoints. O banco tem a tabela `disparos`.
 
 ## Fluxo vigente (2026-11-02)
 
-- Não há leitura de perfis por `api.getChat` nem fallback Bot API; toda pesquisa por username dispara o resolver MTProto.
-- Removido o teclado antigo "Escolher usuário"; não gerar relatórios de perfis por contato, encaminhamento ou menção.
+- Não há leitura de perfis por `api.getChat` nem fallback Bot API; toda pesquisa por username ou ID dispara o resolver MTProto.
+- O teclado "Escolher usuário como referência" usa `request_users` apenas para obter ID e eventual username; não busca dados de perfil pela Bot API.
+- Encaminhamentos, contatos e menções podem fornecer referências oficiais, validadas pelo resolver MTProto.
+- O usuário pode pesquisar `ID @username`, que só retorna informações se o username resolver para o ID exato.
 - `docs/registro.md` contém evidências históricas de versões antigas, não uma especificação operacional.
 
 ## Regras do dono (DECISÃO)

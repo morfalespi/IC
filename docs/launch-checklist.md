@@ -1,31 +1,30 @@
-# Checklist de lançamento — pesquisa somente por MTProto
+# Checklist do Infocard — pesquisa MTProto por ID ou referência
 
-## Configuração
+## Antes do deploy
 
-- O repositório deve preferencialmente ser privado no lançamento.
-- Confirme a branch `main` e o CI verde.
-- Cadastre em GitHub Actions Secrets: `TGCLOUD_TOKEN`, `GH_DISPATCH_TOKEN`, `API_ID`, `API_HASH` e `BOT_TOKEN`.
-- `GH_DISPATCH_TOKEN` deve ser fine-grained, restrito ao repositório e com permissão de Actions: Read and write.
-- `github.repository` deve ser injetado pelo workflow, sem nome de owner/repo fixado no código.
-- Ative o Serverless do bot no @BotFather; obtenha seu token CLI em Serverless → CLI Access.
-- Configure inline mode no @BotFather caso deseje esse fluxo.
+- Use `main` e confirme CI verde; prefira repositório privado durante testes.
+- Mantenha `.gitignore`, sem `.env`, sessões, tokens ou credenciais no Git.
+- Confirme os cinco secrets no GitHub Actions: `API_ID`, `API_HASH`, `BOT_TOKEN`, `GH_DISPATCH_TOKEN`, `TGCLOUD_TOKEN`.
+- O `GH_DISPATCH_TOKEN` precisa de Actions: Read and write; o repositório é obtido de `github.repository`, nunca fixado.
+- No @BotFather, ative o Serverless; opcionalmente habilite inline mode.
 
 ## Deploy
 
-- Acione `Deploy (Telegram Serverless)` ou altere o runtime na `main`.
-- Confirme: autenticação TGCloud, `npm ci`, `fetch`, `status`, migração, injeção de configuração, `push`, webhook e dispatch healthcheck.
-- Healthcheck valida o disparo do workflow, mas **não** uma consulta real.
+- Execute `Deploy (Telegram Serverless)` na `main` ou faça push de mudanças do runtime.
+- Confira: `npm ci`, `fetch`, `status`, migração, configuração privada no runner, `push`, webhook e dispatch.
+- O healthcheck **não** prova a resolução real por MTProto.
 
-## Testes de funcionamento
+## Smoke tests no privado
 
-1. Envie `/start` ao bot no privado: deve explicar a pesquisa por MTProto.
-2. Envie `@BotFather` ou outro username público conhecido: deve mostrar que solicitou a pesquisa, sem chamar `getChat`.
-3. Confira uma execução **não-healthcheck** de `Resolver @username (MTProto)` no GitHub Actions.
-4. Confira que o resultado ou a falha da pesquisa chega ao mesmo chat.
-5. Envie um ID numérico: deve explicar que um ID isolado sem `access_hash` não é confiável; não deve disparar o resolver.
-6. Se o inline mode estiver ativo, teste o botão que abre a conversa privada.
-7. Confirme que não existem tokens, `.env`, sessões ou credenciais versionados.
+1. `/start` mostra as três formas: `@username`, `ID` e `ID @username` e o botão seletor.
+2. `@BotFather` dispara um workflow MTProto real e retorna uma resposta.
+3. Um ID numérico não é bloqueado localmente: inicia tentativa oficial por ID e apresenta o resultado ou causa de falha.
+4. `ID @username` correspondente recebe resultado verificado; ID discordante deve dar erro sem associar pessoas erradas.
+5. Teste o botão `Escolher usuário como referência`. O Telegram pode enviar apenas ID (sem username), sem garantir resolução.
+6. Encaminhamento com remetente visível pode oferecer ID/username; remetente oculto deve ser informado como indisponível.
+7. Confira que nenhuma consulta de perfil usa `api.getChat`.
+8. Verifique execução e logs de `Resolver entidade (MTProto)`.
 
-## Critério de eficácia
+## Limites
 
-Registre a entrada, o horário, o run do resolver, seu status e a resposta recebida. Um deploy concluído não prova a resolução de todos os usernames. O Telegram pode limitar solicitações e ocultar campos conforme a configuração do perfil.
+Um `access_hash` é específico do contexto MTProto e não é fornecido universalmente a partir de IDs. O valor zero é uma forma documentada de referência para bots em certas condições, não um método para contornar restrições. Não prometa que qualquer ID terá resultado.

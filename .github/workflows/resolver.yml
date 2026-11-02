@@ -1,10 +1,10 @@
-name: Resolver @username (MTProto)
+name: Resolver entidade (MTProto)
 
 on:
   workflow_dispatch:
     inputs:
       alvo:
-        description: "Username (sem @) a resolver"
+        description: "Username, ID numérico ou ID|username de referência"
         required: true
       healthcheck:
         description: "Somente validar o dispatch; não acessa Telegram"

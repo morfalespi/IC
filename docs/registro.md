@@ -1,3 +1,9 @@
+# Atualização vigente — 2026-11-02: IDs e referências oficiais
+
+A pesquisa por ID **não é mais rejeitada no handler**. O resolver usa as formas oficiais de referência do MTProto: métodos de usuário, canal ou grupo, com `access_hash=0` somente quando previsto para bots e permitido pelo Telegram; alternativa `ID @username` com comparação estrita da identidade devolvida por `contacts.resolveUsername`; e seleção/encaminhamento oficial fornecendo ID e eventual username. O Telegram pode negar a consulta por ID isolado. Não há pesquisa de perfis via `api.getChat`; o Bot API só transporta mensagens e referências compartilhadas. A seção histórica abaixo descreve versões substituídas. Evidência operacional exige uma busca real, não apenas CI, deploy ou healthcheck.
+
+---
+
 # AVISO — Histórico arquivado, não é a arquitetura vigente
 
 Em 2026-11-02, a implementação passou a usar **MTProto como único mecanismo de consulta de perfis**. O Bot API permanece somente no transporte de mensagens e updates. Todas as menções abaixo ao `getChat`, ao fallback por erro 400, ao botão "Escolher usuário" e a relatórios obtidos por Bot API registram **uma versão antiga e descontinuada** e não servem mais como guia de execução, requisitos ou testes atuais. Para o comportamento atual, use `README.md`, `docs/launch-checklist.md` e o código publicado.

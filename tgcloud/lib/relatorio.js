@@ -12,22 +12,24 @@ export function relatorioAjuda() {
     titulo: 'Infocard — MTProto',
     html: [
       '<b>Infocard — pesquisa via MTProto</b>',
-      'Envie um <code>@username</code> público de usuário, bot, canal ou supergrupo.',
-      'A pesquisa acontece no GitHub Actions com Telethon. O resultado será enviado aqui quando terminar.',
-      'IDs numéricos isolados não são suportados: o MTProto geralmente exige um access_hash associado ao usuário ou canal.',
-      'A disponibilidade de dados depende do Telegram e das configurações de privacidade.',
+      'Envie um <code>@username</code>, um ID numérico ou <code>ID @username</code> para comprovar a referência.',
+      'A busca por ID usa os métodos oficiais do MTProto. Ela pode falhar quando o Telegram não concede acesso à entidade.',
+      'Também é possível usar “Escolher usuário como referência” ou encaminhar uma mensagem com remetente identificado.',
+      'O resultado chega aqui após a execução do GitHub Actions. O Telegram controla os dados disponíveis e sua privacidade.',
     ].join('\n'),
+    teclado: true,
   };
 }
 
 export function relatorioInvalido(entrada) {
   return {
-    titulo: 'Envie um @username',
+    titulo: 'Informe um ID ou @username',
     html: [
-      '<b>Não foi possível pesquisar</b>',
+      '<b>Não foi possível interpretar a referência</b>',
       entrada.rotulo ? 'Entrada: <code>' + esc(recorte(entrada.rotulo, 100)) + '</code>' : 'Entrada vazia',
       esc(entrada.erro),
     ].join('\n'),
+    teclado: true,
   };
 }
 
@@ -39,6 +41,7 @@ export function relatorioFalha(entrada, motivo) {
       'Entrada: ' + esc(entrada.rotulo),
       esc(recorte(motivo, 700)),
     ].join('\n'),
+    teclado: true,
   };
 }
 
@@ -48,20 +51,22 @@ export function relatorioBuscando(entrada) {
     html: [
       '<b>Pesquisa MTProto solicitada</b>',
       'Entrada: ' + esc(entrada.rotulo),
-      'O GitHub Actions recebeu o pedido. Se a resolução terminar, o resultado chegará nesta conversa. Se falhar, o sistema tentará informar a causa.',
+      'A execução foi solicitada no GitHub Actions. Um ID isolado pode não ser reconhecido pelo Telegram; se houver erro, tente ID @username ou a seleção oficial de usuário.',
+      'A conclusão ou falha deve chegar nesta conversa.',
     ].join('\n'),
   };
 }
 
 export function relatorioInline(entrada) {
+  const direto = entrada.tipo !== 'referencia' && /^[A-Za-z0-9_-]{1,64}$/.test(entrada.alvo);
   return {
     titulo: 'Pesquisar ' + recorte(entrada.rotulo, 75) + ' via MTProto',
     html: [
       '<b>Pesquisa via MTProto</b>',
       'Entrada: ' + esc(entrada.rotulo),
-      'Abra a conversa privada com o bot para iniciar a pesquisa e receber os resultados.',
+      'Abra o privado com o bot para iniciar a pesquisa e receber os resultados.',
     ].join('\n'),
-    botaoPrivado: entrada.username,
+    botaoPrivado: direto ? entrada.alvo : null,
   };
 }
 
