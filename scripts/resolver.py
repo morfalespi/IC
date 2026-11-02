@@ -262,7 +262,16 @@ def texto_simples_consolidado(info, notas, estado_foto):
                 break
             linhas.append(secao)
         texto = "\n".join(linhas)
-    return texto[:LIMITE_TEXTO]
+    if len(texto) <= LIMITE_TEXTO:
+        return texto
+    seguros = []
+    for linha in linhas:
+        candidato = "\n".join(seguros + [linha])
+        if len(candidato) > LIMITE_TEXTO - 130:
+            seguros.append("<i>Alguns detalhes não couberam no texto simples; consulte o cartão rico.</i>")
+            break
+        seguros.append(linha)
+    return "\n".join(seguros)
 
 
 def ficha_final(info, notas, foto):

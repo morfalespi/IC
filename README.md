@@ -35,6 +35,19 @@ Fontes: https://core.telegram.org/method/users.getFullUser , https://core.telegr
 
 **Limite:** o ID isolado de uma entidade desconhecida ainda pode ser recusado pelo Telegram. Nem `access_hash=0` nem pesquisa externa permitem garantir a identificação. O cache persistente de peers exigiria uma sessão MTProto protegida e uma arquitetura distinta; **não está implementado**.
 
+## Ficha única: dados consolidados e aprofundados
+
+A pesquisa atualiza **a mesma mensagem rica** do Telegram Serverless / Bot API 10.3. O cartão final reúne:
+
+1. **Identificação confirmada:** tipo de entidade, ID, nome, username, usernames adicionais, indicadores públicos e presença de foto. Esses campos vêm da entidade resolvida por MTProto.
+2. **Dados aprofundados:** todos os campos observados no perfil completo e nas consultas opcionais, agrupados em **Perfil e atividade**, **Recursos e presença**, **Informações comerciais**, **Canal ou grupo** e **Outros dados retornados**. Blocos suplementares podem ser expandidos; o resultado não é mais cortado arbitrariamente após 13 linhas.
+3. **Origem e observações:** qual referência oficial foi resolvida e quais consultas opcionais não foram autorizadas ou não retornaram dados.
+4. **Controles e mídia:** Atualizar, Copiar ID e Abrir perfil quando permitido, mais tentativa de foto no próprio Rich Message; há alternativa com texto HTML válido e envio separado de foto.
+
+Os estados temporários mudam de **pesquisando** para **identificação confirmada**, depois **dados aprofundados** e, por fim, **ficha consolidada** no mesmo `message_id` quando as edições são aceitas. A consulta MTProto não usa o Bot API `getChat` como fonte de perfis.
+
+**Distinção importante:** quando a entrada veio do seletor oficial, a mensagem inicial também pode mostrar os dados compartilhados pelo Telegram; a ficha final apresenta os campos confirmados por MTProto. Não se deve atribuir a MTProto um campo que só apareceu no compartilhamento. Preservar os campos exclusivamente compartilhados ao longo de uma pesquisa que falhou requer um armazenamento temporário e protegido de contexto; o projeto ainda não fornece esse armazenamento.
+
 ## Cartão de resultados — Bot API 10.3
 
 O bot agora apresenta as consultas em **Rich Messages** nativas do Telegram:

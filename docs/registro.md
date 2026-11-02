@@ -1,3 +1,9 @@
+# Implementado — 2026-11-02: ficha consolidada por categorias
+
+A ficha rica final passou a mostrar identificação básica + todos os dados adicionais disponibilizados via MTProto em categorias distintas; os blocos após os primeiros 13 campos deixaram de ser um agrupamento único. O formato HTML de fallback também apresenta seções e evita recortar uma tag na metade. O processo mostra fases intermediárias de coleta e então substitui o cartão pelo resultado final. **CI aprovado no commit 80eaa4d83b3aacf37f5402879e6c92b0877fce08; renderização final dessa revisão ainda depende de uma consulta real.** A execução 41525872904 confirmou que o fluxo Rich Message anterior editava a mensagem sem foto, mas não valida esta nova organização de categorias. O compartilhamento inicial de dados não é transportado de forma persistente para o worker; a ficha MTProto só contém o que foi confirmado no próprio protocolo.
+
+---
+
 # Mudança implementada — 2026-11-02: cartões Rich Message Bot API 10.3
 
 A consulta cria um cartão persistente via `sendRichMessage`, transmite seu `message_id` ao workflow e usa `editMessageText` para exibir progresso e resultado final, com tabela compacta, botões e foto via multipart na própria Rich Message quando permitido. Adicionado `tgcloud/handlers/callback_query.js` para atualizar o cartão. Há fallback para HTML convencional e foto separada se a integração rica falhar. **IMPLEMENTADO; requer verificar renderização e atualização ao vivo do Telegram.** Preservados os cinco secrets originais, a pesquisa MTProto e o limite de dispatch.
