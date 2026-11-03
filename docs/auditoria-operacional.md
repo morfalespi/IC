@@ -99,7 +99,7 @@ Também passou a ser tentado `channels.getParticipant` com `InputPeerSelf` para 
 
 ## Fallback de resolução de IDs numéricos — 2026-11-03
 
-Quando MTProto não consegue resolver um ID, o resolver tenta `getChat` da Bot API com o ID numérico. Se o bot puder ler o peer, preserva `ChatFullInfo`, tenta recuperar o peer MTProto por username e, sem username, tenta os métodos compatíveis de bot com os construtores de hash zero descritos na documentação oficial. Cada chamada registra a resposta ou a recusa real. A execução para esse alvo após esta alteração continua pendente.
+Na implementação original deste fallback, uma falha de `getChat` encerrava a coleta. A correção mantém a resposta de erro no JSONL e continua as leituras independentes que aceitam o ID numérico; o tipo é inferido somente para selecionar chamadas compatíveis, sem afirmar a existência do peer nem confundir canal com supergrupo. Respostas bem-sucedidas acrescentam dados; falhas continuam sendo erros. Esta alteração está implementada no branch e precisa de CI e execução real para confirmar os resultados do Telegram.
 
 ## Correção de interpretação do access_hash zero — 2026-11-03
 
