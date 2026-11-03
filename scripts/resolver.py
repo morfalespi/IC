@@ -310,6 +310,42 @@ async def baixar_arquivo_bot_api(dados, file_id, categoria, file_unique_id=None)
                                erro=type(erro).__name__)
 
 
+async def baixar_arquivos_bot_api(dados, objeto, categoria):
+    anexos = []
+
+    def visitar(valor, caminho=()):
+        if isinstance(valor, dict):
+            if isinstance(valor.get("file_id"), str):
+                anexos.append((valor, caminho))
+            for chave, item in valor.items():
+                if chave in ("file_id", "file_unique_id"):
+                    continue
+                if isinstance(item, list) and item and all(
+                    isinstance(tamanho, dict) and isinstance(tamanho.get("file_id"), str)
+                    and isinstance(tamanho.get("width"), int)
+                    and isinstance(tamanho.get("height"), int)
+                    for tamanho in item
+                ):
+                    maior = max(item, key=lambda tamanho: (
+                        tamanho["width"] * tamanho["height"],
+                        tamanho.get("file_size", 0)
+                    ))
+                    visitar(maior, caminho + (str(chave),))
+                else:
+                    visitar(item, caminho + (str(chave),))
+        elif isinstance(valor, list):
+            for indice, item in enumerate(valor):
+                visitar(item, caminho + (str(indice),))
+
+    visitar(objeto)
+    for item, caminho in anexos:
+        rotulo = re.sub(r"[^A-Za-z0-9_-]+", "_", "_".join(caminho))[:80] or "arquivo"
+        await baixar_arquivo_bot_api(
+            dados, item["file_id"], categoria + "_" + rotulo,
+            item.get("file_unique_id")
+        )
+
+
 async def coletar_bot_api(dados, entidade, info):
     chat_id = "@" + info["username"] if isinstance(entidade, (Channel, Chat)) and info.get("username") else info.get("id")
     if not chat_id:
@@ -330,6 +366,7 @@ async def coletar_bot_api(dados, entidade, info):
                 dados, audio["file_id"], "audio_perfil_bot_api",
                 audio.get("file_unique_id")
             )
+        await baixar_arquivos_bot_api(dados, resultado_chat, "chat_bot_api")
         ids_relacionados = []
         for chave in ("personal_chat", "parent_chat"):
             relacionado = resultado_chat.get(chave)
@@ -364,6 +401,7 @@ async def coletar_bot_api(dados, entidade, info):
                     dados, audio_relacionado["file_id"], "audio_chat_relacionado_bot_api",
                     audio_relacionado.get("file_unique_id")
                 )
+            await baixar_arquivos_bot_api(dados, chat_relacionado, "chat_relacionado_bot_api")
 
     if isinstance(entidade, User):
         for metodo, lista_chave, categoria in (
@@ -421,6 +459,7 @@ async def coletar_bot_api(dados, entidade, info):
                             dados, valor.get("file_id"), "mensagem_" + categoria + "_bot_api",
                             valor.get("file_unique_id")
                         )
+                await baixar_arquivos_bot_api(dados, mensagem, "mensagem_pessoal_bot_api")
     else:
         await bot_api_leitura(
             dados, "getChatAdministrators", {"chat_id": chat_id, "return_bots": True}

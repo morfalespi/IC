@@ -14,7 +14,7 @@ A cobertura deve preservar objetos TL completos, respostas JSON Bot API, wrapper
 | Bot API | `getUserProfilePhotos`, `getUserProfileAudios` | Usuário | Pagina as coleções e tenta baixar a maior foto de cada perfil e cada áudio. |
 | Bot API | `getUserPersonalChatMessages` | Usuário | Preserva até 20 mensagens do chat pessoal atualmente indicado no perfil e tenta baixar anexos compatíveis. |
 | Bot API | `getChatAdministrators`, `getChatMemberCount` | Grupo, supergrupo ou canal | Preserva a lista de administradores e a contagem informada. |
-| Bot API | `getFile` | Mídia retornada por métodos acima | Baixa arquivos permitidos pelo limite da Bot API; a resposta e o estado do arquivo são registrados. |
+| Bot API | `getFile` | Mídia retornada por métodos acima | Percorre recursivamente respostas Bot API em busca de `file_id`, escolhendo a maior resolução em vetores de `PhotoSize`; baixa até o limite da Bot API e registra falhas/limites. |
 | MTProto | `getFullUser`, `getFullChannel`, `getFullChat`, `getUserPhotos`, `getSavedMusic`, `getParticipants`, `getMessages`, `channels.getMessages` | Conforme tipo de peer | Preserva respostas disponíveis; pagina coleções no modo completo e tenta obter conteúdo das mensagens fixadas por seus IDs. |
 
 ## Limites oficiais da sessão de bot
@@ -31,7 +31,7 @@ A cobertura deve preservar objetos TL completos, respostas JSON Bot API, wrapper
 |---|---|---|
 | Entidade resolvida e objeto de perfil completo | Implementado | As respostas completas são serializadas; isso ainda precisa de execução real após a alteração |
 | Leituras Bot API adicionais | Implementadas no modo completo | Chamadas são tentadas e respostas ou falhas ficam no JSONL; o Telegram pode negar acesso |
-| Arquivos da Bot API | Implementados com deduplicação | `getFile` e download são limitados a 20 MiB; acima disso, ficam parciais |
+| Arquivos da Bot API | Percorridos recursivamente em respostas de chat e mensagens pessoais; deduplicados por `file_unique_id` | `getFile` e download são limitados a 20 MiB; acima disso, ficam parciais |
 | Fotos de perfil | Consultada e paginada no modo completo para todo usuário resolvido | Paginação e download dependem do que Telegram disponibilizar |
 | Música salva no perfil | Consultada e paginada no modo completo para todo usuário resolvido | A resposta do Telegram informa a coleção acessível, inclusive vazia |
 | Participantes de canal | Filtros recentes, administradores, bots, restritos e banidos paginados no modo completo | Telegram pode recusar por permissão; CI não comprova que cada filtro retorna dados em execução |
@@ -64,4 +64,5 @@ Para cada execução completa, todas as respostas dos métodos de leitura invent
 - [messages.getFullChat](https://core.telegram.org/method/messages.getFullChat): grupos básicos.
 - [photos.getUserPhotos](https://core.telegram.org/method/photos.getUserPhotos) e [users.getSavedMusic](https://core.telegram.org/method/users.getSavedMusic): fotos e músicas de perfil, com paginação e autorização de bot.
 - [channels.getParticipants](https://core.telegram.org/method/channels.getParticipants) e [ChannelParticipantsFilter](https://core.telegram.org/type/ChannelParticipantsFilter): filtros e paginação; o método pode retornar CHAT_ADMIN_REQUIRED. A documentação [Telethon iter_participants](https://docs.telethon.dev/en/stable/modules/client.html) distingue membros restritos (`banned`) de banidos (`kicked`).
+- [Bot API Message](https://core.telegram.org/bots/api#message), [PaidMedia](https://core.telegram.org/bots/api#paidmedia) e [getFile](https://core.telegram.org/bots/api#getfile): mensagens podem conter anexos em objetos aninhados; cada `file_id` acessível é elegível para download, sujeito ao limite oficial de arquivo.
 - [messages.getHistory](https://core.telegram.org/method/messages.getHistory), [stories.getPeerStories](https://core.telegram.org/method/stories.getPeerStories), [messages.getCommonChats](https://core.telegram.org/method/messages.getCommonChats), [messages.getPeerSettings](https://core.telegram.org/method/messages.getPeerSettings), [channels.getAdminLog](https://core.telegram.org/method/channels.getAdminLog), [channels.getForumTopics](https://core.telegram.org/method/channels.getForumTopics), [messages.getForumTopics](https://core.telegram.org/method/messages.getForumTopics) e [channels.getForumTopicsByID](https://core.telegram.org/method/channels.getForumTopicsByID): limitações de autenticação de bot.
