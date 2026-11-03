@@ -346,9 +346,12 @@ async def baixar_arquivos_bot_api(dados, objeto, categoria):
         )
 
 
-def ids_participantes_para_boosts(dados):
+def ids_participantes_conhecidos(dados):
     ids = set()
     ids_bot = set()
+    id_bot = (dados.get("estado_bot_no_chat") or {}).get("bot_id")
+    if isinstance(id_bot, int):
+        ids_bot.add(id_bot)
     fontes = [dados.get("participantes_mtproto", [])]
     fontes.extend((dados.get("participantes_filtrados_mtproto", {}) or {}).values())
     for paginas in fontes:
@@ -360,6 +363,16 @@ def ids_participantes_para_boosts(dados):
                 id_usuario = getattr(participante, "user_id", None)
                 if isinstance(id_usuario, int):
                     ids.add(id_usuario)
+    resposta_completa = dados.get("resposta_completa")
+    for usuario in getattr(resposta_completa, "users", []) or []:
+        id_usuario = getattr(usuario, "id", None)
+        if getattr(usuario, "bot", False) and isinstance(id_usuario, int):
+            ids_bot.add(id_usuario)
+    participantes_chat = getattr(dados.get("completo"), "participants", None)
+    for participante in getattr(participantes_chat, "participants", []) or []:
+        id_usuario = getattr(participante, "user_id", None)
+        if isinstance(id_usuario, int):
+            ids.add(id_usuario)
     for resposta in (dados.get("respostas_bot_api", {}).get("getChatAdministrators", []) or []):
         if not resposta.get("ok"):
             continue
@@ -371,6 +384,20 @@ def ids_participantes_para_boosts(dados):
             elif isinstance(id_usuario, int):
                 ids.add(id_usuario)
     return sorted(id_usuario for id_usuario in ids if id_usuario not in ids_bot)
+
+
+def chave_participante_mtproto(participante):
+    id_usuario = getattr(participante, "user_id", None)
+    if isinstance(id_usuario, int):
+        return ("user", id_usuario)
+    peer = getattr(participante, "peer", None)
+    if peer is not None:
+        try:
+            return ("peer", utils.get_peer_id(peer))
+        except Exception:
+            pass
+    serializado = participante.to_dict() if hasattr(participante, "to_dict") else str(participante)
+    return ("tl", json.dumps(valor_mtproto(serializado), ensure_ascii=False, sort_keys=True))
 
 
 def ids_participantes_com_boosts_bot_api(dados):
@@ -402,13 +429,14 @@ def registrar_coleta_participantes_incompleta(dados, metodo, esperado, recebido)
 
 
 async def coletar_dados_participante_bot_api(dados, entidade, chat_id):
-    if not isinstance(entidade, Channel):
+    if not isinstance(entidade, (Channel, Chat)):
         return
-    ids_usuarios = ids_participantes_para_boosts(dados)
+    ids_usuarios = ids_participantes_conhecidos(dados)
     if not ids_usuarios:
         return
+    consulta_boosts = isinstance(entidade, Channel)
     estados = dados.setdefault("membros_bot_api_por_participante", [])
-    boosts = dados.setdefault("boosts_por_participante_bot_api", [])
+    boosts = dados.setdefault("boosts_por_participante_bot_api", []) if consulta_boosts else []
     membros_ok = 0
     boosts_ok = 0
     for indice, id_usuario in enumerate(ids_usuarios):
@@ -432,10 +460,14 @@ async def coletar_dados_participante_bot_api(dados, entidade, chat_id):
                 registrar_coleta_participantes_incompleta(
                     dados, "getChatMember", len(ids_usuarios), membros_ok
                 )
-                registrar_coleta_participantes_incompleta(
-                    dados, "getUserChatBoosts", len(ids_usuarios), boosts_ok
-                )
+                if consulta_boosts:
+                    registrar_coleta_participantes_incompleta(
+                        dados, "getUserChatBoosts", len(ids_usuarios), boosts_ok
+                    )
                 break
+
+        if not consulta_boosts:
+            continue
 
         respostas_boosts = dados.get("respostas_bot_api", {}).get("getUserChatBoosts", [])
         indice_boost = len(respostas_boosts)
@@ -458,6 +490,28 @@ async def coletar_dados_participante_bot_api(dados, entidade, chat_id):
                 dados, "getUserChatBoosts", len(ids_usuarios), boosts_ok
             )
             break
+
+
+async def coletar_estado_bot_no_chat(dados, chat_id):
+    me = await bot_api_leitura(dados, "getMe", {})
+    if not me.get("ok"):
+        return
+    bot_id = (me.get("result") or {}).get("id")
+    if not isinstance(bot_id, int):
+        dados.setdefault("notas", []).append(
+            "getMe não retornou um ID numérico; status do bot no chat não foi consultado."
+        )
+        return
+    respostas = dados.get("respostas_bot_api", {}).get("getChatMember", [])
+    indice = len(respostas)
+    membro = await bot_api_leitura(
+        dados, "getChatMember", {"chat_id": chat_id, "user_id": bot_id}
+    )
+    dados["estado_bot_no_chat"] = {
+        "bot_id": bot_id,
+        "response_index": indice,
+        "ok": bool(membro.get("ok")),
+    }
 
 
 async def coletar_stickers_bot_api(dados, objeto):
@@ -664,6 +718,28 @@ async def coletar_boosts_mtproto(cliente, dados, entidade):
                 "error": type(erro).__name__,
             })
 
+
+async def coletar_participacao_bot_mtproto(cliente, dados, entidade):
+    if not isinstance(entidade, Channel):
+        return
+    metodo = "channels.getParticipant"
+    try:
+        from telethon.tl.functions.channels import GetParticipantRequest
+        from telethon.tl.types import InputPeerSelf
+        resposta = await com_espera(lambda: cliente(
+            GetParticipantRequest(channel=entidade, participant=InputPeerSelf())
+        ))
+        dados["participacao_bot_mtproto"] = resposta
+    except Exception as erro:
+        dados.setdefault("falhas_coleta", []).append({
+            "method": metodo,
+            "participant": "self",
+            "error": type(erro).__name__,
+        })
+        dados.setdefault("notas", []).append(
+            f"{metodo} para o próprio bot indisponível: {type(erro).__name__}."
+        )
+
 async def coletar_presentes_mtproto(cliente, dados, entidade):
     metodo = "payments.getSavedStarGifts"
     try:
@@ -677,11 +753,11 @@ async def coletar_presentes_mtproto(cliente, dados, entidade):
             f"{metodo} indisponível nesta versão do Telethon."
         )
         return
-    if not isinstance(entidade, (User, Channel)):
+    if not isinstance(entidade, (User, Channel, Chat)):
         dados.setdefault("metodos_nao_aplicaveis", []).append({
             "method": metodo,
             "entity_type": type(entidade).__name__,
-            "reason": "payments.getSavedStarGifts aceita peers de usuário e canal",
+            "reason": "payments.getSavedStarGifts exige um peer Telegram conhecido",
         })
         return
     try:
@@ -780,6 +856,7 @@ async def coletar_historico_canal_pessoal(cliente, dados, entidade):
 
     cursor = 0
     total = None
+    total_inexato = False
     recebidos = 0
     ids_vistos = set()
     paginas = dados.setdefault("historico_canal_pessoal_mtproto", [])
@@ -797,7 +874,13 @@ async def coletar_historico_canal_pessoal(cliente, dados, entidade):
             paginas.append(resposta)
             mensagens = getattr(resposta, "messages", []) or []
             contagem = getattr(resposta, "count", None)
-            if isinstance(contagem, int):
+            if getattr(resposta, "inexact", False):
+                if not total_inexato:
+                    dados.setdefault("notas", []).append(
+                        f"{metodo}: count marcado inexact; a paginação segue pelo cursor até resposta vazia."
+                    )
+                total_inexato = True
+            elif isinstance(contagem, int) and not total_inexato:
                 total = contagem if total is None else max(total, contagem)
             if not mensagens:
                 break
@@ -842,10 +925,13 @@ async def coletar_historico_canal_pessoal(cliente, dados, entidade):
                     "reason": "A página não avançou para IDs de mensagem anteriores.",
                 })
                 break
-            if total is not None and recebidos >= total:
-                break
-            if len(mensagens) < 100:
-                break
+            if not total_inexato and total is not None and recebidos >= total:
+                if recebidos == total:
+                    break
+                total_inexato = True
+                dados.setdefault("notas", []).append(
+                    f"{metodo}: count ({total}) menor que mensagens distintas ({recebidos}); a paginação segue pelo cursor."
+                )
             cursor = proximo_cursor
     except Exception as erro:
         dados.setdefault("falhas_coleta", []).append({
@@ -855,7 +941,9 @@ async def coletar_historico_canal_pessoal(cliente, dados, entidade):
         dados.setdefault("notas", []).append(
             f"{metodo}: coleta interrompida por {type(erro).__name__}."
         )
-    registrar_paginacao_incompleta(dados, metodo, total, recebidos)
+    registrar_paginacao_incompleta(
+        dados, metodo, None if total_inexato else total, recebidos
+    )
 
 
 async def coletar_bot_api(dados, entidade, info):
@@ -979,6 +1067,7 @@ async def coletar_bot_api(dados, entidade, info):
                         )
                 await baixar_arquivos_bot_api(dados, mensagem, "mensagem_pessoal_bot_api")
     else:
+        await coletar_estado_bot_no_chat(dados, chat_id)
         await bot_api_leitura(
             dados, "getChatAdministrators", {"chat_id": chat_id, "return_bots": True}
         )
@@ -1219,12 +1308,14 @@ def registros_telegram(dados, alvo, info):
         "respostas_bot_api": dados.get("respostas_bot_api", {}),
         "coletas_incompletas": dados.get("coletas_incompletas", []),
         "chats_relacionados_bot_api": dados.get("chats_relacionados_bot_api", []),
+        "estado_bot_no_chat": dados.get("estado_bot_no_chat", {}),
         "falhas_bot_api": dados.get("falhas_bot_api", []),
         "metodos_nao_aplicaveis": dados.get("metodos_nao_aplicaveis", []),
         "entidade": dados.get("entidade"),
         "resposta_resolucao": dados.get("resposta_resolucao"),
         "resposta_completa": dados.get("resposta_completa"),
         "mensagens_fixadas_mtproto": dados.get("mensagens_fixadas_mtproto", []),
+        "participacao_bot_mtproto": dados.get("participacao_bot_mtproto"),
         "historico_canal_pessoal_mtproto": dados.get("historico_canal_pessoal_mtproto", []),
         "fotos_perfil": dados.get("fotos_mtproto", []),
         "musicas_perfil": dados.get("musicas_mtproto", []),
@@ -1269,12 +1360,14 @@ def secoes_completas_telegram(dados, alvo, info):
         "respostas_bot_api": "Bot API · respostas completas",
         "coletas_incompletas": "Paginação incompleta",
         "chats_relacionados_bot_api": "Bot API · chats relacionados",
+        "estado_bot_no_chat": "Bot API · status do bot no chat",
         "falhas_bot_api": "Bot API · erros retornados",
         "metodos_nao_aplicaveis": "Métodos não aplicáveis ao tipo de entidade",
         "entidade": "MTProto · entidade resolvida",
         "resposta_resolucao": "MTProto · resposta da resolução",
         "resposta_completa": "MTProto · perfil completo",
         "mensagens_fixadas_mtproto": "MTProto · mensagens fixadas",
+        "participacao_bot_mtproto": "MTProto · participação do próprio bot",
         "historico_canal_pessoal_mtproto": "MTProto · histórico do canal pessoal",
         "fotos_perfil": "MTProto · fotos de perfil",
         "musicas_perfil": "MTProto · músicas de perfil",
@@ -1422,6 +1515,7 @@ async def coletar(alvo):
                 for nome_filtro, filtro_participantes in filtros_participantes:
                     offset_participantes = 0
                     total_participantes = None
+                    ids_participantes_vistos = set()
                     respostas_filtro = []
                     while True:
                         try:
@@ -1451,16 +1545,34 @@ async def coletar(alvo):
                         lista_participantes = getattr(pagina_participantes, "participants", []) or []
                         if not lista_participantes:
                             break
-                        offset_participantes += len(lista_participantes)
-                        if total_participantes is not None and offset_participantes >= total_participantes:
+                        novos = {
+                            chave_participante_mtproto(participante)
+                            for participante in lista_participantes
+                        } - ids_participantes_vistos
+                        if not novos:
+                            dados["coletas_incompletas"].append({
+                                "method": "channels.getParticipants[" + nome_filtro + "]",
+                                "expected": total_participantes,
+                                "received": len(ids_participantes_vistos),
+                                "reason": "A página repetiu participantes sem avançar o conjunto de IDs.",
+                            })
                             break
+                        ids_participantes_vistos.update(novos)
+                        offset_participantes += len(lista_participantes)
+                        if total_participantes is not None and len(ids_participantes_vistos) >= total_participantes:
+                            if len(ids_participantes_vistos) == total_participantes:
+                                break
+                            total_participantes = None
+                            dados.setdefault("notas", []).append(
+                                "channels.getParticipants[" + nome_filtro + "]: count menor que participantes distintos; paginação segue até página vazia."
+                            )
                     if nome_filtro == "recent":
                         dados["participantes_mtproto"] = respostas_filtro
                     else:
                         dados["participantes_filtrados_mtproto"][nome_filtro] = respostas_filtro
                     registrar_paginacao_incompleta(
                         dados, "channels.getParticipants[" + nome_filtro + "]",
-                        total_participantes, offset_participantes
+                        total_participantes, len(ids_participantes_vistos)
                     )
         except Exception as erro:
             dados["falhas_coleta"].append({"method": "getFull", "error": type(erro).__name__})
@@ -1578,6 +1690,7 @@ async def coletar(alvo):
             await coletar_catalogo_presentes_bot_api(dados)
             await coletar_catalogo_presentes_mtproto(cliente, dados)
             await coletar_boosts_mtproto(cliente, dados, entidade)
+            await coletar_participacao_bot_mtproto(cliente, dados, entidade)
             await coletar_presentes_mtproto(cliente, dados, entidade)
             await coletar_historico_canal_pessoal(cliente, dados, entidade)
         atualizar_status("2/2 · Tentativas de coleta encerradas; consolidando ficha", entidade)
