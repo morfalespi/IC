@@ -1,3 +1,13 @@
+## Correção de elegibilidade MTProto para boosts — 2026-11-03
+
+**CORRIGIDO NO CÓDIGO:** a documentação oficial do MTProto determina que métodos chamáveis por bots exibem um aviso explícito de suporte a bots. `stories.getBoostsStatus` e `stories.getBoostersList` não exibem esse aviso; removemos as chamadas para não tratar disponibilidade em contas de usuário como capacidade da sessão de bot. `premium.getUserBoosts` tem o aviso oficial de suporte a bots e agora é tentado para IDs de participantes que o próprio coletor já conhece. Falhas por usuário permanecem registradas.
+
+**LIMITE:** isso não dá acesso ao status agregado nem à lista completa de boosters por `stories.*`. A cobertura total do escopo elegível continua pendente da auditoria sistemática das camadas oficiais e da execução real com peer e destino de teste.
+
+**FONTES OFICIAIS:** https://core.telegram.org/api/bots ; https://core.telegram.org/method/stories.getBoostsStatus ; https://core.telegram.org/method/stories.getBoostersList ; https://core.telegram.org/method/premium.getUserBoosts
+
+---
+
 # PR #20 integrado — 2026-11-03: mídia de presentes colecionáveis
 
 **IMPLEMENTADO E INTEGRADO; CI #99 PASSOU; PROVA AO VIVO PENDENTE:** o exportador MTProto percorre documentos anexados a presentes, incluindo os modelos em atributos de presentes colecionáveis, e tenta incluí-los no ZIP com registro de estado/hash.
