@@ -1,4 +1,4 @@
-# Implementação no branch — 2026-11-03: presentes Star da Bot API
+# PR #17 integrado — 2026-11-03: presentes Star da Bot API
 
 **IMPLEMENTADO, NÃO VERIFICADO AO VIVO:** no modo completo, o resolver chama `getUserGifts` para usuários e `getChatGifts` para grupos/canais, segue `next_offset` até terminar e interrompe ciclos de offset com registro de coleta parcial. Cada resposta bruta é mantida em `respostas_bot_api`, cada página é ligada ao índice da resposta, e os stickers retornados passam pela coleta de mídia e anexos. As páginas entram também nas Rich Messages, Markdown e JSONL já gerados a partir do registro integral. Erros da API e diferença entre total informado e itens coletados são marcados como parciais.
 
@@ -6,7 +6,7 @@
 
 **FONTES OFICIAIS:** https://core.telegram.org/bots/api#getusergifts ; https://core.telegram.org/bots/api#getchatgifts ; https://core.telegram.org/bots/api#ownedgifts ; https://core.telegram.org/bots/api#getbusinessaccountgifts
 
-**PRÓXIMA PROVA:** CI aprovado e uma execução MTProto real em alvo de teste devem confirmar a paginação, a entrega das Rich Messages/JSONL/Markdown, e os arquivos de sticker efetivamente baixáveis. A cobertura total ainda exige inventário completo das leituras elegíveis e prova de ponta a ponta.
+**CI VERIFICADO:** execução #79 (`41557953574`) passou antes da integração do PR #17, commit `ab746bc25a285f0b614ab05d17fcd5c388596eb7`. Isso valida as checagens automatizadas do repositório, não a resposta real da Bot API. **PENDENTE DE PROVA AO VIVO:** executar em alvo e chat de teste para confirmar presentes retornados, paginação, Rich Messages, JSONL/Markdown e stickers baixáveis. A cobertura total ainda exige inventário das leituras elegíveis e prova de ponta a ponta.
 
 ---
 
