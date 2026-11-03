@@ -6,6 +6,8 @@
 
 **FONTES OFICIAIS:** https://core.telegram.org/api/bots ; https://core.telegram.org/api/search ; https://core.telegram.org/api/pin ; https://core.telegram.org/method/messages.getMessages ; https://core.telegram.org/method/channels.getMessages ; https://core.telegram.org/method/messages.getHistory ; https://core.telegram.org/method/messages.search ; https://core.telegram.org/method/messages.getReplies ; https://core.telegram.org/method/messages.getDiscussionMessage ; https://core.telegram.org/method/messages.getMessagesViews ; https://core.telegram.org/bots/api#getchat
 
+**VALIDAÇÃO:** PR #24 integrado; CI #111 (execução `41657575944`) passou. Isso valida as checagens automatizadas, não uma execução com peer real.
+
 ---
 
 ## Redução de chamadas redundantes de boosts — 2026-11-03
@@ -18,7 +20,7 @@
 
 ## Auditoria de métodos estatísticos por peer — 2026-11-03
 
-**LACUNAS DOCUMENTADAS:** o Telegram marca `stats.getBroadcastRevenueStats` e `stats.getBroadcastRevenueTransactions` como acessíveis a bots, porém não publica seus parâmetros/schema no estado atual das páginas, e o schema TL layer 225 não contém essas funções. Não foram implementadas por falta de assinatura verificável. `stats.getBroadcastRevenueWithdrawalUrl` inicia saque e foi excluído por ser ação; `payments.getStarsRevenueStats`, `payments.getStarsStatus`, `stats.getBroadcastStats`, `stats.getMegagroupStats` e `stats.getMessageStats` são exclusivos de usuários.
+**LACUNAS DOCUMENTADAS:** o Telegram marca `stats.getBroadcastRevenueStats` e `stats.getBroadcastRevenueTransactions` como acessíveis a bots, porém não publica seus parâmetros/schema no estado atual das páginas, e o schema TL oficial publicado (layer 214) não lista essas funções, em conflito com as páginas dos métodos que declaram suporte a bots mas omitem os parâmetros. Não foram implementadas por falta de assinatura verificável. `stats.getBroadcastRevenueWithdrawalUrl` inicia saque e foi excluído por ser ação; `payments.getStarsRevenueStats`, `payments.getStarsStatus`, `stats.getBroadcastStats`, `stats.getMegagroupStats` e `stats.getMessageStats` são exclusivos de usuários.
 
 **SEM NOVO CAMPO:** `channels.getParticipant` aceita bots, mas repete o tipo `ChannelParticipant` já preservado pela listagem `channels.getParticipants`; não justifica chamadas redundantes por membro.
 
