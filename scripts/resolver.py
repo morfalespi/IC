@@ -2041,6 +2041,11 @@ async def coletar(alvo):
                 }
                 for categoria in sorted({item.get("category") for item in dados.get("midias", [])})
             },
+            "media_error_types": sorted({
+                item["error"] for item in dados.get("midias", [])
+                if isinstance(item.get("error"), str)
+                and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", item["error"])
+            }),
         }
         print("Resumo das leituras: " + json.dumps(resumo, ensure_ascii=False, sort_keys=True))
         return dados
