@@ -25,9 +25,9 @@
 | ID sem contexto | Resultado permitido ou erro explicativo | Run e feedback |
 | ID @username com correspondência | Identidade coincidente antes dos dados | Log de resolução e relatório |
 | ID @username divergente | Nenhum dado atribuído ao ID incorreto | Mensagem de recusa |
-| Escolher usuário, grupo e canal | Mostrar campos de referência que chegaram | Mensagem inicial |
-| Atualizar | Callback validado e edição do cartão | Callback e mesmo message_id |
-| Obter Markdown completo | Páginas ricas e documento .md completos | Logs de envio e arquivos no Telegram |
+| Escolher usuário, grupo e canal | Mostrar referência recebida e iniciar automaticamente a coleta completa | Mensagem inicial e workflow `MODO=completo` |
+| Atualizar | Callback validado e nova coleta completa editando o cartão | Callback, workflow e mesmo message_id |
+| Consulta privada normal | Páginas ricas, Markdown, JSONL e ZIP com mídia acessível | Logs de envio, hashes e anexos recebidos/abertos no Telegram |
 | Rich Message recusada | Fallback HTML e foto quando possível | Log do erro e mensagem de fallback |
 | Limite excedido | Explicação ao usuário | Mensagem e bloqueio de dispatch |
 
@@ -42,8 +42,8 @@
 
 ## Entrega sem corte arbitrário
 
-- Conferir que o resultado normal apresenta todos os campos mapeados devolvidos pela API, não apenas nove.
+- Conferir que uma consulta normal inicia a coleta completa e entrega todos os campos das respostas efetivamente coletadas, não apenas os campos mapeados do cartão resumido.
 - Para grupos básicos acessíveis, verificar se `messages.getFullChat` responde e fornece informações complementares.
 - Observar logs de tentativas por `retry_after` em HTTP 429 e uso de fallback HTML para página rica recusada.
-- Simular indisponibilidade parcial apenas em ambiente de validação apropriado: a execução deve tentar as demais partes e enviar o Markdown, se solicitado, independentemente da falha visual.
+- Simular indisponibilidade parcial apenas em ambiente de validação apropriado: a execução deve tentar as demais partes e enviar o Markdown independentemente da falha visual.
 - Comprovar `RELATÓRIO ENTREGUE` somente quando as confirmações de todos os componentes obrigatórios estiverem presentes; não confundir com a aceitação do dispatch.

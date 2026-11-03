@@ -34,7 +34,7 @@ CHAT_VALIDO = re.compile(r"-?[0-9]{1,16}")
 MENSAGEM_ID = os.environ.get("MESSAGE_ID", "").strip()
 CHAT_DESTINO = os.environ.get("CHAT_ID", "").strip()
 ID_MENSAGEM = int(MENSAGEM_ID) if MENSAGEM_ID.isdigit() and int(MENSAGEM_ID) > 0 else None
-MODO = "completo" if os.environ.get("MODO") == "completo" else "resumo"
+MODO = "resumo" if os.environ.get("MODO") == "resumo" else "completo"
 EXPECTED_ID = os.environ.get("EXPECTED_ID", "").strip()
 REFERENCIA = os.environ.get("ORIGEM_ID", "")
 ORIGEM_ID = int(REFERENCIA) if REFERENCIA.isdigit() and int(REFERENCIA) > 0 else None
@@ -749,6 +749,115 @@ async def coletar_presentes_mtproto(cliente, dados, entidade):
     )
 
 
+async def coletar_historico_canal_pessoal(cliente, dados, entidade):
+    metodo = "messages.getPersonalChannelHistory"
+    try:
+        from telethon.tl.functions.messages import GetPersonalChannelHistoryRequest
+    except Exception as erro:
+        dados.setdefault("falhas_coleta", []).append({
+            "method": metodo,
+            "error": type(erro).__name__,
+        })
+        dados.setdefault("notas", []).append(
+            f"{metodo} indisponível nesta versão do Telethon."
+        )
+        return
+    if not isinstance(entidade, User):
+        dados.setdefault("metodos_nao_aplicaveis", []).append({
+            "method": metodo,
+            "entity_type": type(entidade).__name__,
+            "reason": "O método consulta o canal pessoal associado a um usuário.",
+        })
+        return
+    perfil_completo = dados.get("completo")
+    if perfil_completo is not None and not getattr(perfil_completo, "personal_channel_id", None):
+        dados.setdefault("metodos_nao_aplicaveis", []).append({
+            "method": metodo,
+            "entity_type": type(entidade).__name__,
+            "reason": "users.getFullUser não retornou personal_channel_id para este perfil.",
+        })
+        return
+
+    cursor = 0
+    total = None
+    recebidos = 0
+    ids_vistos = set()
+    paginas = dados.setdefault("historico_canal_pessoal_mtproto", [])
+    try:
+        while True:
+            resposta = await com_espera(lambda: cliente(
+                GetPersonalChannelHistoryRequest(
+                    user_id=entidade,
+                    limit=100,
+                    max_id=cursor,
+                    min_id=0,
+                    hash=0,
+                )
+            ))
+            paginas.append(resposta)
+            mensagens = getattr(resposta, "messages", []) or []
+            contagem = getattr(resposta, "count", None)
+            if isinstance(contagem, int):
+                total = contagem if total is None else max(total, contagem)
+            if not mensagens:
+                break
+
+            novas = []
+            for mensagem in mensagens:
+                id_mensagem = getattr(mensagem, "id", None)
+                if isinstance(id_mensagem, int) and id_mensagem not in ids_vistos:
+                    ids_vistos.add(id_mensagem)
+                    novas.append(mensagem)
+            recebidos += len(novas)
+            if dados.get("midias_dir"):
+                for mensagem in novas:
+                    if getattr(mensagem, "media", None):
+                        await baixar_midia(
+                            cliente,
+                            mensagem,
+                            dados,
+                            "historico_canal_pessoal",
+                            f"historico_canal_pessoal_{getattr(mensagem, 'id', recebidos)}",
+                        )
+
+            ids_pagina = [
+                id_mensagem for id_mensagem in
+                (getattr(mensagem, "id", None) for mensagem in mensagens)
+                if isinstance(id_mensagem, int) and id_mensagem > 0
+            ]
+            if not ids_pagina:
+                dados.setdefault("coletas_incompletas", []).append({
+                    "method": metodo,
+                    "expected": total,
+                    "received": recebidos,
+                    "reason": "A resposta não trouxe IDs de mensagem para avançar a paginação.",
+                })
+                break
+            proximo_cursor = min(ids_pagina)
+            if not novas or proximo_cursor <= 0 or (cursor and proximo_cursor >= cursor):
+                dados.setdefault("coletas_incompletas", []).append({
+                    "method": metodo,
+                    "expected": total,
+                    "received": recebidos,
+                    "reason": "A página não avançou para IDs de mensagem anteriores.",
+                })
+                break
+            if total is not None and recebidos >= total:
+                break
+            if len(mensagens) < 100:
+                break
+            cursor = proximo_cursor
+    except Exception as erro:
+        dados.setdefault("falhas_coleta", []).append({
+            "method": metodo,
+            "error": type(erro).__name__,
+        })
+        dados.setdefault("notas", []).append(
+            f"{metodo}: coleta interrompida por {type(erro).__name__}."
+        )
+    registrar_paginacao_incompleta(dados, metodo, total, recebidos)
+
+
 async def coletar_bot_api(dados, entidade, info):
     chat_id = "@" + info["username"] if isinstance(entidade, (Channel, Chat)) and info.get("username") else info.get("id")
     if not chat_id:
@@ -1116,6 +1225,7 @@ def registros_telegram(dados, alvo, info):
         "resposta_resolucao": dados.get("resposta_resolucao"),
         "resposta_completa": dados.get("resposta_completa"),
         "mensagens_fixadas_mtproto": dados.get("mensagens_fixadas_mtproto", []),
+        "historico_canal_pessoal_mtproto": dados.get("historico_canal_pessoal_mtproto", []),
         "fotos_perfil": dados.get("fotos_mtproto", []),
         "musicas_perfil": dados.get("musicas_mtproto", []),
         "participantes": dados.get("participantes_mtproto", []),
@@ -1165,6 +1275,7 @@ def secoes_completas_telegram(dados, alvo, info):
         "resposta_resolucao": "MTProto · resposta da resolução",
         "resposta_completa": "MTProto · perfil completo",
         "mensagens_fixadas_mtproto": "MTProto · mensagens fixadas",
+        "historico_canal_pessoal_mtproto": "MTProto · histórico do canal pessoal",
         "fotos_perfil": "MTProto · fotos de perfil",
         "musicas_perfil": "MTProto · músicas de perfil",
         "participantes": "MTProto · participantes recentes",
@@ -1468,6 +1579,7 @@ async def coletar(alvo):
             await coletar_catalogo_presentes_mtproto(cliente, dados)
             await coletar_boosts_mtproto(cliente, dados, entidade)
             await coletar_presentes_mtproto(cliente, dados, entidade)
+            await coletar_historico_canal_pessoal(cliente, dados, entidade)
         atualizar_status("2/2 · Tentativas de coleta encerradas; consolidando ficha", entidade)
         return dados
     finally:
