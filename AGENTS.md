@@ -40,7 +40,7 @@ Fontes normativas:
 - Texto de consulta aceito: @username, ID ou ID @username. Este último é convenção da interface do Infocard, não sintaxe do Telegram.
 - botões usam callback_data tipado (r ou f), validado em tgcloud/lib/entrada.js; não reutilizar conteúdo opaco de callback como texto digitado.
 - O TGCloud envia alvo e expected_id como parâmetros separados a resolver.yml, que aciona scripts/resolver.py.
-- ID numérico usa a resolução MTProto e, se necessário, o fallback `getChat` da Bot API; quando a Bot API confirma o peer, o resolver tenta as leituras MTProto compatíveis para bots com hash zero e registra as respostas reais. Username usa `contacts.resolveUsername`; se houver expected_id, exige correspondência exata do peer.
+- ID numérico tenta MTProto, depois `getChat` e, se ainda não houver confirmação, continua as leituras independentes permitidas pelas APIs com o ID e tipo de peer inferidos da codificação oficial. Um tipo de canal inferido não distingue canal de supergrupo. Preserve cada resposta; erro não conta como dado nem como prova de inexistência. Username usa `contacts.resolveUsername`; se houver expected_id, exige correspondência exata do peer.
 - Estado do código: consultas privadas e atualizações usam `MODO=completo` por padrão e entregam páginas ricas, Markdown, JSONL e ZIP de mídia acessível; o cartão curto é apenas andamento. `MODO=resumo` exige escolha explícita no dispatch. A coleta preserva respostas brutas, mas a cobertura total de métodos elegíveis ainda precisa ser inventariada e comprovada em execução real.
 - Dados compartilhados por seletores e encaminhamentos podem aparecer no cartão inicial, mas o worker não possui armazenamento de contexto persistente para conservá-los se a ficha for sobrescrita.
 - O modo inline orienta a conversa privada; não faz consulta MTProto dentro de outro chat.
@@ -55,7 +55,7 @@ Fontes normativas:
 - O repositório é PÚBLICO. workflow_dispatch recebe alvo, expected_id e identificadores de chat/mensagem; metadados e logs das execuções podem expor esse contexto. Não tratar o workflow atual como transporte privado. Não registrar IDs completos em respostas de suporte públicas.
 - O status CI ou deploy só prova o que suas etapas verificaram. Healthcheck de dispatch ignora Telethon. Prova funcional exige workflow não-healthcheck, resultado da Bot API e inspeção do conteúdo entregue no Telegram.
 - A Bot API 10.3 oferece Rich Messages, tabelas, mídia e botões, mas impõe limites por mensagem; paginação e envio de documentos são alternativas documentadas, não permissão para consultas ilimitadas.
-- Para ID numérico, não interromper a evolução por ausência de hash na primeira resolução: executar o fallback oficial `getChat` e, se confirmar o peer, tentar as leituras elegíveis com os construtores de bot e hash zero. Classificar como indisponível somente após a resposta real da API ou uma exclusão explícita na documentação oficial.
+- Para ID numérico, não encerrar a coleta apenas porque MTProto não resolveu ou `getChat` falhou. Tentar as leituras independentes documentadas para aquele identificador; usar hash zero nas chamadas MTProto de bot quando a fonte oficial indicar, e registrar sucesso/recusa de cada método. Classificar um método como indisponível somente após resposta real ou exclusão explícita na documentação oficial. Nunca apresentar recusa como dado, sucesso ou prova de inexistência.
 
 ## Caminhos principais
 
