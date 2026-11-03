@@ -1,6 +1,6 @@
 # Implementação no branch — 2026-11-03: presentes Star via MTProto
 
-**IMPLEMENTADO, NÃO VERIFICADO AO VIVO:** no modo completo, o resolver tenta `payments.getSavedStarGifts` para o peer MTProto já resolvido, segue `next_offset`, guarda cada resposta TL integral para Rich Messages, Markdown e JSONL, e tenta baixar stickers regulares retornados. Falha de import da classe no Telethon, erro RPC ou loop de offset são registrados sem interromper a coleta já feita por outras APIs.
+**IMPLEMENTADO, NÃO VERIFICADO AO VIVO:** no modo completo, o resolver tenta `payments.getSavedStarGifts` para usuários e canais resolvidos, segue `next_offset`, guarda cada resposta TL integral para Rich Messages, Markdown e JSONL, e tenta baixar stickers regulares retornados. Grupos básicos são registrados como não aplicáveis sem tornar a coleta incompleta. Falha de import da classe no Telethon, erro RPC ou loop de offset são registrados sem interromper a coleta já feita por outras APIs.
 
 **FONTES OFICIAIS:** https://core.telegram.org/method/payments.getSavedStarGifts ; https://core.telegram.org/constructor/payments.savedStarGifts ; https://github.com/LonamiWebs/Telethon/blob/v1/telethon_generator/data/api.tl
 
