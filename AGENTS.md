@@ -6,15 +6,22 @@ Este arquivo orienta manutenção e revisão. Não é prova de execução ou dis
 
 A skill Partners e as decisões explícitas da pessoa definem o objetivo, os critérios de sucesso e o método de evolução. Quando estas normas locais divergirem de Partners ou de uma decisão atual da pessoa, atualizar este arquivo e os demais documentos afetados; não perpetuar uma regra antiga por inércia.
 
-Para fatos técnicos, usar as especificações oficiais vigentes. Código e decisões anteriores são inventário do estado observado, não padrão normativo. Conferir versões e parâmetros antes de alterar uma integração.
+## Regra normativa para evoluir o código
 
-1. Telegram Bot API: https://core.telegram.org/bots/api e histórico https://core.telegram.org/bots/api-changelog
-2. Telegram MTProto: https://core.telegram.org/api/peers, https://core.telegram.org/method/contacts.resolveUsername e a documentação de cada método usado
+A documentação oficial vigente das APIs é a referência normativa do projeto. Não use o código atual, commits anteriores, comentários, exemplos de terceiros ou documentação histórica como referência para definir o que a API permite ou o que deve ser implementado. Consulte-os somente para localizar o comportamento presente e a diferença a corrigir. Uma chamada ausente do código é uma lacuna de implementação, não uma limitação da API.
+
+Para cada tipo de entidade, consulte os métodos, tipos, parâmetros, campos de resposta, paginação, disponibilidade para bots, permissões e limites nas fontes oficiais atuais e no schema vigente. Confira a compatibilidade com o SDK instalado sem deixar que a implementação existente reduza o escopo oficialmente disponível.
+
+Implemente todas as leituras oficiais aplicáveis ao contexto de bot. Preserve respostas completas, percorra coleções até o término indicado pela API e apresente os dados entregues. Não descarte uma chamada antes de executá-la por ausência de retorno em execuções antigas ou por premissa derivada do código. Para MTProto de bot sem hash local, use o construtor e o access_hash zero quando previstos oficialmente; deixe a resposta real do servidor determinar o acesso.
+
+Exclua uma leitura somente quando a fonte oficial vigente determinar incompatibilidade com bot, a assinatura executável estiver ausente do schema oficial, ou o contexto/identificador exigido não existir. Registre o método, a fonte exata e o dado/contexto que falta. Não substitua tentativa de implementação por descrição de intenção, fallback genérico ou advertência sem chamada.
+
+Fontes normativas:
+1. Telegram Bot API e histórico: https://core.telegram.org/bots/api e https://core.telegram.org/bots/api-changelog
+2. Telegram MTProto: https://core.telegram.org/api/peers, https://core.telegram.org/method/contacts.resolveUsername, schema atual e página oficial de cada método
 3. Telegram Serverless: https://core.telegram.org/bots/serverless e cópia em docs/Serverless-OFFICIAL
 4. SDK efetivamente instalado: docs/tgcloud-sdk.md e versão do projeto
-5. GitHub Actions: https://docs.github.com/en/actions e documentação de workflow_dispatch
-
-Repositórios de terceiros, exemplos, versões anteriores deste projeto e comentários históricos não substituem as fontes acima. Conferir versões e parâmetros antes de mudar integração.
+5. GitHub Actions: https://docs.github.com/en/actions e documentação oficial de workflow_dispatch
 
 ## Regras de qualidade
 
@@ -33,7 +40,7 @@ Repositórios de terceiros, exemplos, versões anteriores deste projeto e coment
 - Texto de consulta aceito: @username, ID ou ID @username. Este último é convenção da interface do Infocard, não sintaxe do Telegram.
 - botões usam callback_data tipado (r ou f), validado em tgcloud/lib/entrada.js; não reutilizar conteúdo opaco de callback como texto digitado.
 - O TGCloud envia alvo e expected_id como parâmetros separados a resolver.yml, que aciona scripts/resolver.py.
-- MTProto tenta resolução por ID com as limitações de access_hash do Telegram; username passa por contacts.resolveUsername e, se houver expected_id, exige correspondência exata do peer.
+- ID numérico usa a resolução MTProto e, se necessário, o fallback `getChat` da Bot API; quando a Bot API confirma o peer, o resolver tenta as leituras MTProto compatíveis para bots com hash zero e registra as respostas reais. Username usa `contacts.resolveUsername`; se houver expected_id, exige correspondência exata do peer.
 - Estado do código: consultas privadas e atualizações usam `MODO=completo` por padrão e entregam páginas ricas, Markdown, JSONL e ZIP de mídia acessível; o cartão curto é apenas andamento. `MODO=resumo` exige escolha explícita no dispatch. A coleta preserva respostas brutas, mas a cobertura total de métodos elegíveis ainda precisa ser inventariada e comprovada em execução real.
 - Dados compartilhados por seletores e encaminhamentos podem aparecer no cartão inicial, mas o worker não possui armazenamento de contexto persistente para conservá-los se a ficha for sobrescrita.
 - O modo inline orienta a conversa privada; não faz consulta MTProto dentro de outro chat.
@@ -48,7 +55,7 @@ Repositórios de terceiros, exemplos, versões anteriores deste projeto e coment
 - O repositório é PÚBLICO. workflow_dispatch recebe alvo, expected_id e identificadores de chat/mensagem; metadados e logs das execuções podem expor esse contexto. Não tratar o workflow atual como transporte privado. Não registrar IDs completos em respostas de suporte públicas.
 - O status CI ou deploy só prova o que suas etapas verificaram. Healthcheck de dispatch ignora Telethon. Prova funcional exige workflow não-healthcheck, resultado da Bot API e inspeção do conteúdo entregue no Telegram.
 - A Bot API 10.3 oferece Rich Messages, tabelas, mídia e botões, mas impõe limites por mensagem; paginação e envio de documentos são alternativas documentadas, não permissão para consultas ilimitadas.
-- ID isolado de entidade desconhecida não possui resolução universal garantida. Não prometer acesso a dados ocultos ou inventar access_hash.
+- Para ID numérico, não interromper a evolução por ausência de hash na primeira resolução: executar o fallback oficial `getChat` e, se confirmar o peer, tentar as leituras elegíveis com os construtores de bot e hash zero. Classificar como indisponível somente após a resposta real da API ou uma exclusão explícita na documentação oficial.
 
 ## Caminhos principais
 

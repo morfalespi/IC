@@ -1,6 +1,16 @@
 # Infocard — Telegram Serverless + APIs do Telegram
 
-O Infocard recebe uma referência no privado, resolve a entidade por MTProto e, na exportação completa, combina leituras MTProto e Bot API. A exportação preserva as respostas brutas de cada método tentado e baixa mídia quando a API e as permissões permitem. Um ID arbitrário não garante acesso.
+O Infocard recebe uma referência no privado e consulta MTProto e Bot API para compor uma ficha completa. A evolução do código segue a capacidade descrita nas fontes oficiais vigentes; o código existente mostra apenas o que já foi implementado e não define o limite do que deve ser coletado.
+
+## Regra de evolução
+
+Use a documentação oficial vigente da Bot API e do MTProto como referência normativa para evoluir o Infocard. Não derive o escopo do código atual, de commits anteriores, de comentários ou de exemplos de terceiros. Consulte o código somente para localizar o comportamento atual e implementar a diferença em relação às APIs oficiais.
+
+Para cada tipo de peer, identifique nos métodos oficiais os dados retornados, os parâmetros, a paginação, o suporte a bots e os contextos necessários. Implemente as leituras aplicáveis, preserve as respostas completas e entregue os dados coletados em páginas e anexos. Uma chamada ausente do código é trabalho de evolução; não é motivo para excluir uma capacidade que a API documenta.
+
+Não classifique uma leitura como indisponível antes de executá-la. Use fallback oficial para IDs numéricos e os construtores com hash zero nas chamadas MTProto de bot quando a documentação os prevê. Registre recusas com o método e a resposta real. Exclua um método somente quando a documentação oficial vigente declarar a incompatibilidade ou quando faltar o contexto/identificador exigido pela própria API.
+
+Fontes normativas: [Telegram Bot API](https://core.telegram.org/bots/api), [Bot API changelog](https://core.telegram.org/bots/api-changelog), [MTProto peer database](https://core.telegram.org/api/peers), [schema MTProto atual](https://core.telegram.org/schema) e a página oficial de cada método usado.
 
 ## Uso
 
@@ -9,7 +19,7 @@ O Infocard recebe uma referência no privado, resolve a entidade por MTProto e, 
 | /start | Mensagem de ajuda com teclado de seleção |
 | /help | Mesma ajuda |
 | @username | Resolve pelo método oficial contacts.resolveUsername |
-| ID numérico | Tenta as operações MTProto para o tipo de peer; pode falhar sem contexto |
+| ID numérico | Tenta MTProto; se necessário consulta `getChat` e prossegue com os métodos de bot oficialmente compatíveis usando hash zero |
 | ID @username | Resolve username e exige que o ID retornado coincida |
 | Escolher usuário/canal/grupo | Recebe o ID e dados opcionais fornecidos pelo seletor oficial |
 | Encaminhar mensagem, contato, menção | Usa somente as referências disponibilizadas pelo Telegram |
@@ -94,4 +104,4 @@ Os cinco secrets existentes são TGCLOUD_TOKEN, GH_DISPATCH_TOKEN, API_ID, API_H
 - https://core.telegram.org/bots/serverless
 - https://docs.github.com/en/rest/actions/workflows#create-a-workflow-dispatch-event
 
-Documentação de API e código executável determinam capacidades; documentação histórica e healthchecks não substituem confirmação real.
+Documentação oficial vigente determina as capacidades disponíveis. O código executável comprova somente as capacidades implementadas até aquele commit; toda lacuna oficial elegível deve avançar para implementação e execução real.
