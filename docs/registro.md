@@ -1,3 +1,15 @@
+# Implementação no branch — 2026-11-03: presentes Star da Bot API
+
+**IMPLEMENTADO, NÃO VERIFICADO AO VIVO:** no modo completo, o resolver chama `getUserGifts` para usuários e `getChatGifts` para grupos/canais, segue `next_offset` até terminar e interrompe ciclos de offset com registro de coleta parcial. Cada resposta bruta é mantida em `respostas_bot_api`, cada página é ligada ao índice da resposta, e os stickers retornados passam pela coleta de mídia e anexos. As páginas entram também nas Rich Messages, Markdown e JSONL já gerados a partir do registro integral. Erros da API e diferença entre total informado e itens coletados são marcados como parciais.
+
+**ESCOPO:** a leitura de presentes de uma conta empresarial via `getBusinessAccountGifts` requer um `business_connection_id` ativo e direito empresarial; esse identificador não é fornecido por uma consulta comum a usuário/canal e não foi presumido. A Bot API pode negar presentes ou download de stickers em um peer específico.
+
+**FONTES OFICIAIS:** https://core.telegram.org/bots/api#getusergifts ; https://core.telegram.org/bots/api#getchatgifts ; https://core.telegram.org/bots/api#ownedgifts ; https://core.telegram.org/bots/api#getbusinessaccountgifts
+
+**PRÓXIMA PROVA:** CI aprovado e uma execução MTProto real em alvo de teste devem confirmar a paginação, a entrega das Rich Messages/JSONL/Markdown, e os arquivos de sticker efetivamente baixáveis. A cobertura total ainda exige inventário completo das leituras elegíveis e prova de ponta a ponta.
+
+---
+
 ## Paginação sem total explícito — PR #6 integrado
 
 Foi removido o último fallback que tratava uma página Bot API menor que 100 como fim da lista quando a resposta não fornecia `total_count`. Sem total, a coleta agora prossegue até uma resposta vazia. CI passou; endpoint e execução com dados reais não foram validados ao vivo.
