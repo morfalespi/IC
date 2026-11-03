@@ -97,6 +97,10 @@ O fluxo completo agora usa os participantes que `messages.getFullChat` devolve p
 
 Também passou a ser tentado `channels.getParticipant` com `InputPeerSelf` para o próprio bot em canais/supergrupos, e `payments.getSavedStarGifts` aceita tentativa de `InputPeerChat` para grupos básicos. Cada chamada preserva resposta ou erro. A assinatura oficial de `payments.getSavedStarGifts` usa `InputPeer`; a documentação não promete que um grupo básico tenha presentes, então a resposta do Telegram, não uma suposição local, define o resultado.
 
+## Fallback de resolução de IDs numéricos — 2026-11-03
+
+Quando MTProto não consegue resolver um ID de usuário, grupo, supergrupo ou canal, o resolver agora tenta `getChat` da Bot API com o ID numérico. Se o bot puder ler o peer, preserva a resposta completa e entrega campos, anexos e presentes permitidos pela Bot API. Se o `ChatFullInfo` trouxer username, tenta obter também o peer MTProto correspondente e confirma que o ID bate. Sem esse contexto, o relatório registra a lacuna de `access_hash` e não simula chamadas MTProto. O ID numérico do teste ainda precisa ser executado novamente para confirmar a resposta real de `getChat` e a entrega.
+
 ## Revisão de entrega integral — 2026-11-02
 
 Foi removido o corte fixo de nove campos da apresentação usual, mantendo paginação integral. O método MTProto `messages.getFullChat` foi introduzido para grupos básicos acessíveis. O transporte da Bot API respeita `retry_after`; somente leituras idempotentes repetem respostas 429 e 5xx, e erros ambíguos de rede não são repetidos automaticamente. Se a Rich Message for recusada, há tentativa de envio paginado em HTML; os arquivos Markdown são tentados independentemente da formatação das mensagens. O sucesso exige todas as partes obrigatórias aceitas pela Bot API. Ainda é necessário demonstrar esse comportamento na execução real posterior ao commit, especialmente o botão de Markdown.
