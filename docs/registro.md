@@ -1,6 +1,6 @@
-# Em andamento no branch — mídia de presentes colecionáveis
+# PR #20 integrado — 2026-11-03: mídia de presentes colecionáveis
 
-**IMPLEMENTADO, PENDENTE DE CI:** o exportador MTProto percorre documentos anexados a presentes, incluindo os modelos em atributos de presentes colecionáveis, e tenta incluí-los no ZIP com registro de estado/hash.
+**IMPLEMENTADO E INTEGRADO; CI #99 PASSOU; PROVA AO VIVO PENDENTE:** o exportador MTProto percorre documentos anexados a presentes, incluindo os modelos em atributos de presentes colecionáveis, e tenta incluí-los no ZIP com registro de estado/hash.
 
 **FONTE OFICIAL:** https://core.telegram.org/constructor/starGiftUnique ; https://core.telegram.org/constructor/starGiftAttributeModel
 
