@@ -20,7 +20,7 @@ A cobertura deve preservar objetos TL completos, respostas JSON Bot API, wrapper
 ## Limites oficiais da sessão de bot
 
 - As chamadas MTProto de leitura usadas incluem `users.getFullUser`, `channels.getFullChannel`, `messages.getFullChat`, `photos.getUserPhotos`, `users.getSavedMusic` e `channels.getParticipants`.
-- `channels.getParticipants`, `photos.getUserPhotos` e `users.getSavedMusic` aceitam bots. O worker agora tenta essas leituras no modo completo sem depender de flags parciais; a resposta do Telegram determina o que a sessão realmente pode ler. Participantes podem exigir administração.
+- `channels.getParticipants`, `photos.getUserPhotos` e `users.getSavedMusic` aceitam bots. O worker tenta no modo completo os filtros `recent`, `admins`, `bots`, `banned` (membros restritos) e `kicked` (membros banidos), cada um paginado e registrado separadamente. `channels.getParticipants` exige administração; o Telegram determina o que a sessão realmente pode ler. Filtros de contatos e menções dependem de contexto da conta/mensagem e não representam inventário geral do grupo.
 - `messages.getHistory`, `stories.getPeerStories`, `messages.getCommonChats` e `messages.getPeerSettings` são exclusivos de sessões de usuário. Como a pessoa decidiu manter autenticação de bot, o Infocard registra esses limites e não promete histórico ou stories ativos.
 - Permissões, privacidade, FloodWait, ausência de dados e diferenças de layer podem limitar a resposta. Campo ausente não significa que o dado não exista.
 - Escopo é leitura da entidade e das coleções que os métodos acima retornam. Nenhuma chamada de alteração é incluída.
@@ -34,7 +34,7 @@ A cobertura deve preservar objetos TL completos, respostas JSON Bot API, wrapper
 | Arquivos da Bot API | Implementados com deduplicação | `getFile` e download são limitados a 20 MiB; acima disso, ficam parciais |
 | Fotos de perfil | Consultada e paginada no modo completo para todo usuário resolvido | Paginação e download dependem do que Telegram disponibilizar |
 | Música salva no perfil | Consultada e paginada no modo completo para todo usuário resolvido | A resposta do Telegram informa a coleção acessível, inclusive vazia |
-| Participantes de canal | Tentativa paginada no modo completo | A chamada não é pulada por flags; Telegram ainda pode recusar por permissão |
+| Participantes de canal | Filtros recentes, administradores, bots, restritos e banidos paginados no modo completo | Telegram pode recusar por permissão; CI não comprova que cada filtro retorna dados em execução |
 | Mensagem fixada | Obtida por ID no modo completo quando MTProto retorna `pinned_msg_id` | Métodos aceitam bots; Telegram pode não entregar a mensagem ou sua mídia |
 | Dados estruturados | JSONL sem mapeamento manual, dividido em anexos | Confirmação da Bot API não prova que o arquivo recebido abre ou preserva todo conteúdo |
 | Foto e arquivos de mídia baixáveis | ZIP com manifesto e hash | Itens indisponíveis ou acima do limite são explicitados; não contam como sucesso integral |
@@ -63,5 +63,5 @@ Para cada execução completa, todas as respostas dos métodos de leitura invent
 - [users.getFullUser](https://core.telegram.org/method/users.getFullUser) e [channels.getFullChannel](https://core.telegram.org/method/channels.getFullChannel): respostas completas e disponibilidade para bots.
 - [messages.getFullChat](https://core.telegram.org/method/messages.getFullChat): grupos básicos.
 - [photos.getUserPhotos](https://core.telegram.org/method/photos.getUserPhotos) e [users.getSavedMusic](https://core.telegram.org/method/users.getSavedMusic): fotos e músicas de perfil, com paginação e autorização de bot.
-- [channels.getParticipants](https://core.telegram.org/method/channels.getParticipants): paginação; pode retornar CHAT_ADMIN_REQUIRED.
+- [channels.getParticipants](https://core.telegram.org/method/channels.getParticipants) e [ChannelParticipantsFilter](https://core.telegram.org/type/ChannelParticipantsFilter): filtros e paginação; o método pode retornar CHAT_ADMIN_REQUIRED. A documentação [Telethon iter_participants](https://docs.telethon.dev/en/stable/modules/client.html) distingue membros restritos (`banned`) de banidos (`kicked`).
 - [messages.getHistory](https://core.telegram.org/method/messages.getHistory), [stories.getPeerStories](https://core.telegram.org/method/stories.getPeerStories), [messages.getCommonChats](https://core.telegram.org/method/messages.getCommonChats) e [messages.getPeerSettings](https://core.telegram.org/method/messages.getPeerSettings): limitações de autenticação de bot.

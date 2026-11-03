@@ -25,7 +25,7 @@ from telethon.tl.functions.channels import GetFullChannelRequest, GetChannelsReq
 from telethon.tl.functions.contacts import ResolveUsernameRequest
 from telethon.tl.functions.messages import GetChatsRequest, GetFullChatRequest, GetMessagesRequest
 from telethon.tl.functions.users import GetFullUserRequest, GetUsersRequest
-from telethon.tl.types import Channel, Chat, ChannelParticipantsRecent, InputChannel, InputUser, PeerChannel, PeerChat, PeerUser, User, InputMessageID
+from telethon.tl.types import Channel, Chat, ChannelParticipantsRecent, ChannelParticipantsAdmins, ChannelParticipantsBots, ChannelParticipantsBanned, ChannelParticipantsKicked, InputChannel, InputUser, PeerChannel, PeerChat, PeerUser, User, InputMessageID
 
 ESPERA_TOTAL = 600
 USERNAME_VALIDO = re.compile(r"[A-Za-z0-9_]{1,32}")
@@ -664,6 +664,7 @@ def registros_telegram(dados, alvo, info):
         "fotos_perfil": dados.get("fotos_mtproto", []),
         "musicas_perfil": dados.get("musicas_mtproto", []),
         "participantes": dados.get("participantes_mtproto", []),
+        "participantes_filtrados": dados.get("participantes_filtrados_mtproto", {}),
         "midias": [{chave: valor for chave, valor in item.items() if chave != "path"} for item in dados.get("midias", [])],
         "metodos_com_falha": dados.get("falhas_coleta", []),
     }
@@ -757,7 +758,7 @@ async def coletar(alvo):
     try:
         await com_espera(lambda: cliente.start(bot_token=os.environ["BOT_TOKEN"]))
         entidade, origem, resposta_resolucao = await resolver_alvo(cliente, alvo)
-        dados = {"entidade": entidade, "completo": None, "resposta_completa": None, "resposta_resolucao": resposta_resolucao, "foto": None, "notas": [origem], "fotos_info": None, "musicas_info": None, "fotos_mtproto": [], "musicas_mtproto": [], "participantes_mtproto": [], "midias": [], "pacotes_midias": [], "falhas_coleta": [], "coletas_incompletas": [], "respostas_bot_api": {}, "falhas_bot_api": [], "mensagens_fixadas_mtproto": [], "midias_dir": tempfile.mkdtemp(prefix="infocard_telegram_") if MODO == "completo" and CHAT_DESTINO else None}
+        dados = {"entidade": entidade, "completo": None, "resposta_completa": None, "resposta_resolucao": resposta_resolucao, "foto": None, "notas": [origem], "fotos_info": None, "musicas_info": None, "fotos_mtproto": [], "musicas_mtproto": [], "participantes_mtproto": [], "participantes_filtrados_mtproto": {}, "midias": [], "pacotes_midias": [], "falhas_coleta": [], "coletas_incompletas": [], "respostas_bot_api": {}, "falhas_bot_api": [], "mensagens_fixadas_mtproto": [], "midias_dir": tempfile.mkdtemp(prefix="infocard_telegram_") if MODO == "completo" and CHAT_DESTINO else None}
         if dados["midias_dir"]:
             atexit.register(shutil.rmtree, dados["midias_dir"], ignore_errors=True)
         atualizar_status("1/2 · Identificação confirmada; buscando campos adicionais", entidade)
@@ -790,20 +791,39 @@ async def coletar(alvo):
                     })
                     dados["notas"].append(f"Mensagem fixada indisponível: {type(erro_fixadas).__name__}")
             if MODO == "completo" and isinstance(entidade, Channel):
-                try:
+                filtros_participantes = (
+                    ("recent", ChannelParticipantsRecent()),
+                    ("admins", ChannelParticipantsAdmins()),
+                    ("bots", ChannelParticipantsBots()),
+                    ("restritos", ChannelParticipantsBanned(q="")),
+                    ("banidos", ChannelParticipantsKicked(q="")),
+                )
+                for nome_filtro, filtro_participantes in filtros_participantes:
                     offset_participantes = 0
                     total_participantes = None
+                    respostas_filtro = []
                     while True:
-                        pagina_participantes = await com_espera(
-                            lambda offset=offset_participantes: cliente(GetParticipantsRequest(
-                                channel=entidade,
-                                filter=ChannelParticipantsRecent(),
-                                offset=offset,
-                                limit=100,
-                                hash=0,
-                            ))
-                        )
-                        dados["participantes_mtproto"].append(pagina_participantes)
+                        try:
+                            pagina_participantes = await com_espera(
+                                lambda offset=offset_participantes: cliente(GetParticipantsRequest(
+                                    channel=entidade,
+                                    filter=filtro_participantes,
+                                    offset=offset,
+                                    limit=100,
+                                    hash=0,
+                                ))
+                            )
+                        except Exception as erro_participantes:
+                            dados["falhas_coleta"].append({
+                                "method": "channels.getParticipants",
+                                "filter": nome_filtro,
+                                "error": type(erro_participantes).__name__,
+                            })
+                            dados["notas"].append(
+                                f"Participantes ({nome_filtro}) indisponíveis: {type(erro_participantes).__name__}"
+                            )
+                            break
+                        respostas_filtro.append(pagina_participantes)
                         contagem = getattr(pagina_participantes, "count", None)
                         if isinstance(contagem, int):
                             total_participantes = contagem if total_participantes is None else max(total_participantes, contagem)
@@ -813,12 +833,14 @@ async def coletar(alvo):
                         offset_participantes += len(lista_participantes)
                         if total_participantes is not None and offset_participantes >= total_participantes:
                             break
+                    if nome_filtro == "recent":
+                        dados["participantes_mtproto"] = respostas_filtro
+                    else:
+                        dados["participantes_filtrados_mtproto"][nome_filtro] = respostas_filtro
                     registrar_paginacao_incompleta(
-                        dados, "channels.getParticipants", total_participantes, offset_participantes
+                        dados, "channels.getParticipants[" + nome_filtro + "]",
+                        total_participantes, offset_participantes
                     )
-                except Exception as erro_participantes:
-                    dados["falhas_coleta"].append({"method": "channels.getParticipants", "error": type(erro_participantes).__name__})
-                    dados["notas"].append(f"Participantes indisponíveis: {type(erro_participantes).__name__}")
         except Exception as erro:
             dados["falhas_coleta"].append({"method": "getFull", "error": type(erro).__name__})
             dados["notas"].append(f"Dados completos indisponíveis: {type(erro).__name__}: {erro}")
@@ -1133,7 +1155,17 @@ async def principal():
                 info["campos"].append(("Fotos de perfil no MTProto", dados["fotos_info"]))
             if dados["participantes_mtproto"]:
                 total_participantes = sum(len(getattr(pagina, "participants", []) or []) for pagina in dados["participantes_mtproto"])
-                info["campos"].append(("Participantes detalhados acessíveis", str(total_participantes)))
+                info["campos"].append(("Participantes recentes consultados (MTProto)", str(total_participantes)))
+            for nome_filtro, respostas_filtro in dados["participantes_filtrados_mtproto"].items():
+                if respostas_filtro:
+                    quantidade = sum(len(getattr(pagina, "participants", []) or []) for pagina in respostas_filtro)
+                    rotulo = {
+                        "admins": "Administradores",
+                        "bots": "Bots participantes",
+                        "restritos": "Membros restritos",
+                        "banidos": "Membros banidos",
+                    }.get(nome_filtro, nome_filtro)
+                    info["campos"].append((rotulo + " consultados (MTProto)", str(quantidade)))
             if dados["musicas_info"]:
                 info["campos"].append(("Músicas de perfil no MTProto", dados["musicas_info"]))
             for metodo, respostas in dados.get("respostas_bot_api", {}).items():
