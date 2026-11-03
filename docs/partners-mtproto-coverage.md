@@ -10,7 +10,7 @@ A cobertura deve preservar objetos TL completos, respostas JSON Bot API, wrapper
 
 | API | Métodos | Tipo de entidade | Uso na exportação completa |
 |---|---|---|---|
-| Bot API | `getChat` | Usuário, grupo, supergrupo ou canal | Preserva `ChatFullInfo` completo e tenta obter também chats pessoais, pais ou vinculados indicados na resposta. |
+| Bot API | `getChat` | Usuário, grupo, supergrupo ou canal | Preserva `ChatFullInfo` completo e tenta obter também chats pessoais, pais ou vinculados indicados na resposta. Para ID numérico que MTProto não resolve, tenta `getChat` diretamente; quando aceita, entrega os campos Bot API e deixa claro que métodos MTProto dependentes de `access_hash` não puderam ser chamados. |
 | Bot API | `getUserProfilePhotos`, `getUserProfileAudios`, `getUserGifts` | Usuário | Pagina fotos, áudios e presentes recebidos/hosteados; tenta baixar os stickers dos presentes. |
 | Bot API | `getUserPersonalChatMessages` | Usuário | Preserva até 20 mensagens do chat pessoal atualmente indicado no perfil e tenta baixar anexos compatíveis. |
 | MTProto | `messages.getPersonalChannelHistory` | Usuário com canal pessoal associado | Pagina as mensagens do canal pessoal e preserva cada resposta `messages.Messages`; tenta baixar a mídia de cada mensagem. Esse método bot-only não concede histórico de conversas privadas nem de chats gerais. |
