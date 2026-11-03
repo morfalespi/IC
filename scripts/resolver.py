@@ -68,7 +68,7 @@ def input_usuario_bot(entidade):
 def input_canal_bot(entidade):
     if isinstance(entidade, Channel):
         return entidade
-    if isinstance(entidade, BotAPIEntity) and entidade.type in ("supergroup", "channel"):
+    if isinstance(entidade, BotAPIEntity) and entidade.type in ("supergroup", "channel", "channel_peer"):
         id_real, tipo = utils.resolve_id(entidade.id)
         if tipo is PeerChannel:
             return InputChannel(id_real, 0)
@@ -474,7 +474,7 @@ def registrar_coleta_participantes_incompleta(dados, metodo, esperado, recebido)
 
 async def coletar_dados_participante_bot_api(dados, entidade, chat_id):
     entidade_bot_api_chat = isinstance(entidade, BotAPIEntity) and entidade.type in (
-        "group", "supergroup", "channel"
+        "group", "supergroup", "channel", "channel_peer"
     )
     if not isinstance(entidade, (Channel, Chat)) and not entidade_bot_api_chat:
         return
@@ -482,7 +482,7 @@ async def coletar_dados_participante_bot_api(dados, entidade, chat_id):
     if not ids_usuarios:
         return
     consulta_boosts = isinstance(entidade, Channel) or (
-        isinstance(entidade, BotAPIEntity) and entidade.type in ("supergroup", "channel")
+        isinstance(entidade, BotAPIEntity) and entidade.type in ("supergroup", "channel", "channel_peer")
     )
     estados = dados.setdefault("membros_bot_api_por_participante", [])
     boosts = dados.setdefault("boosts_por_participante_bot_api", []) if consulta_boosts else []
@@ -1035,9 +1035,13 @@ async def coletar_bot_api(dados, entidade, info):
     chat_id = "@" + info["username"] if usa_username and info.get("username") else info.get("id")
     if not chat_id:
         return
-    chat = next((resposta for resposta in reversed(
-        dados.get("respostas_bot_api", {}).get("getChat", [])
-    ) if resposta.get("ok") and str((resposta.get("result") or {}).get("id")) == str(info.get("id"))), None)
+    respostas_chat = dados.get("respostas_bot_api", {}).get("getChat", [])
+    chat = None
+    if str(dados.get("getChat_alvo_id")) == str(info.get("id")) and dados.get("getChat_alvo_attempted"):
+        chat = respostas_chat[-1] if respostas_chat else None
+    else:
+        chat = next((resposta for resposta in reversed(respostas_chat)
+            if resposta.get("ok") and str((resposta.get("result") or {}).get("id")) == str(info.get("id"))), None)
     if chat is None:
         chat = await bot_api_leitura(dados, "getChat", {"chat_id": chat_id})
     if chat.get("ok"):
@@ -1592,11 +1596,29 @@ async def resolver_alvo(cliente, alvo):
                     "ID confirmado pela Bot API após MTProto não resolver; leituras MTProto compatíveis serão tentadas com access_hash zero: "
                     + str(erro_mtproto)
                 ), {"bot_api_getChat": resposta_bot, "mtproto_error": str(erro_mtproto)}
-            detalhe_bot = resposta_bot.get("description") or "getChat não retornou o chat"
-            raise LookupError(
-                "MTProto não resolveu o ID (" + str(erro_mtproto) + "); "
-                "a Bot API também não conseguiu ler o chat (" + str(detalhe_bot) + ")."
-            ) from erro_mtproto
+            id_marcado = int(alvo)
+            id_real, tipo_peer = utils.resolve_id(id_marcado)
+            tipo_inferido = {
+                PeerUser: "private",
+                PeerChat: "group",
+                PeerChannel: "channel_peer",
+            }.get(tipo_peer)
+            if tipo_inferido is None:
+                detalhe_bot = resposta_bot.get("description") or "getChat não retornou o chat"
+                raise LookupError(
+                    "MTProto não resolveu o ID (" + str(erro_mtproto) + "); "
+                    "a Bot API também não conseguiu ler o chat (" + str(detalhe_bot) + ")."
+                ) from erro_mtproto
+            entidade = BotAPIEntity({"id": id_marcado, "type": tipo_inferido})
+            return entidade, (
+                "ID numérico não resolvido pelo MTProto nem confirmado por getChat; "
+                "leituras Bot API e MTProto independentes seguem pelo ID, com cada resposta registrada."
+            ), {
+                "bot_api_getChat": resposta_bot,
+                "bot_api_getChat_attempted": True,
+                "mtproto_error": str(erro_mtproto),
+                "numeric_id_unconfirmed": True,
+            }
     resultado = await com_espera(lambda: cliente(ResolveUsernameRequest(alvo)))
     entidade = entidade_de(resultado)
     if entidade is None:
@@ -1618,9 +1640,16 @@ async def coletar(alvo):
             if resposta_chat_bot:
                 dados["respostas_bot_api"]["getChat"] = [resposta_chat_bot]
                 dados["chat_bot_api"] = resposta_chat_bot.get("result") or {}
-            dados["notas"].append(
-                "A Bot API confirmou o peer após a resolução MTProto por ID falhar; métodos compatíveis de bot continuam com access_hash zero e cada resposta ou recusa é registrada."
-            )
+            dados["getChat_alvo_attempted"] = bool(resposta_resolucao.get("bot_api_getChat_attempted"))
+            dados["getChat_alvo_id"] = entidade.id
+            if resposta_resolucao.get("numeric_id_unconfirmed"):
+                dados["notas"].append(
+                    "MTProto e getChat não confirmaram a entidade. Leituras independentes continuam pelo ID; respostas bem-sucedidas acrescentam dados, recusas são preservadas e não confirmam a existência do peer."
+                )
+            else:
+                dados["notas"].append(
+                    "A Bot API confirmou o peer após a resolução MTProto por ID falhar; métodos compatíveis de bot continuam com access_hash zero e cada resposta ou recusa é registrada."
+                )
         if dados["midias_dir"]:
             atexit.register(shutil.rmtree, dados["midias_dir"], ignore_errors=True)
         atualizar_status("1/2 · Identificação confirmada; buscando campos adicionais", entidade)
@@ -1963,6 +1992,7 @@ def descrever(entidade, completo_, alvo):
             "group": "grupo",
             "supergroup": "supergrupo",
             "channel": "canal",
+            "channel_peer": "canal/supergrupo (tipo não confirmado pela Bot API)",
         }.get(entidade.type, entidade.type or "chat")
         info["nome"] = entidade.title or " ".join(
             parte for parte in (entidade.first_name, entidade.last_name) if parte
