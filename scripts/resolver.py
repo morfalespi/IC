@@ -539,6 +539,13 @@ async def coletar_presentes_mtproto(cliente, dados, entidade):
             f"{metodo} indisponível nesta versão do Telethon."
         )
         return
+    if not isinstance(entidade, (User, Channel)):
+        dados.setdefault("metodos_nao_aplicaveis", []).append({
+            "method": metodo,
+            "entity_type": type(entidade).__name__,
+            "reason": "payments.getSavedStarGifts aceita peers de usuário e canal",
+        })
+        return
     try:
         peer = await cliente.get_input_entity(entidade)
         offset = ""
@@ -967,6 +974,7 @@ def registros_telegram(dados, alvo, info):
         "coletas_incompletas": dados.get("coletas_incompletas", []),
         "chats_relacionados_bot_api": dados.get("chats_relacionados_bot_api", []),
         "falhas_bot_api": dados.get("falhas_bot_api", []),
+        "metodos_nao_aplicaveis": dados.get("metodos_nao_aplicaveis", []),
         "entidade": dados.get("entidade"),
         "resposta_resolucao": dados.get("resposta_resolucao"),
         "resposta_completa": dados.get("resposta_completa"),
@@ -1009,6 +1017,7 @@ def secoes_completas_telegram(dados, alvo, info):
         "coletas_incompletas": "Paginação incompleta",
         "chats_relacionados_bot_api": "Bot API · chats relacionados",
         "falhas_bot_api": "Bot API · erros retornados",
+        "metodos_nao_aplicaveis": "Métodos não aplicáveis ao tipo de entidade",
         "entidade": "MTProto · entidade resolvida",
         "resposta_resolucao": "MTProto · resposta da resolução",
         "resposta_completa": "MTProto · perfil completo",
