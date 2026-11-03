@@ -30,6 +30,16 @@ A cobertura deve preservar objetos TL completos, respostas JSON Bot API, wrapper
 - Permissões, privacidade, FloodWait, ausência de dados e diferenças de layer podem limitar a resposta. Campo ausente não significa que o dado não exista.
 - Escopo é leitura da entidade e das coleções que os métodos acima retornam. Nenhuma chamada de alteração é incluída.
 
+## Métodos de leitura adicionais encontrados na auditoria — 2026-11-03
+
+- `stats.getBroadcastRevenueStats` e `stats.getBroadcastRevenueTransactions` são marcados como compatíveis com bots nas páginas oficiais, mas as páginas atuais declaram que não há parâmetros e não mostram o schema de request/resposta. O [schema TL oficial atual, layer 225](https://core.telegram.org/scheme) também não contém essas funções. Não há como construir chamadas verificáveis com a versão fixada do Telethon sem inventar a assinatura; ficam como lacuna bloqueada por documentação/schema.
+- `stats.getBroadcastRevenueWithdrawalUrl` também permite bots, mas inicia o fluxo de saque financeiro. É uma ação, não uma leitura, e fica fora do exportador somente de leitura.
+- `payments.getStarsRevenueStats` e `payments.getStarsStatus` mostram métricas/balanço vinculados a peers, mas a documentação oficial diz “Only users can use this method”; ficam fora da sessão de bot.
+- `stats.getBroadcastStats`, `stats.getMegagroupStats` e `stats.getMessageStats` também são exclusivos de usuários. Logo os gráficos e métricas administrativas tradicionais não são obtidos por esta sessão.
+- `channels.getParticipant` aceita bots e retorna um `ChannelParticipant` com usuários/chats relacionados. Quando `channels.getParticipants` já retornou a lista completa e os mesmos objetos de participante, essa consulta unitária não acrescenta campos ao registro; não é chamada repetidamente para todos os membros.
+
+Estas decisões restringem a cobertura ao que tem suporte explícito de bot, schema chamável disponível no SDK fixado, contexto/IDs já derivados da referência e finalidade somente de leitura. A matriz permanece parcial até cada família de métodos ter sido cruzada com o schema e a camada Telethon instalados.
+
 ## Estado da implementação na main
 
 | Capacidade | Estado no código | Limite atual |
@@ -39,6 +49,7 @@ A cobertura deve preservar objetos TL completos, respostas JSON Bot API, wrapper
 | Arquivos da Bot API | Percorridos recursivamente em respostas de chat e mensagens pessoais; deduplicados por `file_unique_id` | `getFile` e download são limitados a 20 MiB; acima disso, ficam parciais |
 | Stickers e emojis Bot API | Conjuntos referenciados, emojis personalizados e stickers dos presentes consultados; resultados percorridos para baixar mídia | Respostas e arquivos ainda dependem de disponibilidade e permissões do Telegram; o CI não confirma retorno ao vivo |
 | Presentes Bot API | `getUserGifts` ou `getChatGifts` no modo completo, paginados pelo `next_offset`; respostas brutas e associação página/resposta preservadas | O Telegram pode recusar ou limitar a consulta; stickers podem estar indisponíveis para download |
+| Estatísticas financeiras de anúncios/Stars | Não implementadas | Métodos de receita de anúncios são marcados como bot-callable, mas a assinatura não aparece na documentação e não consta no schema TL oficial atual; métricas de Stars são user-only; saque é uma ação e permanece excluído. |
 | Boosts de canal/supergrupo | `premium.getUserBoosts` tentado para IDs de participantes conhecidos, além de `getUserChatBoosts` da Bot API | Os métodos MTProto para status agregado e listagem de boosters não declaram suporte a bots na documentação oficial e não são chamados; os métodos por usuário podem falhar individualmente ou exigir administração. |
 | Catálogos globais de presentes | Implementados no modo completo em Bot API e MTProto | São listas do que pode ser enviado, não comprovam presentes do peer; o Telegram pode retornar catálogos diferentes conforme sessão/país. |
 | Presentes MTProto | `payments.getSavedStarGifts` no modo completo para usuários e canais, paginado por `next_offset`; respostas TL completas ficam no JSONL; grupos básicos são registrados como não aplicáveis | O servidor pode recusar peer, método ou acesso; respostas específicas precisam de verificação ao vivo; mídia de presentes únicos pode exigir arquivos referenciados por atributos |
@@ -57,11 +68,12 @@ Antes desta evolução, o resolver mapeava uma seleção de campos, consultava n
 
 ## Próximos passos necessários
 
-1. Comparar sistematicamente os métodos MTProto e Bot API relacionados a cada tipo de peer com os métodos disponíveis na layer Telethon instalada, registrando por método o aviso oficial de uso por bot, parâmetros/contexto necessário e dados retornados.
-2. Implementar métodos elegíveis ainda ausentes quando acrescentarem dados ao objetivo; excluir e documentar os métodos que exigem sessão de usuário, contexto empresarial indisponível, identificadores externos não fornecidos ou direitos não presentes.
-3. Confirmar no JSONL as respostas integrais, paginação e estado de cada chamada; verificar que mídias acessíveis foram empacotadas e que limites ou recusas aparecem como parciais.
-4. Executar no Telegram com peer de teste e destino de entrega; inspecionar os JSONL e os pacotes recebidos. CI, sintaxe e aceitação de envio são verificações intermediárias.
-5. Só declarar cobertura total dentro desse escopo após a matriz oficial e a execução real serem confirmadas.
+1. Resolver a lacuna do grupo `stats.getBroadcastRevenue*`: confirmar uma assinatura de request/resposta em schema oficial vigente que também esteja presente no Telethon fixado. Até lá, não montar chamadas por suposição.
+2. Comparar sistematicamente os demais métodos MTProto e Bot API relacionados a cada tipo de peer com os métodos disponíveis na layer Telethon instalada, registrando por método o aviso oficial de uso por bot, parâmetros/contexto necessário e dados retornados.
+3. Implementar métodos elegíveis ainda ausentes quando acrescentarem dados ao objetivo; excluir e documentar os métodos que exigem sessão de usuário, contexto empresarial indisponível, identificadores externos não fornecidos ou direitos não presentes.
+4. Confirmar no JSONL as respostas integrais, paginação e estado de cada chamada; verificar que mídias acessíveis foram empacotadas e que limites ou recusas aparecem como parciais.
+5. Executar no Telegram com peer de teste e destino de entrega; inspecionar os JSONL e os pacotes recebidos. CI, sintaxe e aceitação de envio são verificações intermediárias.
+6. Só declarar cobertura total dentro desse escopo após a matriz oficial e a execução real serem confirmadas.
 
 ## Critério de sucesso sustentado
 
