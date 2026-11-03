@@ -517,3 +517,9 @@ Fontes normativas: [IDs Bot API](https://core.telegram.org/api/bots/ids), [getCh
 **FONTES:** https://core.telegram.org/method/channels.getParticipants ; https://core.telegram.org/method/channels.getFullChannel ; https://core.telegram.org/api/peers .
 
 **LIMITE:** o ambiente local não possui bindings de credenciais Telegram. A autenticação GitHub está disponível para publicar e iniciar uma consulta pública sem chat de destino, usando os secrets já configurados no Actions. Essa consulta não comprova recebimento de páginas ou anexos no Telegram.
+
+## 2026-11-03 — Diagnóstico de consultas sem destino
+
+**IMPLEMENTADO:** o resolver imprime um resumo de respostas Bot API por método (`responses`/`ok`), nomes e classes/códigos das falhas e quantidade de paginações incompletas. O resumo não inclui alvos, IDs, conteúdo das respostas nem credenciais. Consultas completas sem chat agora terminam com código não zero se houve falha de coleta ou paginação, em vez de terminarem com sucesso apenas pela resolução inicial. A mensagem de log explicita que a entrega não foi executada.
+
+**VERIFICADO LOCALMENTE:** `npm run check` e `git diff --check` passaram. Nenhum teste autoral foi criado. A execução real deverá ser confrontada com esse resumo; sucesso de execução não equivale à inspeção do conteúdo no Telegram.

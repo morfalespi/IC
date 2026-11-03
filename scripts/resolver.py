@@ -1883,6 +1883,25 @@ async def coletar(alvo):
             await coletar_presentes_mtproto(cliente, dados, entidade)
             await coletar_historico_canal_pessoal(cliente, dados, entidade)
         atualizar_status("2/2 · Tentativas de coleta encerradas; consolidando ficha", entidade)
+        resumo = {
+            "bot_api": {
+                metodo: {
+                    "responses": len(respostas),
+                    "ok": sum(resposta.get("ok") is True for resposta in respostas),
+                }
+                for metodo, respostas in dados.get("respostas_bot_api", {}).items()
+            },
+            "mtproto_errors": [
+                {chave: falha[chave] for chave in ("method", "filter", "error") if chave in falha}
+                for falha in dados.get("falhas_coleta", [])
+            ],
+            "bot_api_errors": [
+                {chave: falha[chave] for chave in ("method", "error_code") if chave in falha}
+                for falha in dados.get("falhas_bot_api", [])
+            ],
+            "incomplete_pagination": len(dados.get("coletas_incompletas", [])),
+        }
+        print("Resumo das leituras: " + json.dumps(resumo, ensure_ascii=False, sort_keys=True))
         return dados
     finally:
         await cliente.disconnect()
@@ -2162,6 +2181,14 @@ async def principal():
 
             print("tipo resolvido:", info["tipo"], "| campos extras:", len(info["campos"]))
             codigo = 0
+            if not chat and MODO == "completo":
+                coleta_parcial = bool(
+                    dados.get("falhas_coleta") or dados.get("falhas_bot_api")
+                    or dados.get("coletas_incompletas")
+                )
+                print("Coleta sem destino: " + ("parcial" if coleta_parcial else "sem falhas registradas")
+                      + "; entrega de mensagens e arquivos não executada.")
+                codigo = 1 if coleta_parcial else 0
         except errors.UsernameNotOccupiedError:
             texto = falha(alvo, "Esse username não existe.")
             print("UsernameNotOccupiedError")
