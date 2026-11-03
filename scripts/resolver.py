@@ -346,6 +346,73 @@ async def baixar_arquivos_bot_api(dados, objeto, categoria):
         )
 
 
+def ids_participantes_para_boosts(dados):
+    ids = set()
+    ids_bot = set()
+    fontes = [dados.get("participantes_mtproto", [])]
+    fontes.extend((dados.get("participantes_filtrados_mtproto", {}) or {}).values())
+    for paginas in fontes:
+        for pagina in paginas or []:
+            for usuario in getattr(pagina, "users", []) or []:
+                if getattr(usuario, "bot", False):
+                    ids_bot.add(getattr(usuario, "id", None))
+            for participante in getattr(pagina, "participants", []) or []:
+                id_usuario = getattr(participante, "user_id", None)
+                if isinstance(id_usuario, int):
+                    ids.add(id_usuario)
+    for resposta in (dados.get("respostas_bot_api", {}).get("getChatAdministrators", []) or []):
+        if not resposta.get("ok"):
+            continue
+        for administrador in resposta.get("result") or []:
+            usuario = (administrador or {}).get("user") or {}
+            id_usuario = usuario.get("id")
+            if usuario.get("is_bot"):
+                ids_bot.add(id_usuario)
+            elif isinstance(id_usuario, int):
+                ids.add(id_usuario)
+    return sorted(id_usuario for id_usuario in ids if id_usuario not in ids_bot)
+
+
+async def coletar_boosts_bot_api(dados, entidade, chat_id):
+    if not isinstance(entidade, Channel):
+        return
+    ids_usuarios = ids_participantes_para_boosts(dados)
+    if not ids_usuarios:
+        return
+    mapeamentos = dados.setdefault("boosts_por_participante_bot_api", [])
+    total_respostas = 0
+    parou_antes_do_fim = False
+    for indice, id_usuario in enumerate(ids_usuarios):
+        respostas = dados.get("respostas_bot_api", {}).get("getUserChatBoosts", [])
+        indice_resposta = len(respostas)
+        resposta = await bot_api_leitura(
+            dados, "getUserChatBoosts",
+            {"chat_id": chat_id, "user_id": id_usuario}
+        )
+        mapeamentos.append({
+            "user_id": id_usuario,
+            "response_index": indice_resposta,
+            "ok": bool(resposta.get("ok")),
+        })
+        if resposta.get("ok"):
+            total_respostas += 1
+            continue
+        descricao = str(resposta.get("description", "")).upper()
+        estado = resposta.get("error_code")
+        if estado == 429 or (isinstance(estado, int) and estado >= 500) or "CHAT_ADMIN_REQUIRED" in descricao:
+            parou_antes_do_fim = indice + 1 < len(ids_usuarios)
+            break
+    if parou_antes_do_fim:
+        dados.setdefault("coletas_incompletas", []).append({
+            "method": "getUserChatBoosts",
+            "expected": len(ids_usuarios),
+            "received": total_respostas,
+        })
+        dados.setdefault("notas", []).append(
+            f"getUserChatBoosts: consulta interrompida após {total_respostas} respostas bem-sucedidas de {len(ids_usuarios)} participantes."
+        )
+
+
 async def coletar_stickers_bot_api(dados, objeto):
     nomes_conjuntos = set()
     ids_emojis = set()
@@ -502,6 +569,8 @@ async def coletar_bot_api(dados, entidade, info):
             dados, "getChatAdministrators", {"chat_id": chat_id, "return_bots": True}
         )
         await bot_api_leitura(dados, "getChatMemberCount", {"chat_id": chat_id})
+        if MODO == "completo":
+            await coletar_boosts_bot_api(dados, entidade, chat_id)
 
     await coletar_stickers_bot_api(dados, dados.get("respostas_bot_api", {}))
 
@@ -743,6 +812,7 @@ def registros_telegram(dados, alvo, info):
         "musicas_perfil": dados.get("musicas_mtproto", []),
         "participantes": dados.get("participantes_mtproto", []),
         "participantes_filtrados": dados.get("participantes_filtrados_mtproto", {}),
+        "boosts_por_participante": dados.get("boosts_por_participante_bot_api", []),
         "midias": [{chave: valor for chave, valor in item.items() if chave != "path"} for item in dados.get("midias", [])],
         "metodos_com_falha": dados.get("falhas_coleta", []),
     }
@@ -780,6 +850,7 @@ def secoes_completas_telegram(dados, alvo, info):
         "musicas_perfil": "MTProto · músicas de perfil",
         "participantes": "MTProto · participantes recentes",
         "participantes_filtrados": "MTProto · participantes por filtro",
+        "boosts_por_participante": "Bot API · boosts por participante",
         "midias": "Mídia · arquivos e estado de download",
         "metodos_com_falha": "MTProto · erros retornados",
     }
