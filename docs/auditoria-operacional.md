@@ -91,6 +91,12 @@ Por decisão expressa do proprietário, não são criados testes escritos pelo p
 
 Esta auditoria não autoriza inferir novos campos do Telegram nem contornar restrições de privacidade.
 
+## Ampliação adicional de membros — 2026-11-03
+
+O fluxo completo agora usa os participantes que `messages.getFullChat` devolve para grupos básicos ao tentar `getChatMember`, além de registrar o status do próprio bot por `getMe` e `getChatMember` em chats. Em canais/supergrupos, `getChatMember` continua associado a cada participante retornado por MTProto/Bot API; `getUserChatBoosts` permanece específico a esse fluxo e condicionado a direitos de administrador. As respostas completas ficam no JSONL e a tabela de associação aponta para cada resposta. Isso acrescenta dados de estado/permissões de participantes conhecidos; não enumera integrantes que a resposta oficial não forneceu. A execução real por tipo de alvo ainda precisa ser inspecionada.
+
+Também passou a ser tentado `channels.getParticipant` com `InputPeerSelf` para o próprio bot em canais/supergrupos, e `payments.getSavedStarGifts` aceita tentativa de `InputPeerChat` para grupos básicos. Cada chamada preserva resposta ou erro. A assinatura oficial de `payments.getSavedStarGifts` usa `InputPeer`; a documentação não promete que um grupo básico tenha presentes, então a resposta do Telegram, não uma suposição local, define o resultado.
+
 ## Revisão de entrega integral — 2026-11-02
 
 Foi removido o corte fixo de nove campos da apresentação usual, mantendo paginação integral. O método MTProto `messages.getFullChat` foi introduzido para grupos básicos acessíveis. O transporte da Bot API respeita `retry_after`; somente leituras idempotentes repetem respostas 429 e 5xx, e erros ambíguos de rede não são repetidos automaticamente. Se a Rich Message for recusada, há tentativa de envio paginado em HTML; os arquivos Markdown são tentados independentemente da formatação das mensagens. O sucesso exige todas as partes obrigatórias aceitas pela Bot API. Ainda é necessário demonstrar esse comportamento na execução real posterior ao commit, especialmente o botão de Markdown.

@@ -454,7 +454,7 @@ O modo completo deixou de pular `photos.getUserPhotos` quando a entidade não tr
 
 ## 2026-11-03 — REVISÃO DE CAMADA E MÉTODOS DE PRESENTES DO PERFIL
 
-A página atual do schema TL oficial informa layer 225; o registro anterior de layer 214 descreve a fotografia consultada na revisão anterior. No schema layer 225, `stats.getBroadcastRevenueStats` e `stats.getBroadcastRevenueTransactions` continuam sem assinatura apesar das páginas individuais dizerem que aceitam bots, então a chamada permanece sem parâmetros inventados. `payments.getUserStarGifts` tem conflito semelhante: a página o marca como compatível com bots, mas não publica assinatura nem resultado e o schema layer 225 não o contém. `payments.getStarGiftCollections` retorna coleções, porém é marcado como exclusivo de usuários. Nenhum desses casos foi convertido em chamada presumida.
+A página atual do schema TL oficial informa layer 225; o registro anterior de layer 214 descreve a fotografia consultada na revisão anterior. No schema layer 225, `stats.getBroadcastRevenueStats` e `stats.getBroadcastRevenueTransactions` continuam sem assinatura executável apesar das páginas individuais marcarem bots e declararem que não recebem parâmetros nem publicarem o tipo de retorno; a chamada permanece sem parâmetros inventados. `payments.getUserStarGifts` tem conflito semelhante: a página o marca como compatível com bots e declara que não recebe parâmetros, mas deixa o resultado vazio e o schema layer 225 não contém uma assinatura que selecione o usuário-alvo. Presentes do peer já são consultados por `payments.getSavedStarGifts` e Bot API. `payments.getStarGiftCollections` retorna coleções, porém é marcado como exclusivo de usuários. Nenhum desses casos foi convertido em chamada presumida.
 
 **FONTES:** https://core.telegram.org/scheme ; https://core.telegram.org/method/payments.getUserStarGifts ; https://core.telegram.org/method/payments.getStarGiftCollections .
 
@@ -463,3 +463,23 @@ A página atual do schema TL oficial informa layer 225; o registro anterior de l
 **CAUSA DA ENTREGA MENOS RICA:** a consulta normal e o botão Atualizar disparavam `MODO=resumo`; fotos paginadas, participantes, presentes, leituras Bot API adicionais, respostas completas no JSONL e anexos só eram coletados depois de uma ação separada. Assim, a capacidade ampla estava atrás de um botão opcional.
 
 **IMPLEMENTADO NO CÓDIGO; EXECUÇÃO REAL PENDENTE:** consultas privadas e atualizações agora selecionam `MODO=completo` por padrão em `consulta.js`, `despacho.js`, no input de workflow e no próprio resolver. A ficha curta serve apenas como estado de andamento; o resultado normal monta páginas ricas com os campos coletados e envia Markdown, JSONL e ZIP de mídia acessível. `MODO=resumo` fica disponível somente quando escolhido explicitamente no dispatch. Isso remove o clique extra para a coleta ampla, mas não afirma cobertura exaustiva de todos os métodos elegíveis nem confirma a entrega real posterior à alteração.
+
+## 2026-11-03 — ESTADO DE MEMBROS TAMBÉM PARA GRUPOS BÁSICOS
+
+**LACUNA CONFIRMADA:** o coletor de `getChatMember` só era chamado para `Channel`, embora `messages.getFullChat` já possa retornar a lista de membros de um grupo básico. Isso fazia a exportação deixar de consultar status/permissões Bot API que podiam ser obtidos para esses IDs.
+
+**IMPLEMENTADO:** `ids_participantes_conhecidos` agora agrega `ChatFull.participants` e as entidades de usuário da resposta `messages.getFullChat`, excluindo bots quando identificados. `getChatMember` é tentado para membros conhecidos de grupo básico, além de canais/supergrupos; `getUserChatBoosts` continua somente no fluxo de `Channel`. Para grupos e canais, o worker chama também `getMe` e consulta o status do próprio bot no alvo com `getChatMember`. As respostas brutas e vínculos por `user_id` / índice da resposta entram na exportação estruturada.
+
+**LIMITES:** a documentação oficial só garante `getChatMember` para outros usuários quando o bot é administrador; um grupo pode ocultar ou não retornar todos os membros. Erros ficam associados às consultas e não são interpretados como ausência dos dados. CI e execução MTProto não-healthcheck após esta alteração ainda são necessários; esta etapa não declara validação ao vivo.
+
+**FONTES OFICIAIS:** https://core.telegram.org/method/messages.getFullChat ; https://core.telegram.org/bots/api#getme ; https://core.telegram.org/bots/api#getchatmember ; https://core.telegram.org/bots/api#getuserchatboosts .
+
+## 2026-11-03 — COMPLETAR TENTATIVAS POR PEER E PAGINAÇÃO
+
+**IMPLEMENTADO:** a chamada `channels.getParticipant` agora busca uma vez o status MTProto do próprio bot com `InputPeerSelf` para canais/supergrupos. `payments.getSavedStarGifts`, cujo schema oficial aceita `peer:InputPeer`, também é tentado com `InputPeerChat` em grupos básicos; o erro específico permanece na exportação quando esse peer não é aceito. A paginação de `messages.getPersonalChannelHistory` não encerra mais só por uma página curta, ignora contagens marcadas `inexact` para decidir exaustão e segue pelo `max_id` até resposta vazia; conta incompatível com o acumulado também deixa de encerrar a busca.
+
+**ROBUSTEZ DE PAGINAÇÃO:** filtros de `channels.getParticipants` contam IDs distintos e param com estado incompleto se uma página repetir os mesmos participantes, evitando declarar a coleta inteira ou manter um loop sem avanço.
+
+**LIMITES:** estes ajustes foram implementados em código e documentados; a resposta real para `InputPeerChat`, direitos de participante e paginação de um usuário com canal pessoal requer execução do resolver sem healthcheck e inspeção dos anexos. A lista oficial continua parcial quanto a endpoints cuja documentação e schema divergem ou não publicam assinatura, como `stats.getBroadcastRevenue*`.
+
+**FONTES OFICIAIS:** https://core.telegram.org/method/channels.getParticipant ; https://core.telegram.org/method/payments.getSavedStarGifts ; https://core.telegram.org/method/messages.getPersonalChannelHistory ; https://core.telegram.org/api/bots .
