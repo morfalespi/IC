@@ -1,6 +1,6 @@
 # Fontes oficiais da pesquisa MTProto
 
-Atualizado em 2026-11-02. O fluxo de pesquisa usa MTProto/Telethon; a Bot API só recebe updates, referências compartilhadas pelo usuário e entrega mensagens.
+Atualizado em 2026-11-03. O fluxo de pesquisa usa MTProto/Telethon; a Bot API também fornece leituras adicionais de perfil, chats, participantes e presentes, além de updates e entrega de mensagens.
 
 - Banco de peers e `access_hash`: https://core.telegram.org/api/peers — documenta referências completas, mínimas, de mensagens e o `access_hash` zero para bots, além da exigência de referências para IDs não conhecidos. Valores são ligados a contextos de autenticação e não devem ser intercambiados indiscriminadamente.
 - `users.getUsers`: https://core.telegram.org/method/users.getUsers — aceita `InputUser`, inclusive com referência zero onde o servidor permitir.
@@ -64,11 +64,19 @@ Mesmo com paginação, o relatório só contém campos oficialmente recebidos; o
 
 ## Presentes Star via MTProto — 2026-11-03
 
-- [payments.getSavedStarGifts](https://core.telegram.org/method/payments.getSavedStarGifts): usuários e bots podem consultar os presentes pertencentes, recebidos ou hospedados por um peer de usuário ou canal. O método aceita `offset` e `limit`, devolve `next_offset` e respostas que incluem contagem, presentes, usuários e chats relacionados.
+- [payments.getSavedStarGifts](https://core.telegram.org/method/payments.getSavedStarGifts): usuários e bots podem consultar presentes pertencentes, recebidos ou hospedados por um peer; a assinatura oficial recebe `peer:InputPeer`, `offset` e `limit`, devolve `next_offset` e inclui contagem, presentes, usuários e chats relacionados. O worker agora tenta também `InputPeerChat` em grupos básicos e registra qualquer recusa específica do Telegram, pois a página oficial exemplifica usuários/canais sem restringir o tipo InputPeer.
 - [messages.getPersonalChannelHistory](https://core.telegram.org/method/messages.getPersonalChannelHistory): marcado oficialmente como **Only bots can use this method**. Recebe `user_id`, `limit`, `max_id`, `min_id` e `hash`, retorna `messages.Messages` e permite paginar o canal pessoal associado a um usuário. Não é o histórico geral do peer.
 - [Telethon 1.45.0](https://docs.telethon.dev/en/stable/): a versão fixada no projeto contém `GetPersonalChannelHistoryRequest(user_id, limit, max_id, min_id, hash)`, compatível com o schema do método oficial.
 - [payments.SavedStarGifts](https://core.telegram.org/constructor/payments.savedStarGifts): estrutura de resposta com os presentes e o próximo offset.
 - [Telethon api.tl](https://github.com/LonamiWebs/Telethon/blob/v1/telethon_generator/data/api.tl): esquema TL mantido pelo projeto Telethon; contém a declaração de `payments.getSavedStarGifts` usada para gerar a classe `GetSavedStarGiftsRequest`. O resolver verifica a existência dessa classe em runtime e registra a coleta como indisponível se a versão instalada não a expuser.
-- [Schema TL oficial](https://core.telegram.org/scheme): a página oficial consultada atualmente identifica layer 225. A página [payments.getUserStarGifts](https://core.telegram.org/method/payments.getUserStarGifts) diz que bots podem usá-lo, mas omite parâmetros e retorno; o schema layer 225 não contém a assinatura. Não construir chamada por suposição.
+- [Schema TL oficial](https://core.telegram.org/scheme): a página oficial consultada atualmente identifica layer 225. A página [payments.getUserStarGifts](https://core.telegram.org/method/payments.getUserStarGifts) diz que bots podem usá-lo e que não recebe parâmetros, mas deixa o retorno sem tipo; o schema layer 225 não contém assinatura executável para selecionar um usuário específico. Os presentes do alvo são consultados por `payments.getSavedStarGifts` e Bot API; não construir chamada por suposição.
 - [payments.getStarGiftCollections](https://core.telegram.org/method/payments.getStarGiftCollections): a página oficial marca a leitura de coleções de presentes como exclusiva de usuários.
 - [users.getFullUser](https://core.telegram.org/method/users.getFullUser) e [UserFull](https://core.telegram.org/api/profile): `users.getFullUser` aceita bots e sua resposta pode conter o campo opcional `stories`; a resposta integral do projeto preserva esse campo se retornado, embora `stories.getPeerStories` continue fora da sessão de bot.
+
+## Participantes e estado do bot em grupos — 2026-11-03
+
+- [messages.getFullChat](https://core.telegram.org/method/messages.getFullChat): a resposta `ChatFull` contém `ChatParticipants` para grupos básicos acessíveis; seus IDs podem ser usados para consultar o estado de cada participante pela Bot API.
+- [getMe](https://core.telegram.org/bots/api#getme): retorna a identidade do próprio bot, incluindo o ID necessário para consultar sua condição de membro.
+- [getChatMember](https://core.telegram.org/bots/api#getchatmember): retorna `ChatMember` e permite consultar a condição do próprio bot. Para outros usuários, a documentação só garante a consulta quando o bot é administrador; a resposta, inclusive erro, precisa permanecer registrada.
+- [getChatAdministrators](https://core.telegram.org/bots/api#getchatadministrators), [getChatMemberCount](https://core.telegram.org/bots/api#getchatmembercount) e [getUserChatBoosts](https://core.telegram.org/bots/api#getuserchatboosts): os dois primeiros acrescentam dados do chat; boosts dependem dos direitos de administrador e são consultados somente para canais/supergrupos.
+- [channels.getParticipant](https://core.telegram.org/method/channels.getParticipant): aceita bot e usuário, recebe `participant:InputPeer` e devolve `ChannelParticipant`; o worker o chama uma vez com `InputPeerSelf` para obter a associação/permissões do próprio bot no canal/supergrupo.
