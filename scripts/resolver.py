@@ -1652,7 +1652,14 @@ async def coletar(alvo):
                 )
         if dados["midias_dir"]:
             atexit.register(shutil.rmtree, dados["midias_dir"], ignore_errors=True)
-        atualizar_status("1/2 · Identificação confirmada; buscando campos adicionais", entidade)
+        identificacao_confirmada = not (
+            isinstance(resposta_resolucao, dict) and resposta_resolucao.get("numeric_id_unconfirmed")
+        )
+        atualizar_status(
+            "1/2 · Identificação confirmada; buscando campos adicionais" if identificacao_confirmada
+            else "1/2 · ID ainda não confirmado; tentando leituras independentes",
+            entidade,
+        )
         try:
             dados["resposta_completa"] = await com_espera(lambda: completo(cliente, entidade))
             dados["completo"] = objeto_completo(dados["resposta_completa"])
@@ -1682,80 +1689,81 @@ async def coletar(alvo):
                         "error": type(erro_fixadas).__name__,
                     })
                     dados["notas"].append(f"Mensagem fixada indisponível: {type(erro_fixadas).__name__}")
-            canal = input_canal_bot(entidade)
-            if MODO == "completo" and canal is not None:
-                filtros_participantes = (
-                    ("recent", ChannelParticipantsRecent()),
-                    ("admins", ChannelParticipantsAdmins()),
-                    ("bots", ChannelParticipantsBots()),
-                    ("restritos", ChannelParticipantsBanned(q="")),
-                    ("banidos", ChannelParticipantsKicked(q="")),
-                )
-                for nome_filtro, filtro_participantes in filtros_participantes:
-                    offset_participantes = 0
-                    total_participantes = None
-                    ids_participantes_vistos = set()
-                    respostas_filtro = []
-                    while True:
-                        try:
-                            pagina_participantes = await com_espera(
-                                lambda offset=offset_participantes: cliente(GetParticipantsRequest(
-                                    channel=canal,
-                                    filter=filtro_participantes,
-                                    offset=offset,
-                                    limit=100,
-                                    hash=0,
-                                ))
-                            )
-                        except Exception as erro_participantes:
-                            dados["falhas_coleta"].append({
-                                "method": "channels.getParticipants",
-                                "filter": nome_filtro,
-                                "error": type(erro_participantes).__name__,
-                            })
-                            dados["notas"].append(
-                                f"Participantes ({nome_filtro}) indisponíveis: {type(erro_participantes).__name__}"
-                            )
-                            break
-                        respostas_filtro.append(pagina_participantes)
-                        contagem = getattr(pagina_participantes, "count", None)
-                        if isinstance(contagem, int):
-                            total_participantes = contagem if total_participantes is None else max(total_participantes, contagem)
-                        lista_participantes = getattr(pagina_participantes, "participants", []) or []
-                        if not lista_participantes:
-                            break
-                        novos = {
-                            chave_participante_mtproto(participante)
-                            for participante in lista_participantes
-                        } - ids_participantes_vistos
-                        if not novos:
-                            dados["coletas_incompletas"].append({
-                                "method": "channels.getParticipants[" + nome_filtro + "]",
-                                "expected": total_participantes,
-                                "received": len(ids_participantes_vistos),
-                                "reason": "A página repetiu participantes sem avançar o conjunto de IDs.",
-                            })
-                            break
-                        ids_participantes_vistos.update(novos)
-                        offset_participantes += len(lista_participantes)
-                        if total_participantes is not None and len(ids_participantes_vistos) >= total_participantes:
-                            if len(ids_participantes_vistos) == total_participantes:
-                                break
-                            total_participantes = None
-                            dados.setdefault("notas", []).append(
-                                "channels.getParticipants[" + nome_filtro + "]: count menor que participantes distintos; paginação segue até página vazia."
-                            )
-                    if nome_filtro == "recent":
-                        dados["participantes_mtproto"] = respostas_filtro
-                    else:
-                        dados["participantes_filtrados_mtproto"][nome_filtro] = respostas_filtro
-                    registrar_paginacao_incompleta(
-                        dados, "channels.getParticipants[" + nome_filtro + "]",
-                        total_participantes, len(ids_participantes_vistos)
-                    )
         except Exception as erro:
             dados["falhas_coleta"].append({"method": "getFull", "error": type(erro).__name__})
             dados["notas"].append(f"Dados completos indisponíveis: {type(erro).__name__}: {erro}")
+
+        canal = input_canal_bot(entidade)
+        if MODO == "completo" and canal is not None:
+            filtros_participantes = (
+                ("recent", ChannelParticipantsRecent()),
+                ("admins", ChannelParticipantsAdmins()),
+                ("bots", ChannelParticipantsBots()),
+                ("restritos", ChannelParticipantsBanned(q="")),
+                ("banidos", ChannelParticipantsKicked(q="")),
+            )
+            for nome_filtro, filtro_participantes in filtros_participantes:
+                offset_participantes = 0
+                total_participantes = None
+                ids_participantes_vistos = set()
+                respostas_filtro = []
+                while True:
+                    try:
+                        pagina_participantes = await com_espera(
+                            lambda offset=offset_participantes: cliente(GetParticipantsRequest(
+                                channel=canal,
+                                filter=filtro_participantes,
+                                offset=offset,
+                                limit=100,
+                                hash=0,
+                            ))
+                        )
+                    except Exception as erro_participantes:
+                        dados["falhas_coleta"].append({
+                            "method": "channels.getParticipants",
+                            "filter": nome_filtro,
+                            "error": type(erro_participantes).__name__,
+                        })
+                        dados["notas"].append(
+                            f"Participantes ({nome_filtro}) indisponíveis: {type(erro_participantes).__name__}"
+                        )
+                        break
+                    respostas_filtro.append(pagina_participantes)
+                    contagem = getattr(pagina_participantes, "count", None)
+                    if isinstance(contagem, int):
+                        total_participantes = contagem if total_participantes is None else max(total_participantes, contagem)
+                    lista_participantes = getattr(pagina_participantes, "participants", []) or []
+                    if not lista_participantes:
+                        break
+                    novos = {
+                        chave_participante_mtproto(participante)
+                        for participante in lista_participantes
+                    } - ids_participantes_vistos
+                    if not novos:
+                        dados["coletas_incompletas"].append({
+                            "method": "channels.getParticipants[" + nome_filtro + "]",
+                            "expected": total_participantes,
+                            "received": len(ids_participantes_vistos),
+                            "reason": "A página repetiu participantes sem avançar o conjunto de IDs.",
+                        })
+                        break
+                    ids_participantes_vistos.update(novos)
+                    offset_participantes += len(lista_participantes)
+                    if total_participantes is not None and len(ids_participantes_vistos) >= total_participantes:
+                        if len(ids_participantes_vistos) == total_participantes:
+                            break
+                        total_participantes = None
+                        dados.setdefault("notas", []).append(
+                            "channels.getParticipants[" + nome_filtro + "]: count menor que participantes distintos; paginação segue até página vazia."
+                        )
+                if nome_filtro == "recent":
+                    dados["participantes_mtproto"] = respostas_filtro
+                else:
+                    dados["participantes_filtrados_mtproto"][nome_filtro] = respostas_filtro
+                registrar_paginacao_incompleta(
+                    dados, "channels.getParticipants[" + nome_filtro + "]",
+                    total_participantes, len(ids_participantes_vistos)
+                )
         if not isinstance(entidade, BotAPIEntity):
             try:
                 dados["foto"] = await com_espera(lambda: cliente.download_profile_photo(entidade, file=bytes))

@@ -508,3 +508,12 @@ A página atual do schema TL oficial informa layer 225; o registro anterior de l
 A implementação anterior encerrava a busca quando MTProto e `getChat` falhavam, convertendo a segunda recusa em erro terminal. Agora o fluxo preserva as duas respostas e ainda tenta métodos independentes que aceitam o ID numérico: leituras da Bot API e os métodos MTProto compatíveis com `InputUser`/`InputChannel` e hash zero para bots. O tipo de `PeerChannel` permanece explicitamente não confirmado como canal ou supergrupo até uma resposta da API. Isso amplia as oportunidades de obter dados; não demonstra que um alvo específico esteja acessível. O comportamento precisa passar CI e ser executado com os três tipos de referência para provar quais métodos retornam dados.
 
 Fontes normativas: [IDs Bot API](https://core.telegram.org/api/bots/ids), [getChat](https://core.telegram.org/bots/api#getchat), [getChatMemberCount](https://core.telegram.org/bots/api#getchatmembercount), [getChatAdministrators](https://core.telegram.org/bots/api#getchatadministrators), [peer database e zero access_hash](https://core.telegram.org/api/peers).
+## 2026-11-03 — Independência entre perfil completo e participantes
+
+**IMPLEMENTADO:** `channels.getParticipants` e seus cinco filtros deixam de depender do sucesso de `channels.getFullChannel`. Uma recusa no perfil completo permanece em `falhas_coleta`, mas não impede as tentativas paginadas de participantes com o identificador disponível. O status de andamento também deixa de afirmar identificação confirmada quando MTProto e `getChat` não confirmaram o ID.
+
+**VERIFICADO:** documentação oficial consultada nesta execução confirma suporte a bots nos dois métodos; `channels.getParticipants` exige seu próprio `InputChannel`, filtro, offset, limit e hash, sem exigir uma resposta prévia de `channels.getFullChannel`. `npm ci` e `npm run check` passaram localmente, assim como compilação de `scripts/mtproto_export.py` e revisão do diff sem whitespace. Essas checagens não comprovam acesso real nem entrega.
+
+**FONTES:** https://core.telegram.org/method/channels.getParticipants ; https://core.telegram.org/method/channels.getFullChannel ; https://core.telegram.org/api/peers .
+
+**LIMITE:** o ambiente local não possui bindings de credenciais Telegram. A autenticação GitHub está disponível para publicar e iniciar uma consulta pública sem chat de destino, usando os secrets já configurados no Actions. Essa consulta não comprova recebimento de páginas ou anexos no Telegram.

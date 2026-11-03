@@ -145,3 +145,7 @@ A revisão encontrou que fotos/áudios da Bot API, fotos/músicas MTProto e part
 ## Coleta paginada sem total explícito — PR #6
 
 O coletor Bot API não encerra mais uma lista apenas porque a página veio curta quando não há `total_count`. Continua até uma resposta vazia, para não inferir exaustão pelo tamanho da página. CI passou; não houve consulta real após a integração.
+
+## Independência das leituras de participantes — 2026-11-03
+
+A coleta de `channels.getParticipants` estava dentro do mesmo bloco de tratamento de `getFull`, fazendo uma recusa de perfil completo omitir todos os filtros de participantes. O bloco foi separado: cada filtro passa a ser tentado e conserva seu resultado/erro mesmo se o perfil completo falhar. O andamento de IDs ainda não confirmados informa essa condição. Verificações locais de sintaxe e placeholders passaram; confirmação funcional permanece dependente das respostas reais e da inspeção dos anexos.
