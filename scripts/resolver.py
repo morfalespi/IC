@@ -765,6 +765,38 @@ def registros_telegram(dados, alvo, info):
         yield from folhas(valor, caminho)
 
 
+def secoes_completas_telegram(dados, alvo, info):
+    titulos = {
+        "metadados": "Metadados da coleta",
+        "respostas_bot_api": "Bot API · respostas completas",
+        "coletas_incompletas": "Paginação incompleta",
+        "chats_relacionados_bot_api": "Bot API · chats relacionados",
+        "falhas_bot_api": "Bot API · erros retornados",
+        "entidade": "MTProto · entidade resolvida",
+        "resposta_resolucao": "MTProto · resposta da resolução",
+        "resposta_completa": "MTProto · perfil completo",
+        "mensagens_fixadas_mtproto": "MTProto · mensagens fixadas",
+        "fotos_perfil": "MTProto · fotos de perfil",
+        "musicas_perfil": "MTProto · músicas de perfil",
+        "participantes": "MTProto · participantes recentes",
+        "participantes_filtrados": "MTProto · participantes por filtro",
+        "midias": "Mídia · arquivos e estado de download",
+        "metodos_com_falha": "MTProto · erros retornados",
+    }
+    grupos = {}
+    for registro in registros_telegram(dados, alvo, info):
+        caminho = registro["path"]
+        raiz = caminho.split(".", 1)[0].split("[", 1)[0]
+        titulo = titulos.get(raiz, "Dados completos · " + raiz)
+        relativo = caminho[len(raiz):].lstrip(".")
+        valor = registro["value"]
+        texto = valor if isinstance(valor, str) else json.dumps(
+            valor, ensure_ascii=False, separators=(",", ":"), allow_nan=False
+        )
+        grupos.setdefault(titulo, []).append((relativo or raiz, texto))
+    return list(grupos.items())
+
+
 
 async def com_espera(operacao):
     gasto = 0
@@ -1302,6 +1334,8 @@ async def principal():
         if codigo == 0:
             identidade = dados_basicos(info)
             categorias = agrupar_campos(info)
+            if MODO == "completo":
+                categorias.extend(secoes_completas_telegram(dados, alvo, info))
             alvo_disparo = os.environ.get("ALVO", "").strip().lstrip("@")
             controles = '<tg-button-row align="center">'
             controles += botao_atualizar(alvo_disparo)
@@ -1335,7 +1369,8 @@ async def principal():
             try:
                 paginas = rich_pages(identidade, secoes, notas_publicadas, controles)
                 total_ricos = len(paginas)
-                print("Rich Messages planejadas:", total_ricos, "| campos adicionais:", len(info["campos"]))
+                total_campos_visiveis = sum(len(linhas) for _, linhas in secoes)
+                print("Rich Messages planejadas:", total_ricos, "| campos exibidos:", total_campos_visiveis)
                 for indice, pagina in enumerate(paginas):
                     if indice > 0:
                         time.sleep(1.1)
