@@ -472,6 +472,22 @@ async def coletar_stickers_bot_api(dados, objeto):
             await baixar_arquivos_bot_api(dados, resposta.get("result"), "emoji_personalizado_bot_api")
 
 
+async def coletar_catalogo_presentes_bot_api(dados):
+    metodo = "getAvailableGifts"
+    indice_resposta = len(dados.get("respostas_bot_api", {}).get(metodo, []))
+    resposta = await bot_api_leitura(dados, metodo, {})
+    resultado = resposta.get("result") or {}
+    presentes = resultado.get("gifts") or []
+    dados["catalogo_presentes_bot_api"] = {
+        "method": metodo,
+        "response_index": indice_resposta,
+        "ok": bool(resposta.get("ok")),
+        "gift_count": len(presentes),
+    }
+    if resposta.get("ok"):
+        await baixar_arquivos_bot_api(dados, resultado, "catalogo_presentes_bot_api")
+
+
 async def coletar_presentes_bot_api(dados, entidade, chat_id):
     metodo = "getUserGifts" if isinstance(entidade, User) else "getChatGifts"
     parametros_base = (
@@ -524,6 +540,31 @@ async def coletar_presentes_bot_api(dados, entidade, chat_id):
         offsets_vistos.add(offset)
         offset = proximo
     registrar_paginacao_incompleta(dados, metodo, total, recebidos)
+
+
+async def coletar_catalogo_presentes_mtproto(cliente, dados):
+    metodo = "payments.getStarGifts"
+    try:
+        from telethon.tl.functions.payments import GetStarGiftsRequest
+        resposta = await com_espera(lambda: cliente(GetStarGiftsRequest(hash=0)))
+        dados.setdefault("catalogo_presentes_star_gifts_mtproto", []).append(resposta)
+        presentes = getattr(resposta, "gifts", []) or []
+        if dados.get("midias_dir"):
+            for indice, presente in enumerate(presentes, 1):
+                sticker = getattr(presente, "sticker", None)
+                if sticker is not None:
+                    await baixar_midia(
+                        cliente, sticker, dados, "catalogo_presente_mtproto",
+                        f"catalogo_presente_mtproto_{indice:04d}"
+                    )
+    except Exception as erro:
+        dados.setdefault("falhas_coleta", []).append({
+            "method": metodo,
+            "error": type(erro).__name__,
+        })
+        dados.setdefault("notas", []).append(
+            f"{metodo} indisponível nesta sessão: {type(erro).__name__}."
+        )
 
 
 async def coletar_presentes_mtproto(cliente, dados, entidade):
@@ -985,7 +1026,7 @@ def registros_telegram(dados, alvo, info):
         "participantes_filtrados": dados.get("participantes_filtrados_mtproto", {}),
         "membros_bot_api_por_participante": dados.get("membros_bot_api_por_participante", []),
         "boosts_por_participante": dados.get("boosts_por_participante_bot_api", []),
-        "presentes_bot_api": dados.get("presentes_bot_api", []),
+        "presentes_bot_api": dados.get("presentes_bot_api", []),\n        "catalogo_presentes_bot_api": dados.get("catalogo_presentes_bot_api", {}),\n        "catalogo_presentes_star_gifts_mtproto": dados.get("catalogo_presentes_star_gifts_mtproto", []),
         "paginas_presentes_star_gifts_mtproto": dados.get("paginas_presentes_star_gifts_mtproto", []),
         "respostas_presentes_star_gifts_mtproto": dados.get("presentes_star_gifts_mtproto", []),
         "midias": [{chave: valor for chave, valor in item.items() if chave != "path"} for item in dados.get("midias", [])],
@@ -1028,7 +1069,7 @@ def secoes_completas_telegram(dados, alvo, info):
         "participantes_filtrados": "MTProto · participantes por filtro",
         "membros_bot_api_por_participante": "Bot API · estado de participantes",
         "boosts_por_participante": "Bot API · boosts por participante",
-        "presentes_bot_api": "Bot API · paginação de presentes",
+        "presentes_bot_api": "Bot API · paginação de presentes",\n        "catalogo_presentes_bot_api": "Bot API · catálogo global de presentes",\n        "catalogo_presentes_star_gifts_mtproto": "MTProto · catálogo global de presentes Star",
         "paginas_presentes_star_gifts_mtproto": "MTProto · paginação de presentes Star",
         "respostas_presentes_star_gifts_mtproto": "MTProto · respostas completas de presentes Star",
         "midias": "Mídia · arquivos e estado de download",
@@ -1315,7 +1356,7 @@ async def coletar(alvo):
                     "description": type(erro_api).__name__,
                 })
                 dados["notas"].append(f"Leituras Bot API incompletas: {type(erro_api).__name__}")
-            await coletar_presentes_mtproto(cliente, dados, entidade)
+            await coletar_catalogo_presentes_bot_api(dados)\n            await coletar_catalogo_presentes_mtproto(cliente, dados)\n            await coletar_presentes_mtproto(cliente, dados, entidade)
         atualizar_status("2/2 · Tentativas de coleta encerradas; consolidando ficha", entidade)
         return dados
     finally:
