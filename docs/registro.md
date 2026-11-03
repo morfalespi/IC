@@ -1,10 +1,10 @@
-# Implementação no branch — 2026-11-03: presentes Star via MTProto
+# PR #18 integrado — 2026-11-03: presentes Star via MTProto
 
 **IMPLEMENTADO, NÃO VERIFICADO AO VIVO:** no modo completo, o resolver tenta `payments.getSavedStarGifts` para usuários e canais resolvidos, segue `next_offset`, guarda cada resposta TL integral para Rich Messages, Markdown e JSONL, e tenta baixar stickers regulares retornados. Grupos básicos são registrados como não aplicáveis sem tornar a coleta incompleta. Falha de import da classe no Telethon, erro RPC ou loop de offset são registrados sem interromper a coleta já feita por outras APIs.
 
 **FONTES OFICIAIS:** https://core.telegram.org/method/payments.getSavedStarGifts ; https://core.telegram.org/constructor/payments.savedStarGifts ; https://github.com/LonamiWebs/Telethon/blob/v1/telethon_generator/data/api.tl
 
-**PENDENTE:** CI e execução real devem confirmar que a versão resolvida do Telethon expõe a classe, que o Telegram autoriza a leitura por peer, que a paginação termina e que respostas/anexos chegam ao chat. Presentes únicos podem referenciar documentos em atributos cuja extração de mídia ainda precisa ser ampliada.
+**CI VERIFICADO:** execução #86 (`41638127117`) passou antes da integração do PR #18, commit `dfdc33cd3df99748b93c01d7a645d8f1b528bcaf`. Isso valida checagens automatizadas do repositório, não a disponibilidade da classe ou a leitura real do Telegram. **PENDENTE DE PROVA AO VIVO:** confirmar a classe no ambiente resolvido, acesso do Telegram, paginação e recebimento dos anexos. Presentes únicos podem referenciar documentos em atributos cuja extração de mídia ainda precisa ser ampliada.
 
 ---
 
