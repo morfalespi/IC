@@ -8,13 +8,13 @@ Atualizado em 2026-11-03. O fluxo de pesquisa usa MTProto/Telethon; a Bot API ta
 - `contacts.resolveUsername`: https://core.telegram.org/method/contacts.resolveUsername — resolve username e retorna peer e entidades que podem conter o hash apropriado.
 - `messages.getChats`: https://core.telegram.org/method/messages.getChats — grupos básicos usam ID, sem `access_hash`.
 - `channels.getChannels`: https://core.telegram.org/method/channels.getChannels — canais e supergrupos precisam de referência de canal válida.
-- `getChat`: https://core.telegram.org/bots/api#getchat — aceita um identificador numérico de chat ou `@username`; se MTProto não resolver o ID, o worker tenta obter primeiro os dados acessíveis pela Bot API e só usa MTProto quando há username resolvível.
+- `getChat`: https://core.telegram.org/bots/api#getchat — aceita um identificador numérico de chat ou `@username`; se MTProto não resolver o ID, o worker consulta `getChat` e, quando o peer é confirmado, tenta também os métodos MTProto compatíveis com bot usando os construtores e o hash zero previstos oficialmente.
 - `KeyboardButtonRequestUsers` e `users_shared`: https://core.telegram.org/bots/api#keyboardbuttonrequestusers — permitem obter a identificação do usuário compartilhado, mas **não garantem** que o bot possa consultar a entidade apenas pelo ID.
 - `MessageOrigin` e `MessageEntity`: https://core.telegram.org/bots/api — referências fornecidas por encaminhamentos e menções podem conter ID e username; o remetente pode ser oculto.
 - Entidades e cache do Telethon: https://docs.telethon.dev/en/stable/concepts/entities.html — a biblioteca precisa de ID e hash no contexto certo. O resolver usa sessão temporária, sem cache persistente.
 - Dispatch: https://docs.github.com/en/rest/actions/workflows#create-a-workflow-dispatch-event — requer permissão Actions: write no GitHub token.
 
-A existência desses métodos oficiais não garante retorno de dados para quaisquer IDs. O projeto mantém verificação explícita de ID contra username em consultas por referência composta.
+Os métodos oficiais definem as leituras que a implementação deve tentar. A resposta real da API determina o resultado de cada chamada; uma omissão no código ou uma tentativa antiga não substitui essa execução. O projeto mantém verificação explícita de ID contra username em consultas por referência composta.
 
 ## Dados adicionais no relatório (2026-11-02)
 
