@@ -567,6 +567,81 @@ async def coletar_catalogo_presentes_mtproto(cliente, dados):
         )
 
 
+async def coletar_boosts_mtproto(cliente, dados, entidade):
+    if not isinstance(entidade, Channel):
+        return
+    metodo_status = "stories.getBoostsStatus"
+    metodo_lista = "stories.getBoostersList"
+    try:
+        from telethon.tl.functions.stories import GetBoostsStatusRequest, GetBoostersListRequest
+        status = await com_espera(lambda: cliente(GetBoostsStatusRequest(peer=entidade)))
+        dados.setdefault("status_boosts_mtproto", []).append(status)
+        offset = ""
+        offsets_vistos = set()
+        total = None
+        recebidos = 0
+        paginas = dados.setdefault("paginas_boosters_mtproto", [])
+        respostas = dados.setdefault("boosters_mtproto", [])
+        usuarios_vistos = set()
+        while True:
+            resposta = await com_espera(lambda offset=offset: cliente(
+                GetBoostersListRequest(peer=entidade, offset=offset, limit=100)
+            ))
+            respostas.append(resposta)
+            boosters = getattr(resposta, "boosters", []) or []
+            contagem = getattr(resposta, "count", None)
+            if isinstance(contagem, int):
+                total = contagem if total is None else max(total, contagem)
+            proximo = getattr(resposta, "next_offset", None) or ""
+            paginas.append({
+                "method": metodo_lista,
+                "offset": offset,
+                "next_offset": proximo,
+                "count": contagem,
+                "received": len(boosters),
+            })
+            recebidos += len(boosters)
+            for booster in boosters:
+                id_usuario = getattr(booster, "user_id", None)
+                if not isinstance(id_usuario, int) or id_usuario in usuarios_vistos:
+                    continue
+                usuarios_vistos.add(id_usuario)
+                try:
+                    from telethon.tl.functions.premium import GetUserBoostsRequest
+                    peer_usuario = await cliente.get_input_entity(id_usuario)
+                    resposta_usuario = await com_espera(lambda: cliente(
+                        GetUserBoostsRequest(peer=entidade, user_id=peer_usuario)
+                    ))
+                    dados.setdefault("boosts_por_usuario_mtproto", []).append({
+                        "user_id": id_usuario,
+                        "response": resposta_usuario,
+                    })
+                except Exception as erro_usuario:
+                    dados.setdefault("falhas_coleta", []).append({
+                        "method": "premium.getUserBoosts",
+                        "user_id": id_usuario,
+                        "error": type(erro_usuario).__name__,
+                    })
+            if not proximo:
+                break
+            if proximo == offset or proximo in offsets_vistos:
+                dados.setdefault("coletas_incompletas", []).append({
+                    "method": metodo_lista,
+                    "expected": total,
+                    "received": recebidos,
+                    "reason": "next_offset repetido; paginação interrompida para evitar ciclo",
+                })
+                break
+            offsets_vistos.add(offset)
+            offset = proximo
+        registrar_paginacao_incompleta(dados, metodo_lista, total, recebidos)
+    except Exception as erro:
+        dados.setdefault("falhas_coleta", []).append({
+            "method": metodo_status + " / " + metodo_lista,
+            "error": type(erro).__name__,
+        })
+
+
 async def coletar_presentes_mtproto(cliente, dados, entidade):
     metodo = "payments.getSavedStarGifts"
     try:
@@ -1028,7 +1103,7 @@ def registros_telegram(dados, alvo, info):
         "boosts_por_participante": dados.get("boosts_por_participante_bot_api", []),
         "presentes_bot_api": dados.get("presentes_bot_api", []),\n        "catalogo_presentes_bot_api": dados.get("catalogo_presentes_bot_api", {}),\n        "catalogo_presentes_star_gifts_mtproto": dados.get("catalogo_presentes_star_gifts_mtproto", []),
         "paginas_presentes_star_gifts_mtproto": dados.get("paginas_presentes_star_gifts_mtproto", []),
-        "respostas_presentes_star_gifts_mtproto": dados.get("presentes_star_gifts_mtproto", []),
+        "respostas_presentes_star_gifts_mtproto": dados.get("presentes_star_gifts_mtproto", []),\n        "status_boosts_mtproto": dados.get("status_boosts_mtproto", []),\n        "paginas_boosters_mtproto": dados.get("paginas_boosters_mtproto", []),\n        "boosters_mtproto": dados.get("boosters_mtproto", []),\n        "boosts_por_usuario_mtproto": dados.get("boosts_por_usuario_mtproto", []),
         "midias": [{chave: valor for chave, valor in item.items() if chave != "path"} for item in dados.get("midias", [])],
         "metodos_com_falha": dados.get("falhas_coleta", []),
     }
@@ -1071,7 +1146,7 @@ def secoes_completas_telegram(dados, alvo, info):
         "boosts_por_participante": "Bot API · boosts por participante",
         "presentes_bot_api": "Bot API · paginação de presentes",\n        "catalogo_presentes_bot_api": "Bot API · catálogo global de presentes",\n        "catalogo_presentes_star_gifts_mtproto": "MTProto · catálogo global de presentes Star",
         "paginas_presentes_star_gifts_mtproto": "MTProto · paginação de presentes Star",
-        "respostas_presentes_star_gifts_mtproto": "MTProto · respostas completas de presentes Star",
+        "respostas_presentes_star_gifts_mtproto": "MTProto · respostas completas de presentes Star",\n        "status_boosts_mtproto": "MTProto · status de boosts",\n        "paginas_boosters_mtproto": "MTProto · paginação de boosters",\n        "boosters_mtproto": "MTProto · lista completa de boosters",\n        "boosts_por_usuario_mtproto": "MTProto · respostas de boosts por usuário",
         "midias": "Mídia · arquivos e estado de download",
         "metodos_com_falha": "MTProto · erros retornados",
     }
@@ -1356,7 +1431,7 @@ async def coletar(alvo):
                     "description": type(erro_api).__name__,
                 })
                 dados["notas"].append(f"Leituras Bot API incompletas: {type(erro_api).__name__}")
-            await coletar_catalogo_presentes_bot_api(dados)\n            await coletar_catalogo_presentes_mtproto(cliente, dados)\n            await coletar_presentes_mtproto(cliente, dados, entidade)
+            await coletar_catalogo_presentes_bot_api(dados)\n            await coletar_catalogo_presentes_mtproto(cliente, dados)\n            await coletar_boosts_mtproto(cliente, dados, entidade)\n            await coletar_presentes_mtproto(cliente, dados, entidade)
         atualizar_status("2/2 · Tentativas de coleta encerradas; consolidando ficha", entidade)
         return dados
     finally:
