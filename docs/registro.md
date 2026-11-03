@@ -1,8 +1,8 @@
 # Em andamento no branch — catálogo global de presentes
 
-**IMPLEMENTADO, PENDENTE DE CI E PROVA AO VIVO:** a exportação completa agora consulta `getAvailableGifts` e `payments.getStarGifts(hash=0)`, preserva as respostas completas no JSONL/Rich/Markdown e tenta baixar stickers acessíveis. Esse catálogo mostra presentes disponíveis para envio; não substitui as listas de presentes pertencentes ao peer (`getUserGifts`, `getChatGifts`, `payments.getSavedStarGifts`).
+**IMPLEMENTADO, PENDENTE DE CI E PROVA AO VIVO:** a exportação completa consulta `getAvailableGifts` e `payments.getStarGifts(hash=0)`, preserva as respostas completas no JSONL/Rich/Markdown e tenta baixar stickers acessíveis. Em canais, também consulta `stories.getBoostsStatus`, pagina `stories.getBoostersList` e tenta `premium.getUserBoosts` para cada booster retornado. O catálogo global mostra presentes disponíveis para envio; não substitui as listas de presentes pertencentes ao peer (`getUserGifts`, `getChatGifts`, `payments.getSavedStarGifts`).
 
-**FONTES OFICIAIS:** https://core.telegram.org/bots/api#getavailablegifts ; https://core.telegram.org/method/payments.getStarGifts
+**FONTES OFICIAIS:** https://core.telegram.org/bots/api#getavailablegifts ; https://core.telegram.org/method/payments.getStarGifts ; https://core.telegram.org/method/stories.getBoostsStatus ; https://core.telegram.org/method/stories.getBoostersList ; https://core.telegram.org/method/premium.getUserBoosts
 
 **ESCOPO AINDA NÃO CONCLUÍDO:** o inventário dos demais métodos de leitura elegíveis e a execução ponta a ponta continuam pendentes. Não declarar cobertura total até completar essa matriz, confirmar CI e receber/inspecionar uma exportação real.
 
