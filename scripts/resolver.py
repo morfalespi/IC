@@ -346,6 +346,37 @@ async def baixar_arquivos_bot_api(dados, objeto, categoria):
         )
 
 
+async def coletar_stickers_bot_api(dados, objeto):
+    nomes_conjuntos = set()
+    ids_emojis = set()
+
+    def visitar(valor):
+        if isinstance(valor, dict):
+            for chave, item in valor.items():
+                if chave in ("sticker_set_name", "custom_emoji_sticker_set_name") and isinstance(item, str) and item:
+                    nomes_conjuntos.add(item)
+                elif chave in ("custom_emoji_id", "emoji_status_custom_emoji_id") and isinstance(item, str) and item:
+                    ids_emojis.add(item)
+                visitar(item)
+        elif isinstance(valor, list):
+            for item in valor:
+                visitar(item)
+
+    visitar(objeto)
+    for nome in sorted(nomes_conjuntos):
+        resposta = await bot_api_leitura(dados, "getStickerSet", {"name": nome})
+        if resposta.get("ok"):
+            await baixar_arquivos_bot_api(dados, resposta.get("result"), "conjunto_stickers_bot_api")
+    emojis = sorted(ids_emojis)
+    for inicio in range(0, len(emojis), 200):
+        resposta = await bot_api_leitura(
+            dados, "getCustomEmojiStickers",
+            {"custom_emoji_ids": emojis[inicio:inicio + 200]}
+        )
+        if resposta.get("ok"):
+            await baixar_arquivos_bot_api(dados, resposta.get("result"), "emoji_personalizado_bot_api")
+
+
 async def coletar_bot_api(dados, entidade, info):
     chat_id = "@" + info["username"] if isinstance(entidade, (Channel, Chat)) and info.get("username") else info.get("id")
     if not chat_id:
@@ -367,6 +398,12 @@ async def coletar_bot_api(dados, entidade, info):
                 audio.get("file_unique_id")
             )
         await baixar_arquivos_bot_api(dados, resultado_chat, "chat_bot_api")
+        if resultado_chat.get("is_forum"):
+            icones_forum = await bot_api_leitura(dados, "getForumTopicIconStickers", {})
+            if icones_forum.get("ok"):
+                await baixar_arquivos_bot_api(
+                    dados, icones_forum.get("result"), "icones_topico_forum_bot_api"
+                )
         ids_relacionados = []
         for chave in ("personal_chat", "parent_chat"):
             relacionado = resultado_chat.get(chave)
@@ -465,6 +502,8 @@ async def coletar_bot_api(dados, entidade, info):
             dados, "getChatAdministrators", {"chat_id": chat_id, "return_bots": True}
         )
         await bot_api_leitura(dados, "getChatMemberCount", {"chat_id": chat_id})
+
+    await coletar_stickers_bot_api(dados, dados.get("respostas_bot_api", {}))
 
 
 async def baixar_midia(cliente, objeto, dados, categoria, nome):
