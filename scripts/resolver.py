@@ -643,10 +643,9 @@ async def coletar_boosts_mtproto(cliente, dados, entidade):
     resultados = dados.setdefault("boosts_por_usuario_mtproto", [])
     ids_com_boosts = ids_participantes_com_boosts_bot_api(dados)
     if not ids_com_boosts:
-        dados.setdefault("metodos_sem_dados", []).append({
-            "method": metodo,
-            "reason": "nenhum participante teve boosts retornados pela Bot API",
-        })
+        dados.setdefault("notas", []).append(
+            f"{metodo}: sem chamada individual; a Bot API não retornou boosters."
+        )
         return
     for id_usuario in ids_com_boosts:
         try:
