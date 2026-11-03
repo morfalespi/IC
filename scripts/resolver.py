@@ -612,90 +612,32 @@ async def coletar_catalogo_presentes_mtproto(cliente, dados):
 async def coletar_boosts_mtproto(cliente, dados, entidade):
     if not isinstance(entidade, Channel):
         return
-    metodo_status = "stories.getBoostsStatus"
-    metodo_lista = "stories.getBoostersList"
+    metodo = "premium.getUserBoosts"
     try:
-        from telethon.tl.functions.stories import GetBoostsStatusRequest, GetBoostersListRequest
         from telethon.tl.functions.premium import GetUserBoostsRequest
     except Exception as erro:
         dados.setdefault("falhas_coleta", []).append({
-            "method": metodo_status + " / " + metodo_lista,
+            "method": metodo,
             "error": type(erro).__name__,
         })
         return
-    try:
-        status = await com_espera(lambda: cliente(GetBoostsStatusRequest(peer=entidade)))
-        dados.setdefault("status_boosts_mtproto", []).append(status)
-    except Exception as erro:
-        dados.setdefault("falhas_coleta", []).append({
-            "method": metodo_status,
-            "error": type(erro).__name__,
-        })
-    offset = ""
-    offsets_vistos = set()
-    total = None
-    recebidos = 0
-    paginas = dados.setdefault("paginas_boosters_mtproto", [])
-    respostas = dados.setdefault("boosters_mtproto", [])
-    usuarios_vistos = set()
-    try:
-        while True:
-            resposta = await com_espera(lambda offset=offset: cliente(
-                GetBoostersListRequest(peer=entidade, offset=offset, limit=100)
+    resultados = dados.setdefault("boosts_por_usuario_mtproto", [])
+    for id_usuario in ids_participantes_para_boosts(dados):
+        try:
+            peer_usuario = await cliente.get_input_entity(id_usuario)
+            resposta = await com_espera(lambda: cliente(
+                GetUserBoostsRequest(peer=entidade, user_id=peer_usuario)
             ))
-            respostas.append(resposta)
-            boosters = getattr(resposta, "boosters", []) or []
-            contagem = getattr(resposta, "count", None)
-            if isinstance(contagem, int):
-                total = contagem if total is None else max(total, contagem)
-            proximo = getattr(resposta, "next_offset", None) or ""
-            paginas.append({
-                "method": metodo_lista,
-                "offset": offset,
-                "next_offset": proximo,
-                "count": contagem,
-                "received": len(boosters),
+            resultados.append({
+                "user_id": id_usuario,
+                "response": resposta,
             })
-            recebidos += len(boosters)
-            for booster in boosters:
-                id_usuario = getattr(booster, "user_id", None)
-                if not isinstance(id_usuario, int) or id_usuario in usuarios_vistos:
-                    continue
-                usuarios_vistos.add(id_usuario)
-                try:
-                    peer_usuario = await cliente.get_input_entity(id_usuario)
-                    resposta_usuario = await com_espera(lambda: cliente(
-                        GetUserBoostsRequest(peer=entidade, user_id=peer_usuario)
-                    ))
-                    dados.setdefault("boosts_por_usuario_mtproto", []).append({
-                        "user_id": id_usuario,
-                        "response": resposta_usuario,
-                    })
-                except Exception as erro_usuario:
-                    dados.setdefault("falhas_coleta", []).append({
-                        "method": "premium.getUserBoosts",
-                        "user_id": id_usuario,
-                        "error": type(erro_usuario).__name__,
-                    })
-            if not proximo:
-                break
-            if proximo == offset or proximo in offsets_vistos:
-                dados.setdefault("coletas_incompletas", []).append({
-                    "method": metodo_lista,
-                    "expected": total,
-                    "received": recebidos,
-                    "reason": "next_offset repetido; paginação interrompida para evitar ciclo",
-                })
-                break
-            offsets_vistos.add(offset)
-            offset = proximo
-        registrar_paginacao_incompleta(dados, metodo_lista, total, recebidos)
-    except Exception as erro:
-        dados.setdefault("falhas_coleta", []).append({
-            "method": metodo_lista,
-            "error": type(erro).__name__,
-        })
-        registrar_paginacao_incompleta(dados, metodo_lista, total, recebidos)
+        except Exception as erro:
+            dados.setdefault("falhas_coleta", []).append({
+                "method": metodo,
+                "user_id": id_usuario,
+                "error": type(erro).__name__,
+            })
 
 async def coletar_presentes_mtproto(cliente, dados, entidade):
     metodo = "payments.getSavedStarGifts"
