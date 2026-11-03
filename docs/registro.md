@@ -2,7 +2,7 @@
 
 **IMPLEMENTADO:** `premium.getUserBoosts` agora é chamado somente para participantes cuja resposta `getUserChatBoosts` contém ao menos um boost. Isso preserva o detalhe MTProto para boosters e evita uma chamada duplicada para cada participante sem boost. Se a consulta Bot API não identifica nenhum booster, o relatório registra o método como sem dados e não dispara chamadas MTProto por usuário.
 
-**VALIDAÇÃO:** CI do PR #23 pendente. Execução real ainda depende de peer e destino de teste.
+**VALIDAÇÃO:** PR #23 integrado; CI #108 (execução `41656711264`) passou. Isso confirma as checagens automatizadas, não a leitura real do Telegram. Execução real ainda depende de peer e destino de teste.
 
 ---
 
