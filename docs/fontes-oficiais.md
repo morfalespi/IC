@@ -52,3 +52,11 @@ Mesmo com paginação, o relatório só contém campos oficialmente recebidos; o
 - Resultado `contacts.ResolvedPeer`: https://core.telegram.org/type/contacts.ResolvedPeer — permite comparar ID da entidade resolvida antes de entregar dados.
 - Referência e `access_hash`: https://core.telegram.org/api/peers — ID por si só não concede acesso universal; o hash depende da autenticação.
 - `sendDocument`: https://core.telegram.org/bots/api#senddocument — arquivo Markdown é conteúdo de documento, não `parse_mode` para interpretar como comando ou referência.
+
+
+## Presentes acessíveis via Bot API — 2026-11-03
+
+- [getUserGifts](https://core.telegram.org/bots/api#getusergifts): devolve presentes pertencentes ou hospedados por um usuário; aceita `offset` recebido da página anterior e `limit` de 1 a 100.
+- [getChatGifts](https://core.telegram.org/bots/api#getchatgifts): devolve presentes pertencentes a um chat; aceita paginação por `offset` e `limit` de 1 a 100. As opções de presentes salvos/não salvos podem depender dos direitos administrativos do bot no canal.
+- [OwnedGifts](https://core.telegram.org/bots/api#ownedgifts), [OwnedGift](https://core.telegram.org/bots/api#ownedgift), [Gift](https://core.telegram.org/bots/api#gift) e [Sticker](https://core.telegram.org/bots/api#sticker): tipos de resposta completos; o sticker associado ao presente pode ser baixado usando `getFile`, sujeito à disponibilidade e ao limite oficial.
+- [getBusinessAccountGifts](https://core.telegram.org/bots/api#getbusinessaccountgifts): leitura separada que exige `business_connection_id` e direito `can_view_gifts_and_stars`; não é equivalente à consulta pública por peer.
