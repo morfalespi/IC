@@ -542,6 +542,50 @@ async def coletar_presentes_bot_api(dados, entidade, chat_id):
     registrar_paginacao_incompleta(dados, metodo, total, recebidos)
 
 
+def documentos_mtproto(valor, visitados=None):
+    if visitados is None:
+        visitados = set()
+    if valor is None or isinstance(valor, (str, bytes, int, float, bool)):
+        return
+    identidade = id(valor)
+    if identidade in visitados:
+        return
+    visitados.add(identidade)
+    try:
+        from telethon.tl.types import Document
+        if isinstance(valor, Document):
+            yield valor
+            return
+    except Exception:
+        pass
+    if isinstance(valor, dict):
+        filhos = valor.values()
+    elif isinstance(valor, (list, tuple, set)):
+        filhos = valor
+    else:
+        atributos = {}
+        for classe in type(valor).__mro__:
+            slots = getattr(classe, "__slots__", ())
+            if isinstance(slots, str):
+                slots = (slots,)
+            for nome in slots:
+                if not nome.startswith("_") and hasattr(valor, nome):
+                    atributos[nome] = getattr(valor, nome)
+        if not atributos and hasattr(valor, "to_dict"):
+            atributos = valor.to_dict()
+        filhos = atributos.values() if isinstance(atributos, dict) else ()
+    for filho in filhos:
+        yield from documentos_mtproto(filho, visitados)
+
+
+async def baixar_documentos_presente_mtproto(cliente, presente, dados, categoria, nome):
+    for indice, documento in enumerate(documentos_mtproto(presente), 1):
+        await baixar_midia(
+            cliente, documento, dados, categoria,
+            f"{nome}_documento_{indice:02d}"
+        )
+
+
 async def coletar_catalogo_presentes_mtproto(cliente, dados):
     metodo = "payments.getStarGifts"
     try:
@@ -551,12 +595,10 @@ async def coletar_catalogo_presentes_mtproto(cliente, dados):
         presentes = getattr(resposta, "gifts", []) or []
         if dados.get("midias_dir"):
             for indice, presente in enumerate(presentes, 1):
-                sticker = getattr(presente, "sticker", None)
-                if sticker is not None:
-                    await baixar_midia(
-                        cliente, sticker, dados, "catalogo_presente_mtproto",
-                        f"catalogo_presente_mtproto_{indice:04d}"
-                    )
+                await baixar_documentos_presente_mtproto(
+                    cliente, presente, dados, "catalogo_presente_mtproto",
+                    f"catalogo_presente_mtproto_{indice:04d}"
+                )
     except Exception as erro:
         dados.setdefault("falhas_coleta", []).append({
             "method": metodo,
@@ -706,11 +748,10 @@ async def coletar_presentes_mtproto(cliente, dados, entidade):
                 for presente in presentes:
                     indice_gift += 1
                     gift = getattr(presente, "gift", None)
-                    sticker = getattr(gift, "sticker", None)
-                    if sticker is not None:
-                        await baixar_midia(
-                            cliente, sticker, dados, "presente_mtproto",
-                            f"presente_mtproto_{indice_gift}"
+                    if gift is not None:
+                        await baixar_documentos_presente_mtproto(
+                            cliente, gift, dados, "presente_mtproto",
+                            f"presente_mtproto_{indice_gift:04d}"
                         )
             if not proximo:
                 break
