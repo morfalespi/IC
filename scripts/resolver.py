@@ -574,15 +574,29 @@ async def coletar_boosts_mtproto(cliente, dados, entidade):
     metodo_lista = "stories.getBoostersList"
     try:
         from telethon.tl.functions.stories import GetBoostsStatusRequest, GetBoostersListRequest
+        from telethon.tl.functions.premium import GetUserBoostsRequest
+    except Exception as erro:
+        dados.setdefault("falhas_coleta", []).append({
+            "method": metodo_status + " / " + metodo_lista,
+            "error": type(erro).__name__,
+        })
+        return
+    try:
         status = await com_espera(lambda: cliente(GetBoostsStatusRequest(peer=entidade)))
         dados.setdefault("status_boosts_mtproto", []).append(status)
-        offset = ""
-        offsets_vistos = set()
-        total = None
-        recebidos = 0
-        paginas = dados.setdefault("paginas_boosters_mtproto", [])
-        respostas = dados.setdefault("boosters_mtproto", [])
-        usuarios_vistos = set()
+    except Exception as erro:
+        dados.setdefault("falhas_coleta", []).append({
+            "method": metodo_status,
+            "error": type(erro).__name__,
+        })
+    offset = ""
+    offsets_vistos = set()
+    total = None
+    recebidos = 0
+    paginas = dados.setdefault("paginas_boosters_mtproto", [])
+    respostas = dados.setdefault("boosters_mtproto", [])
+    usuarios_vistos = set()
+    try:
         while True:
             resposta = await com_espera(lambda offset=offset: cliente(
                 GetBoostersListRequest(peer=entidade, offset=offset, limit=100)
@@ -607,7 +621,6 @@ async def coletar_boosts_mtproto(cliente, dados, entidade):
                     continue
                 usuarios_vistos.add(id_usuario)
                 try:
-                    from telethon.tl.functions.premium import GetUserBoostsRequest
                     peer_usuario = await cliente.get_input_entity(id_usuario)
                     resposta_usuario = await com_espera(lambda: cliente(
                         GetUserBoostsRequest(peer=entidade, user_id=peer_usuario)
@@ -637,10 +650,10 @@ async def coletar_boosts_mtproto(cliente, dados, entidade):
         registrar_paginacao_incompleta(dados, metodo_lista, total, recebidos)
     except Exception as erro:
         dados.setdefault("falhas_coleta", []).append({
-            "method": metodo_status + " / " + metodo_lista,
+            "method": metodo_lista,
             "error": type(erro).__name__,
         })
-
+        registrar_paginacao_incompleta(dados, metodo_lista, total, recebidos)
 
 async def coletar_presentes_mtproto(cliente, dados, entidade):
     metodo = "payments.getSavedStarGifts"
