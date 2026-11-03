@@ -38,7 +38,7 @@ permissions:
 jobs:
   resolver:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 360
     env:
       API_ID: ${{ secrets.API_ID }}
       API_HASH: ${{ secrets.API_HASH }}
