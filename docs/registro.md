@@ -1,3 +1,11 @@
+## Redução de chamadas redundantes de boosts — 2026-11-03
+
+**IMPLEMENTADO:** `premium.getUserBoosts` agora é chamado somente para participantes cuja resposta `getUserChatBoosts` contém ao menos um boost. Isso preserva o detalhe MTProto para boosters e evita uma chamada duplicada para cada participante sem boost. Se a consulta Bot API não identifica nenhum booster, o relatório registra o método como sem dados e não dispara chamadas MTProto por usuário.
+
+**VALIDAÇÃO:** CI do PR #23 pendente. Execução real ainda depende de peer e destino de teste.
+
+---
+
 ## Auditoria de métodos estatísticos por peer — 2026-11-03
 
 **LACUNAS DOCUMENTADAS:** o Telegram marca `stats.getBroadcastRevenueStats` e `stats.getBroadcastRevenueTransactions` como acessíveis a bots, porém não publica seus parâmetros/schema no estado atual das páginas, e o schema TL layer 225 não contém essas funções. Não foram implementadas por falta de assinatura verificável. `stats.getBroadcastRevenueWithdrawalUrl` inicia saque e foi excluído por ser ação; `payments.getStarsRevenueStats`, `payments.getStarsStatus`, `stats.getBroadcastStats`, `stats.getMegagroupStats` e `stats.getMessageStats` são exclusivos de usuários.

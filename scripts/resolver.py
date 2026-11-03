@@ -373,6 +373,25 @@ def ids_participantes_para_boosts(dados):
     return sorted(id_usuario for id_usuario in ids if id_usuario not in ids_bot)
 
 
+def ids_participantes_com_boosts_bot_api(dados):
+    ids = set()
+    respostas = dados.get("respostas_bot_api", {}).get("getUserChatBoosts", [])
+    for entrada in dados.get("boosts_por_participante_bot_api", []) or []:
+        id_usuario = entrada.get("user_id")
+        indice = entrada.get("response_index")
+        if not entrada.get("ok") or not isinstance(id_usuario, int):
+            continue
+        if not isinstance(indice, int) or indice < 0 or indice >= len(respostas):
+            continue
+        resposta = respostas[indice]
+        if not resposta.get("ok"):
+            continue
+        resultado = resposta.get("result") or {}
+        if isinstance(resultado, dict) and resultado.get("boosts"):
+            ids.add(id_usuario)
+    return sorted(ids)
+
+
 def registrar_coleta_participantes_incompleta(dados, metodo, esperado, recebido):
     dados.setdefault("coletas_incompletas", []).append({
         "method": metodo, "expected": esperado, "received": recebido,
@@ -622,7 +641,13 @@ async def coletar_boosts_mtproto(cliente, dados, entidade):
         })
         return
     resultados = dados.setdefault("boosts_por_usuario_mtproto", [])
-    for id_usuario in ids_participantes_para_boosts(dados):
+    ids_com_boosts = ids_participantes_com_boosts_bot_api(dados)
+    if not ids_com_boosts:
+        dados.setdefault("notas", []).append(
+            f"{metodo}: sem chamada individual; a Bot API não retornou boosters."
+        )
+        return
+    for id_usuario in ids_com_boosts:
         try:
             peer_usuario = await cliente.get_input_entity(id_usuario)
             resposta = await com_espera(lambda: cliente(
