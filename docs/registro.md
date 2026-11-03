@@ -551,3 +551,13 @@ Fontes normativas: [IDs Bot API](https://core.telegram.org/api/bots/ids), [getCh
 **FONTES:** https://core.telegram.org/method/messages.getCustomEmojiDocuments ; https://core.telegram.org/method/messages.getStickerSet ; https://core.telegram.org/constructor/messageEntityCustomEmoji ; https://core.telegram.org/constructor/emojiStatus ; https://core.telegram.org/constructor/emojiStatusCollectible ; https://core.telegram.org/constructor/document ; https://docs.telethon.dev/en/stable/modules/client.html#telethon.client.downloads.DownloadMethods.download_media .
 
 **LIMITE:** `bots.getBotInfo` só permite ao bot consultar a própria conta; não enriquece um bot arbitrário consultado. `users.getSavedMusicByID`, `bots.getPreviewInfo`, `bots.getPreviewMedias`, `payments.getSavedStarGift`, `payments.getStarGiftUpgradePreview`, `payments.getStarGiftCollections` e `channels.getChannelRecommendations` continuam exclusivos de usuários conforme as páginas oficiais consultadas nesta rodada. A execução real dos novos downloads e referências ainda precisa ser comprovada.
+
+## 2026-11-03 — Completar referências de mídia e administradores bot
+
+**IMPLEMENTADO:** emojis de `PeerColor.background_emoji_id` e `PeerColorCollectible` também entram na consulta de documentos. A documentação oficial descreve esses campos como IDs de emojis personalizados. A varredura final tenta baixar documentos nativos ainda não processados presentes nas respostas completas, incluindo documentos aninhados de perfil/mensagens. Downloads diretos de documentos já concluídos são marcados para evitar repetição na varredura.
+
+**IMPLEMENTADO:** `getChatAdministrators` agora envia `return_bots=true`. A Bot API vigente informa que o padrão omite outros bots administradores; a ausência desse parâmetro perdia dados oficialmente acessíveis. A resposta completa continua preservada, sem filtrar administradores bot do relatório bruto.
+
+**VERIFICADO:** `npm run check` e `git diff --check` passaram localmente. O CI do commit anterior `cbae6f2` passou (run 41710904060); a execução dos novos downloads permanece em andamento. Esta complementação ainda exige verificação em Actions.
+
+**FONTES:** https://core.telegram.org/bots/api#getchatadministrators ; https://core.telegram.org/constructor/peerColor ; https://core.telegram.org/constructor/peerColorCollectible .

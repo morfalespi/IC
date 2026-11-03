@@ -721,7 +721,7 @@ async def coletar_stickers_mtproto(cliente, dados):
     from telethon.tl.types import (
         DocumentAttributeCustomEmoji, DocumentAttributeSticker, EmojiStatus,
         EmojiStatusCollectible, InputStickerSetEmpty, InputStickerSetID,
-        MessageEntityCustomEmoji, StickerSet,
+        MessageEntityCustomEmoji, PeerColor, PeerColorCollectible, StickerSet,
     )
     fontes = list(objetos_mtproto(dados))
     ids_emoji = set()
@@ -730,6 +730,10 @@ async def coletar_stickers_mtproto(cliente, dados):
             ids_emoji.add(objeto.document_id)
         if isinstance(objeto, EmojiStatusCollectible):
             ids_emoji.add(objeto.pattern_document_id)
+        if isinstance(objeto, (PeerColor, PeerColorCollectible)) and objeto.background_emoji_id:
+            ids_emoji.add(objeto.background_emoji_id)
+        if isinstance(objeto, PeerColorCollectible):
+            ids_emoji.add(objeto.gift_emoji_id)
     ids_emoji = sorted(ids_emoji)
     respostas_emoji = dados.setdefault("emojis_personalizados_mtproto", [])
     for inicio in range(0, len(ids_emoji), 100):
@@ -767,6 +771,10 @@ async def coletar_stickers_mtproto(cliente, dados):
     )
     await baixar_documentos_presente_mtproto(
         cliente, respostas_conjuntos, dados, "conjunto_stickers_mtproto", "conjunto_stickers_mtproto"
+    )
+    documentos_referenciados = list(documentos_mtproto(dados))
+    await baixar_documentos_presente_mtproto(
+        cliente, documentos_referenciados, dados, "documento_referenciado_mtproto", "documento_referenciado_mtproto"
     )
 
 
@@ -1225,7 +1233,7 @@ async def coletar_bot_api(dados, entidade, info):
     else:
         await coletar_estado_bot_no_chat(dados, chat_id)
         await bot_api_leitura(
-            dados, "getChatAdministrators", {"chat_id": chat_id}
+            dados, "getChatAdministrators", {"chat_id": chat_id, "return_bots": True}
         )
         await bot_api_leitura(dados, "getChatMemberCount", {"chat_id": chat_id})
         if MODO == "completo":
@@ -1241,7 +1249,11 @@ async def baixar_midia(cliente, objeto, dados, categoria, nome):
     try:
         retorno = await com_espera(lambda: cliente.download_media(objeto, file=caminho))
         if isinstance(retorno, str) and os.path.isfile(retorno):
-            return registrar_midia(dados, categoria, os.path.basename(retorno), retorno)
+            item = registrar_midia(dados, categoria, os.path.basename(retorno), retorno)
+            from telethon.tl.types import Document
+            if isinstance(objeto, Document):
+                dados.setdefault("_documentos_mtproto_processados", set()).add(objeto.id)
+            return item
         return registrar_midia(dados, categoria, nome, status="unavailable", erro="Telegram não retornou o arquivo")
     except Exception as erro:
         return registrar_midia(dados, categoria, nome, status="failed", erro=type(erro).__name__)

@@ -117,3 +117,5 @@ O modo completo passa a consultar também `messages.getCustomEmojiDocuments` par
 O workflow aceita `coletar_midia=true` para exercitar downloads temporários sem chat de destino; não envia conteúdo quando o chat está vazio. Essa validação registra contagens, não conteúdo de arquivos, e não substitui inspeção da entrega no Telegram.
 
 Fontes: https://core.telegram.org/method/messages.getCustomEmojiDocuments ; https://core.telegram.org/method/messages.getStickerSet ; https://core.telegram.org/constructor/document .
+
+Também são incluídos emojis de padrões/cores do perfil e documentos nativos aninhados que ainda não foram baixados. `getChatAdministrators` usa `return_bots=true`, pois o padrão oficial omite outros bots administradores. A presença de uma resposta completa no código não comprova que cada arquivo tenha sido baixado; os estados de mídia e as respostas reais continuam sendo a evidência.
