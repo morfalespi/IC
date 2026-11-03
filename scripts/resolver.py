@@ -472,6 +472,60 @@ async def coletar_stickers_bot_api(dados, objeto):
             await baixar_arquivos_bot_api(dados, resposta.get("result"), "emoji_personalizado_bot_api")
 
 
+async def coletar_presentes_bot_api(dados, entidade, chat_id):
+    metodo = "getUserGifts" if isinstance(entidade, User) else "getChatGifts"
+    parametros_base = (
+        {"user_id": entidade.id}
+        if isinstance(entidade, User)
+        else {"chat_id": chat_id}
+    )
+    offset = ""
+    offsets_vistos = set()
+    total = None
+    recebidos = 0
+    paginas = dados.setdefault("presentes_bot_api", [])
+    while True:
+        parametros = dict(parametros_base, offset=offset, limit=100)
+        indice_resposta = len(dados.get("respostas_bot_api", {}).get(metodo, []))
+        resposta = await bot_api_leitura(dados, metodo, parametros)
+        if not resposta.get("ok"):
+            if isinstance(total, int):
+                registrar_paginacao_incompleta(dados, metodo, total, recebidos)
+            break
+        resultado = resposta.get("result") or {}
+        contagem = resultado.get("total_count")
+        if isinstance(contagem, int):
+            total = contagem if total is None else max(total, contagem)
+        presentes = resultado.get("gifts") or []
+        paginas.append({
+            "method": metodo,
+            "response_index": indice_resposta,
+            "offset": offset,
+            "next_offset": resultado.get("next_offset", ""),
+            "total_count": contagem,
+            "received": len(presentes),
+        })
+        recebidos += len(presentes)
+        await baixar_arquivos_bot_api(dados, resultado, "presente_" + metodo)
+        proximo = resultado.get("next_offset") or ""
+        if not proximo:
+            break
+        if proximo == offset or proximo in offsets_vistos:
+            dados.setdefault("coletas_incompletas", []).append({
+                "method": metodo,
+                "expected": total,
+                "received": recebidos,
+                "reason": "next_offset repetido; paginação interrompida para evitar ciclo",
+            })
+            dados.setdefault("notas", []).append(
+                f"{metodo}: paginação interrompida porque next_offset repetiu."
+            )
+            break
+        offsets_vistos.add(offset)
+        offset = proximo
+    registrar_paginacao_incompleta(dados, metodo, total, recebidos)
+
+
 async def coletar_bot_api(dados, entidade, info):
     chat_id = "@" + info["username"] if isinstance(entidade, (Channel, Chat)) and info.get("username") else info.get("id")
     if not chat_id:
@@ -601,6 +655,8 @@ async def coletar_bot_api(dados, entidade, info):
             await coletar_dados_participante_bot_api(dados, entidade, chat_id)
 
     await coletar_stickers_bot_api(dados, dados.get("respostas_bot_api", {}))
+    if MODO == "completo":
+        await coletar_presentes_bot_api(dados, entidade, chat_id)
 
 
 async def baixar_midia(cliente, objeto, dados, categoria, nome):
@@ -842,6 +898,7 @@ def registros_telegram(dados, alvo, info):
         "participantes_filtrados": dados.get("participantes_filtrados_mtproto", {}),
         "membros_bot_api_por_participante": dados.get("membros_bot_api_por_participante", []),
         "boosts_por_participante": dados.get("boosts_por_participante_bot_api", []),
+        "presentes_bot_api": dados.get("presentes_bot_api", []),
         "midias": [{chave: valor for chave, valor in item.items() if chave != "path"} for item in dados.get("midias", [])],
         "metodos_com_falha": dados.get("falhas_coleta", []),
     }
@@ -881,6 +938,7 @@ def secoes_completas_telegram(dados, alvo, info):
         "participantes_filtrados": "MTProto · participantes por filtro",
         "membros_bot_api_por_participante": "Bot API · estado de participantes",
         "boosts_por_participante": "Bot API · boosts por participante",
+        "presentes_bot_api": "Bot API · paginação de presentes",
         "midias": "Mídia · arquivos e estado de download",
         "metodos_com_falha": "MTProto · erros retornados",
     }
