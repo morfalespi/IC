@@ -13,11 +13,12 @@ A cobertura deve preservar objetos TL completos, respostas JSON Bot API, wrapper
 | Bot API | `getChat` | Usuário, grupo, supergrupo ou canal | Preserva `ChatFullInfo` completo e tenta obter também chats pessoais, pais ou vinculados indicados na resposta. |
 | Bot API | `getUserProfilePhotos`, `getUserProfileAudios`, `getUserGifts` | Usuário | Pagina fotos, áudios e presentes recebidos/hosteados; tenta baixar os stickers dos presentes. |
 | Bot API | `getUserPersonalChatMessages` | Usuário | Preserva até 20 mensagens do chat pessoal atualmente indicado no perfil e tenta baixar anexos compatíveis. |
+| Bot API + MTProto | `getAvailableGifts`, `payments.getStarGifts` | Catálogo global, sem vínculo com peer | Obtém os catálogos que a sessão pode consultar; as respostas completas e stickers acessíveis entram na exportação. O catálogo MTProto usa `hash=0` e não tem paginação. |
 | Bot API | `getChatAdministrators`, `getChatMemberCount`, `getChatGifts` | Grupo, supergrupo ou canal | Preserva administradores, contagem e presentes pertencentes ao chat; pagina presentes e tenta baixar seus stickers. |
 | Bot API | `getChatMember`, `getUserChatBoosts` | Participantes de canais e supergrupos | Consulta estado/permissões e boosts de cada participante encontrado, mantendo índice entre usuário e resposta. |
 | Bot API | `getFile` | Mídia retornada por métodos acima | Percorre recursivamente respostas Bot API em busca de `file_id`, escolhendo a maior resolução em vetores de `PhotoSize`; baixa até o limite da Bot API e registra falhas/limites. |
 | Bot API | `getStickerSet`, `getCustomEmojiStickers`, `getForumTopicIconStickers` | Conjuntos e emojis referenciados por chats, perfis e mensagens | Consulta conjuntos de stickers e emojis personalizados citados pelas respostas; em fóruns consulta também stickers permitidos para ícones de tópico e tenta baixar os arquivos acessíveis. |
-| MTProto | `getFullUser`, `getFullChannel`, `getFullChat`, `getUserPhotos`, `getSavedMusic`, `getParticipants`, `getMessages`, `channels.getMessages`, `payments.getSavedStarGifts` | Conforme tipo de peer | Preserva respostas disponíveis; pagina coleções no modo completo, tenta obter mensagens fixadas e presentes Star recebidos/guardados por usuário ou canal. |
+| MTProto | `getFullUser`, `getFullChannel`, `getFullChat`, `getUserPhotos`, `getSavedMusic`, `getParticipants`, `getMessages`, `channels.getMessages`, `payments.getSavedStarGifts`, `stories.getBoostsStatus`, `stories.getBoostersList`, `premium.getUserBoosts` | Conforme tipo de peer | Preserva respostas disponíveis; pagina coleções no modo completo, tenta obter mensagens fixadas e presentes Star recebidos/guardados por usuário ou canal. |
 
 ## Limites oficiais da sessão de bot
 
@@ -25,6 +26,7 @@ A cobertura deve preservar objetos TL completos, respostas JSON Bot API, wrapper
 - As chamadas MTProto de leitura usadas incluem `users.getFullUser`, `channels.getFullChannel`, `messages.getFullChat`, `photos.getUserPhotos`, `users.getSavedMusic`, `channels.getParticipants` e `payments.getSavedStarGifts`. A chamada de presentes percorre o `next_offset`, registra respostas TL integrais e tenta baixar o sticker de cada presente regular retornado.
 - `channels.getParticipants`, `photos.getUserPhotos` e `users.getSavedMusic` aceitam bots. O worker tenta no modo completo os filtros `recent`, `admins`, `bots`, `banned` (membros restritos) e `kicked` (membros banidos), cada um paginado e registrado separadamente. `channels.getParticipants` exige administração; o Telegram determina o que a sessão realmente pode ler. Filtros de contatos e menções dependem de contexto da conta/mensagem e não representam inventário geral do grupo.
 - `messages.getHistory`, `stories.getPeerStories`, `messages.getCommonChats`, `messages.getPeerSettings`, `channels.getAdminLog`, `channels.getForumTopics`, `messages.getForumTopics` e `channels.getForumTopicsByID` são exclusivos de sessões de usuário. Como a pessoa decidiu manter autenticação de bot, o Infocard não consulta histórico, stories ativos, log administrativo ou listagem completa de tópicos de fórum por esses métodos. `channels.getAdminLog` ainda requer administração do canal mesmo em uma sessão de usuário.
+- `stories.getBoostsStatus`, `stories.getBoostersList` e `premium.getUserBoosts` ampliam a leitura dos boosts de canal/supergrupo. A lista de boosters exige administração; `premium.getUserBoosts` também é documentado para bots, mas depende do acesso à entidade e pode falhar individualmente. O status e a lista são consultas independentes.
 - Permissões, privacidade, FloodWait, ausência de dados e diferenças de layer podem limitar a resposta. Campo ausente não significa que o dado não exista.
 - Escopo é leitura da entidade e das coleções que os métodos acima retornam. Nenhuma chamada de alteração é incluída.
 
@@ -37,6 +39,8 @@ A cobertura deve preservar objetos TL completos, respostas JSON Bot API, wrapper
 | Arquivos da Bot API | Percorridos recursivamente em respostas de chat e mensagens pessoais; deduplicados por `file_unique_id` | `getFile` e download são limitados a 20 MiB; acima disso, ficam parciais |
 | Stickers e emojis Bot API | Conjuntos referenciados, emojis personalizados e stickers dos presentes consultados; resultados percorridos para baixar mídia | Respostas e arquivos ainda dependem de disponibilidade e permissões do Telegram; o CI não confirma retorno ao vivo |
 | Presentes Bot API | `getUserGifts` ou `getChatGifts` no modo completo, paginados pelo `next_offset`; respostas brutas e associação página/resposta preservadas | O Telegram pode recusar ou limitar a consulta; stickers podem estar indisponíveis para download |
+| Boosts de canal/supergrupo | Implementados no modo completo para canais; status, boosters paginados e detalhes por booster quando permitido | `stories.getBoostersList` pode exigir administração; erros por usuário/método são preservados e não interrompem outras consultas. |
+| Catálogos globais de presentes | Implementados no modo completo em Bot API e MTProto | São listas do que pode ser enviado, não comprovam presentes do peer; o Telegram pode retornar catálogos diferentes conforme sessão/país. |
 | Presentes MTProto | `payments.getSavedStarGifts` no modo completo para usuários e canais, paginado por `next_offset`; respostas TL completas ficam no JSONL; grupos básicos são registrados como não aplicáveis | O servidor pode recusar peer, método ou acesso; respostas específicas precisam de verificação ao vivo; mídia de presentes únicos pode exigir arquivos referenciados por atributos |
 | Fotos de perfil | Consultada e paginada no modo completo para todo usuário resolvido | Paginação e download dependem do que Telegram disponibilizar |
 | Música salva no perfil | Consultada e paginada no modo completo para todo usuário resolvido | A resposta do Telegram informa a coleção acessível, inclusive vazia |
@@ -65,6 +69,12 @@ Para cada execução completa, todas as respostas dos métodos de leitura invent
 
 
 ## Referências oficiais consultadas
+
+- [stories.getBoostsStatus](https://core.telegram.org/method/stories.getBoostsStatus), [stories.getBoostersList](https://core.telegram.org/method/stories.getBoostersList) e [premium.getUserBoosts](https://core.telegram.org/method/premium.getUserBoosts): consultam status e usuários que aplicaram boosts; a lista requer administração e `premium.getUserBoosts` aceita sessões de bot.
+
+
+- [getAvailableGifts](https://core.telegram.org/bots/api#getavailablegifts) e [payments.getStarGifts](https://core.telegram.org/method/payments.getStarGifts): consultam o catálogo global de presentes; a chamada MTProto aceita `hash` e pode devolver `payments.starGiftsNotModified`.
+
 
 - [users.getFullUser](https://core.telegram.org/method/users.getFullUser) e [channels.getFullChannel](https://core.telegram.org/method/channels.getFullChannel): respostas completas e disponibilidade para bots.
 - [messages.getFullChat](https://core.telegram.org/method/messages.getFullChat): grupos básicos.

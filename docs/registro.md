@@ -1,3 +1,13 @@
+# Em andamento no branch — catálogo global de presentes
+
+**IMPLEMENTADO, PENDENTE DE CI E PROVA AO VIVO:** a exportação completa consulta `getAvailableGifts` e `payments.getStarGifts(hash=0)`, preserva as respostas completas no JSONL/Rich/Markdown e tenta baixar stickers acessíveis. Em canais, também consulta `stories.getBoostsStatus`, pagina `stories.getBoostersList` e tenta `premium.getUserBoosts` para cada booster retornado. O catálogo global mostra presentes disponíveis para envio; não substitui as listas de presentes pertencentes ao peer (`getUserGifts`, `getChatGifts`, `payments.getSavedStarGifts`).
+
+**FONTES OFICIAIS:** https://core.telegram.org/bots/api#getavailablegifts ; https://core.telegram.org/method/payments.getStarGifts ; https://core.telegram.org/method/stories.getBoostsStatus ; https://core.telegram.org/method/stories.getBoostersList ; https://core.telegram.org/method/premium.getUserBoosts
+
+**ESCOPO AINDA NÃO CONCLUÍDO:** o inventário dos demais métodos de leitura elegíveis e a execução ponta a ponta continuam pendentes. Não declarar cobertura total até completar essa matriz, confirmar CI e receber/inspecionar uma exportação real.
+
+---
+
 # PR #18 integrado — 2026-11-03: presentes Star via MTProto
 
 **IMPLEMENTADO, NÃO VERIFICADO AO VIVO:** no modo completo, o resolver tenta `payments.getSavedStarGifts` para usuários e canais resolvidos, segue `next_offset`, guarda cada resposta TL integral para Rich Messages, Markdown e JSONL, e tenta baixar stickers regulares retornados. Grupos básicos são registrados como não aplicáveis sem tornar a coleta incompleta. Falha de import da classe no Telethon, erro RPC ou loop de offset são registrados sem interromper a coleta já feita por outras APIs.
