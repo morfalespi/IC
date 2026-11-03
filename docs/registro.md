@@ -483,3 +483,11 @@ A página atual do schema TL oficial informa layer 225; o registro anterior de l
 **LIMITES:** estes ajustes foram implementados em código e documentados; a resposta real para `InputPeerChat`, direitos de participante e paginação de um usuário com canal pessoal requer execução do resolver sem healthcheck e inspeção dos anexos. A lista oficial continua parcial quanto a endpoints cuja documentação e schema divergem ou não publicam assinatura, como `stats.getBroadcastRevenue*`.
 
 **FONTES OFICIAIS:** https://core.telegram.org/method/channels.getParticipant ; https://core.telegram.org/method/payments.getSavedStarGifts ; https://core.telegram.org/method/messages.getPersonalChannelHistory ; https://core.telegram.org/api/bots .
+
+## 2026-11-03 — FALLBACK BOT API PARA IDs SEM CONTEXTO MTProto
+
+**EVIDÊNCIA AO VIVO:** em três consultas recentes, usuário e canal geraram todas as páginas Rich Message, Markdown, JSONL e ZIP de mídia, mas o resolver marcou os jobs como parciais por falhas de coleta. O terceiro alvo, um ID numérico `-100…`, parou em `ChannelInvalidError`: o ID não trazia `access_hash` conhecido pela sessão MTProto. O runner não guardou artefatos além dos documentos enviados ao Telegram, então os métodos exatos que ficaram parciais nos dois primeiros casos precisam ser lidos nos JSONL recebidos.
+
+**IMPLEMENTADO:** quando a resolução MTProto de um ID falha, o fluxo agora tenta `getChat` com o mesmo ID pela Bot API. Se `getChat` retornar usuário, grupo, supergrupo ou canal, a coleta prossegue com os campos Bot API acessíveis, conteúdo/mídia disponível e exportação integral; se houver username, também tenta obter o peer MTProto e valida o ID. Para usuário, tenta ainda as leituras Bot API de perfil/mensagens e `messages.getPersonalChannelHistory` com `InputUser` zero-hash. Para grupo básico, tenta `messages.getFullChat` usando o ID convertido oficialmente. Para peer sem hash, não inventa contexto e registra quais métodos MTProto dependentes dele ficaram indisponíveis. O resultado completo ainda depende de nova execução para confirmar o acesso e a entrega.
+
+**FONTES:** https://core.telegram.org/bots/api#getchat ; https://core.telegram.org/api/peers ; https://core.telegram.org/constructor/inputChannel .
