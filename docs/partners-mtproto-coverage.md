@@ -4,7 +4,7 @@
 
 Aplicar Partners como método obrigatório de evolução. O resultado desejado é entregar, para a referência consultada, todos os campos e conteúdos de leitura que MTProto e Bot API realmente disponibilizam à sessão de bot, sem reduzir o escopo aos campos já exibidos pelo projeto. Código anterior é inventário, não padrão normativo.
 
-A cobertura deve preservar objetos TL completos, respostas JSON Bot API, wrappers, campos escalares e aninhados, listas, metadados e conteúdo de mídia devolvido pelos métodos elegíveis. Coleções pagináveis devem ser lidas até o fim ou identificadas como parciais. A exportação estruturada preserva também valores vazios, zero e falso quando retornados. No modo completo, essa representação é apresentada em Rich Messages paginadas: cada linha mostra o caminho do campo e o valor, inclusive valores vazios, zero e falso; os anexos mantêm a representação detalhada.
+A cobertura deve preservar objetos TL completos, respostas JSON Bot API, wrappers, campos escalares e aninhados, listas, metadados e conteúdo de mídia devolvido pelos métodos elegíveis. Coleções pagináveis devem ser lidas até o fim ou identificadas como parciais. A exportação estruturada preserva também valores vazios, zero e falso quando retornados. No modo completo, essa representação é apresentada em Rich Messages paginadas: cada linha mostra o caminho do campo e o valor, inclusive valores vazios, zero e falso; os anexos mantêm a representação detalhada. O sucesso da apresentação completa exige confirmação de todas as páginas ricas. Se apenas o fallback HTML for aceito, o conteúdo permanece entregue em formato alternativo e o resultado é marcado incompleto.
 
 ## Métodos atualmente tentados
 
