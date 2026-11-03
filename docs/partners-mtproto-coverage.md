@@ -18,7 +18,7 @@ A cobertura deve preservar objetos TL completos, respostas JSON Bot API, wrapper
 | Bot API | `getChatMember`, `getUserChatBoosts` | Participantes de canais e supergrupos | Consulta estado/permissões e boosts de cada participante encontrado, mantendo índice entre usuário e resposta. |
 | Bot API | `getFile` | Mídia retornada por métodos acima | Percorre recursivamente respostas Bot API em busca de `file_id`, escolhendo a maior resolução em vetores de `PhotoSize`; baixa até o limite da Bot API e registra falhas/limites. |
 | Bot API | `getStickerSet`, `getCustomEmojiStickers`, `getForumTopicIconStickers` | Conjuntos e emojis referenciados por chats, perfis e mensagens | Consulta conjuntos de stickers e emojis personalizados citados pelas respostas; em fóruns consulta também stickers permitidos para ícones de tópico e tenta baixar os arquivos acessíveis. |
-| MTProto | `getFullUser`, `getFullChannel`, `getFullChat`, `getUserPhotos`, `getSavedMusic`, `getParticipants`, `getMessages`, `channels.getMessages`, `payments.getSavedStarGifts`, `stories.getBoostsStatus`, `stories.getBoostersList`, `premium.getUserBoosts` | Conforme tipo de peer | Preserva respostas disponíveis; pagina coleções no modo completo, tenta obter mensagens fixadas e presentes Star recebidos/guardados por usuário ou canal. |
+| MTProto | `getFullUser`, `getFullChannel`, `getFullChat`, `getUserPhotos`, `getSavedMusic`, `getParticipants`, `getMessages`, `channels.getMessages`, `payments.getSavedStarGifts`, `premium.getUserBoosts` | Conforme tipo de peer | Preserva respostas disponíveis; pagina coleções no modo completo, tenta obter mensagens fixadas, presentes Star recebidos/guardados e boosts por usuário conhecido. |
 
 ## Limites oficiais da sessão de bot
 
@@ -26,7 +26,7 @@ A cobertura deve preservar objetos TL completos, respostas JSON Bot API, wrapper
 - As chamadas MTProto de leitura usadas incluem `users.getFullUser`, `channels.getFullChannel`, `messages.getFullChat`, `photos.getUserPhotos`, `users.getSavedMusic`, `channels.getParticipants` e `payments.getSavedStarGifts`. A chamada de presentes percorre o `next_offset`, registra respostas TL integrais e tenta baixar o sticker de cada presente regular retornado.
 - `channels.getParticipants`, `photos.getUserPhotos` e `users.getSavedMusic` aceitam bots. O worker tenta no modo completo os filtros `recent`, `admins`, `bots`, `banned` (membros restritos) e `kicked` (membros banidos), cada um paginado e registrado separadamente. `channels.getParticipants` exige administração; o Telegram determina o que a sessão realmente pode ler. Filtros de contatos e menções dependem de contexto da conta/mensagem e não representam inventário geral do grupo.
 - `messages.getHistory`, `stories.getPeerStories`, `messages.getCommonChats`, `messages.getPeerSettings`, `messages.getChatInviteImporters`, `messages.getExportedChatInvites`, `channels.getAdminLog`, `channels.getForumTopics`, `messages.getForumTopics`, `channels.getForumTopicsByID`, `premium.getBoostsList`, `premium.getBoostsStatus`, `payments.getUniqueStarGift` e `payments.getUniqueStarGiftValueInfo` são exclusivos de sessões de usuário. Como a pessoa decidiu manter autenticação de bot, o Infocard não consulta histórico, stories ativos, log administrativo ou listagem completa de tópicos de fórum por esses métodos. `channels.getAdminLog` ainda requer administração do canal mesmo em uma sessão de usuário.
-- `stories.getBoostsStatus`, `stories.getBoostersList` e `premium.getUserBoosts` ampliam a leitura dos boosts de canal/supergrupo. A lista de boosters exige administração; `premium.getUserBoosts` também é documentado para bots, mas depende do acesso à entidade e pode falhar individualmente. O status e a lista são consultas independentes.
+- `premium.getUserBoosts` é documentado para bots e consulta os boosts aplicados por um usuário específico; no modo completo, é tentado para cada ID de participante conhecido, e falhas por ID ficam registradas. `stories.getBoostsStatus` e `stories.getBoostersList` não exibem o aviso oficial de que bots podem usar o método. A regra oficial da API MTProto diz que métodos chamáveis por bots exibem esse aviso; por isso esses dois métodos ficam fora do escopo de bot e não são chamados. Isso deixa o status agregado e a lista completa de boosters indisponíveis a esta sessão, mesmo que funcionem para usuários.
 - Permissões, privacidade, FloodWait, ausência de dados e diferenças de layer podem limitar a resposta. Campo ausente não significa que o dado não exista.
 - Escopo é leitura da entidade e das coleções que os métodos acima retornam. Nenhuma chamada de alteração é incluída.
 
@@ -39,7 +39,7 @@ A cobertura deve preservar objetos TL completos, respostas JSON Bot API, wrapper
 | Arquivos da Bot API | Percorridos recursivamente em respostas de chat e mensagens pessoais; deduplicados por `file_unique_id` | `getFile` e download são limitados a 20 MiB; acima disso, ficam parciais |
 | Stickers e emojis Bot API | Conjuntos referenciados, emojis personalizados e stickers dos presentes consultados; resultados percorridos para baixar mídia | Respostas e arquivos ainda dependem de disponibilidade e permissões do Telegram; o CI não confirma retorno ao vivo |
 | Presentes Bot API | `getUserGifts` ou `getChatGifts` no modo completo, paginados pelo `next_offset`; respostas brutas e associação página/resposta preservadas | O Telegram pode recusar ou limitar a consulta; stickers podem estar indisponíveis para download |
-| Boosts de canal/supergrupo | Implementados no modo completo para canais; status, boosters paginados e detalhes por booster quando permitido | `stories.getBoostersList` pode exigir administração; erros por usuário/método são preservados e não interrompem outras consultas. |
+| Boosts de canal/supergrupo | `premium.getUserBoosts` tentado para IDs de participantes conhecidos, além de `getUserChatBoosts` da Bot API | Os métodos MTProto para status agregado e listagem de boosters não declaram suporte a bots na documentação oficial e não são chamados; os métodos por usuário podem falhar individualmente ou exigir administração. |
 | Catálogos globais de presentes | Implementados no modo completo em Bot API e MTProto | São listas do que pode ser enviado, não comprovam presentes do peer; o Telegram pode retornar catálogos diferentes conforme sessão/país. |
 | Presentes MTProto | `payments.getSavedStarGifts` no modo completo para usuários e canais, paginado por `next_offset`; respostas TL completas ficam no JSONL; grupos básicos são registrados como não aplicáveis | O servidor pode recusar peer, método ou acesso; respostas específicas precisam de verificação ao vivo; mídia de presentes únicos pode exigir arquivos referenciados por atributos |
 | Fotos de perfil | Consultada e paginada no modo completo para todo usuário resolvido | Paginação e download dependem do que Telegram disponibilizar |
@@ -49,7 +49,7 @@ A cobertura deve preservar objetos TL completos, respostas JSON Bot API, wrapper
 | Dados estruturados | Cada campo das respostas coletadas também é exibido em tabelas Rich Message paginadas com caminho e valor; JSONL e Markdown são anexados | A confirmação da Bot API não prova que a pessoa inspecionou o conteúdo; campos que a API não retornou continuam fora do escopo observável |
 | Foto e arquivos de mídia baixáveis | ZIP com manifesto e hash; presentes Bot API percorrem `file_id`; MTProto percorre documentos em stickers regulares e atributos de presentes colecionáveis | Cada documento encontrado tem download tentado e estado registrado; itens inacessíveis continuam explícitos |
 | Histórico de mensagens e stories ativos | Fora do acesso de bot | Métodos exigem sessão de usuário; não serão habilitados mantendo a decisão de autenticação atual |
-| Inventário de todos os outros métodos MTProto elegíveis por tipo de peer | Ainda não concluído | A exportação atual preserva respostas dos métodos chamados, mas não cobre por si só todos os métodos relacionados possíveis |
+| Inventário de métodos de leitura elegíveis para bot | Parcial, com critério oficial de elegibilidade documentado | O inventário lista métodos usados e exclusões conhecidas; ainda precisa ser confrontado sistematicamente com a camada Telethon instalada e com todas as páginas oficiais por tipo de peer antes de alegar exaustividade. Métodos sem aviso oficial de uso por bot não entram como elegíveis. |
 
 ## O que substitui
 
@@ -57,11 +57,11 @@ Antes desta evolução, o resolver mapeava uma seleção de campos, consultava n
 
 ## Próximos passos necessários
 
-1. Inventariar, por tipo de peer, os métodos oficiais de leitura Bot API e MTProto que podem ser chamados por bot e quais dados adicionais cada método fornece. Comparar MTProto com a layer realmente instalada do Telethon.
-2. Implementar as chamadas relevantes que ainda não existem, registrar por método o estado `concluído`, `sem dados`, `sem permissão`, `não suportado para bot` ou `falha`, e paginar até o fim.
-3. Confirmar que cada resposta chamada está presente no JSONL, que as mídias acessíveis foram empacotadas e que arquivos acima do limite aparecem como parciais.
-4. Executar no Telegram com referência pública de teste; inspecionar os JSONL e os pacotes realmente recebidos. CI, sintaxe e `ok=true` de envio são verificações intermediárias.
-5. Só declarar cobertura total dentro do escopo definido quando o inventário de métodos e a prova de ponta a ponta estiverem concluídos. Dados que a API não conceder devem aparecer como limite observado, nunca ser inferidos.
+1. Comparar sistematicamente os métodos MTProto e Bot API relacionados a cada tipo de peer com os métodos disponíveis na layer Telethon instalada, registrando por método o aviso oficial de uso por bot, parâmetros/contexto necessário e dados retornados.
+2. Implementar métodos elegíveis ainda ausentes quando acrescentarem dados ao objetivo; excluir e documentar os métodos que exigem sessão de usuário, contexto empresarial indisponível, identificadores externos não fornecidos ou direitos não presentes.
+3. Confirmar no JSONL as respostas integrais, paginação e estado de cada chamada; verificar que mídias acessíveis foram empacotadas e que limites ou recusas aparecem como parciais.
+4. Executar no Telegram com peer de teste e destino de entrega; inspecionar os JSONL e os pacotes recebidos. CI, sintaxe e aceitação de envio são verificações intermediárias.
+5. Só declarar cobertura total dentro desse escopo após a matriz oficial e a execução real serem confirmadas.
 
 ## Critério de sucesso sustentado
 
@@ -70,7 +70,7 @@ Para cada execução completa, todas as respostas dos métodos de leitura invent
 
 ## Referências oficiais consultadas
 
-- [stories.getBoostsStatus](https://core.telegram.org/method/stories.getBoostsStatus), [stories.getBoostersList](https://core.telegram.org/method/stories.getBoostersList) e [premium.getUserBoosts](https://core.telegram.org/method/premium.getUserBoosts): consultam status e usuários que aplicaram boosts; a lista requer administração e `premium.getUserBoosts` aceita sessões de bot.
+- [premium.getUserBoosts](https://core.telegram.org/method/premium.getUserBoosts): aceita sessões de bot e consulta os boosts aplicados por usuário. [stories.getBoostsStatus](https://core.telegram.org/method/stories.getBoostsStatus) e [stories.getBoostersList](https://core.telegram.org/method/stories.getBoostersList) não exibem o aviso de suporte a bots exigido pela orientação oficial [Working with bots](https://core.telegram.org/api/bots); esses métodos foram removidos do fluxo de bot.
 
 
 - [getAvailableGifts](https://core.telegram.org/bots/api#getavailablegifts) e [payments.getStarGifts](https://core.telegram.org/method/payments.getStarGifts): consultam o catálogo global de presentes; a chamada MTProto aceita `hash` e pode devolver `payments.starGiftsNotModified`.
