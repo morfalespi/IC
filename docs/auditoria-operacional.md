@@ -77,7 +77,7 @@ Por decisão expressa do proprietário, não são criados testes escritos pelo p
 
 - 41531172969 e 41531283280: consultas reais em modo resumo; os logs registraram entidade de bot, campos adicionais e foto incorporada, anteriores a esta auditoria.
 - 41533495539: healthcheck, sem execução do resolver MTProto.
-- O fluxo de Exportação completa (Markdown + JSONL + mídia) e as correções desta auditoria **não devem ser marcados VERIFICADO** sem clique real, workflow com MODO=completo, recebimento e inspeção dos anexos no Telegram.
+- Esses runs são históricos. O código atual dispara `MODO=completo` por padrão em consultas privadas; a alteração de padrão ainda não foi verificada em execução real. Só marcar a entrega integral como VERIFICADA após uma consulta normal, o workflow não-healthcheck, as páginas e os anexos recebidos e inspecionados no Telegram.
 
 ## Sequência sugerida para validação real
 
@@ -85,7 +85,7 @@ Por decisão expressa do proprietário, não são criados testes escritos pelo p
 2. @username público de teste; comprovar ID, nome, Rich Message e foto quando houver.
 3. ID @username correspondente; conferir comparação exata. Em seguida testar ID divergente.
 4. Atualizar a ficha pelo botão novo; observar o mesmo message_id.
-5. Exportação completa; confirmar workflow com MODO=completo, páginas ricas, Markdown, JSONL e ZIP no Telegram; conferir hashes e abrir cada anexo.
+5. Consulta privada normal; confirmar workflow com MODO=completo, páginas ricas, Markdown, JSONL e ZIP no Telegram; conferir hashes e abrir cada anexo.
 6. Provocar erro de referência e observar botão Atualizar na ficha de erro.
 7. Conferir login e permissões do Telegram e erros de Bot API, sem divulgar dados pessoais nos logs ou issues.
 

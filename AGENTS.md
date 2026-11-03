@@ -34,7 +34,7 @@ Repositórios de terceiros, exemplos, versões anteriores deste projeto e coment
 - botões usam callback_data tipado (r ou f), validado em tgcloud/lib/entrada.js; não reutilizar conteúdo opaco de callback como texto digitado.
 - O TGCloud envia alvo e expected_id como parâmetros separados a resolver.yml, que aciona scripts/resolver.py.
 - MTProto tenta resolução por ID com as limitações de access_hash do Telegram; username passa por contacts.resolveUsername e, se houver expected_id, exige correspondência exata do peer.
-- Estado observado: a busca comum exibe um subconjunto mapeado do MTProto; o modo completo tenta também `getChat`, fotos/áudios de perfil e mensagens do chat pessoal pela Bot API para usuários, e `getChatAdministrators`/`getChatMemberCount` para grupos e canais. As respostas brutas entram no JSONL; a cobertura total dos métodos de leitura elegíveis ainda precisa ser inventariada e comprovada em execução real.
+- Estado do código: consultas privadas e atualizações usam `MODO=completo` por padrão e entregam páginas ricas, Markdown, JSONL e ZIP de mídia acessível; o cartão curto é apenas andamento. `MODO=resumo` exige escolha explícita no dispatch. A coleta preserva respostas brutas, mas a cobertura total de métodos elegíveis ainda precisa ser inventariada e comprovada em execução real.
 - Dados compartilhados por seletores e encaminhamentos podem aparecer no cartão inicial, mas o worker não possui armazenamento de contexto persistente para conservá-los se a ficha for sobrescrita.
 - O modo inline orienta a conversa privada; não faz consulta MTProto dentro de outro chat.
 - Sem Mini App nem endpoints próprios. Existe a tabela disparos para limitar requisições; limites atuais em tgcloud/lib/limite.js.

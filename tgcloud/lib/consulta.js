@@ -9,6 +9,7 @@ export async function consultar(texto, contexto) {
   const entrada = typeof texto === 'string' ? lerEntrada(texto) : texto;
   if (entrada.erro) return relatorioInvalido(entrada);
   if (contexto.canal !== 'privado') return relatorioInline(entrada);
+  const modo = contexto.modo === 'resumo' ? 'resumo' : 'completo';
 
   let reserva;
   try {
@@ -22,18 +23,18 @@ export async function consultar(texto, contexto) {
   let mensagemId = contexto.mensagemId ?? null;
   try {
     const pendente = relatorioBuscando(entrada);
-    if (contexto.modo === 'completo') {
+    if (modo === 'completo') {
       pendente.html = '<b>Preparando exportação completa…</b>\n' +
         'Respostas MTProto e mídia acessível serão entregues em arquivos e páginas legíveis.';
     }
     if (mensagemId) {
-      await editarCartao(contexto.chatId, mensagemId, cartaoPesquisa(entrada, contexto.dadosCompartilhados, contexto.modo), pendente.html);
+      await editarCartao(contexto.chatId, mensagemId, cartaoPesquisa(entrada, contexto.dadosCompartilhados, modo), pendente.html);
     } else {
-      const mensagem = await enviarCartao(contexto.chatId, cartaoPesquisa(entrada, contexto.dadosCompartilhados, contexto.modo), pendente.html);
+      const mensagem = await enviarCartao(contexto.chatId, cartaoPesquisa(entrada, contexto.dadosCompartilhados, modo), pendente.html);
       mensagemId = mensagem?.message_id;
       if (!Number.isSafeInteger(mensagemId)) throw new Error('O Telegram não retornou message_id para acompanhar a consulta.');
     }
-    await dispararBusca(entrada, contexto.chatId, mensagemId, contexto.modo, contexto.origemMensagemId);
+    await dispararBusca(entrada, contexto.chatId, mensagemId, modo, contexto.origemMensagemId);
     return { enviado: true, mensagemId };
   } catch (erroDespacho) {
     console.error('pesquisa ou despacho falhou:', erroDespacho);

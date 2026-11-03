@@ -24,9 +24,9 @@ on:
         required: false
         default: ""
       modo:
-        description: "Resumo do cartão ou exportação completa com Markdown, JSONL e mídia"
+        description: "Coleta completa com páginas legíveis, Markdown, JSONL e mídia acessível; use resumo só para uma consulta compacta explícita"
         required: false
-        default: "resumo"
+        default: "completo"
       origem_id:
         description: "ID da mensagem original que solicitou o relatório completo"
         required: false

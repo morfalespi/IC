@@ -445,3 +445,21 @@ A primeira versão da branch usava uma única condição para combinar falhas de
 ## 2026-11-02 — AMPLIAÇÃO EFETIVA: consultar leitores bot elegíveis sem flags prévios
 
 O modo completo deixou de pular `photos.getUserPhotos` quando a entidade não trazia foto, `users.getSavedMusic` quando o campo `saved_music` estava ausente, e `channels.getParticipants` quando os flags de `channelFull` não indicavam acesso. As três chamadas passam a consultar o Telegram diretamente; a resposta do método decide o que está acessível. O método de resolução inicial também é preservado no JSONL junto com seus objetos de retorno. Os métodos `messages.getCommonChats` e `messages.getPeerSettings` foram identificados como exclusivos de usuário e registrados fora do acesso do bot.
+
+## 2026-11-03 — AMPLIAÇÃO DE HISTÓRICO BOT-ONLY: canal pessoal do perfil
+
+**IMPLEMENTADO NO CÓDIGO; CI E EXECUÇÃO AO VIVO PENDENTES:** a auditoria das páginas oficiais distinguiu o histórico geral de mensagens, que não está disponível à sessão de bot, do método `messages.getPersonalChannelHistory`, explicitamente marcado **Only bots can use this method**. No modo completo, o resolver tenta paginar o canal pessoal associado ao usuário consultado com `limit=100`, avançando por `max_id`; preserva cada resposta TL integral para Rich Messages, Markdown e JSONL e tenta incluir mídias acessíveis no ZIP. Para canais e grupos, registra o método como não aplicável. Erros, cursores sem avanço e contagem abaixo do total retornado são mantidos como falha ou coleta incompleta.
+
+**FONTES OFICIAIS:** https://core.telegram.org/method/messages.getPersonalChannelHistory ; https://core.telegram.org/api/profile . A classe `GetPersonalChannelHistoryRequest` e seus parâmetros foram confirmados no wheel Telethon 1.45.0 fixado em `scripts/resolver-requirements.txt`. Isso confirma disponibilidade do construtor na dependência, não sucesso da chamada para qualquer perfil; prova funcional depende de consulta real a um usuário com canal pessoal e inspeção dos anexos entregues.
+
+## 2026-11-03 — REVISÃO DE CAMADA E MÉTODOS DE PRESENTES DO PERFIL
+
+A página atual do schema TL oficial informa layer 225; o registro anterior de layer 214 descreve a fotografia consultada na revisão anterior. No schema layer 225, `stats.getBroadcastRevenueStats` e `stats.getBroadcastRevenueTransactions` continuam sem assinatura apesar das páginas individuais dizerem que aceitam bots, então a chamada permanece sem parâmetros inventados. `payments.getUserStarGifts` tem conflito semelhante: a página o marca como compatível com bots, mas não publica assinatura nem resultado e o schema layer 225 não o contém. `payments.getStarGiftCollections` retorna coleções, porém é marcado como exclusivo de usuários. Nenhum desses casos foi convertido em chamada presumida.
+
+**FONTES:** https://core.telegram.org/scheme ; https://core.telegram.org/method/payments.getUserStarGifts ; https://core.telegram.org/method/payments.getStarGiftCollections .
+
+## 2026-11-03 — COLETA COMPLETA COMO PADRÃO DE CADA BUSCA PRIVADA
+
+**CAUSA DA ENTREGA MENOS RICA:** a consulta normal e o botão Atualizar disparavam `MODO=resumo`; fotos paginadas, participantes, presentes, leituras Bot API adicionais, respostas completas no JSONL e anexos só eram coletados depois de uma ação separada. Assim, a capacidade ampla estava atrás de um botão opcional.
+
+**IMPLEMENTADO NO CÓDIGO; EXECUÇÃO REAL PENDENTE:** consultas privadas e atualizações agora selecionam `MODO=completo` por padrão em `consulta.js`, `despacho.js`, no input de workflow e no próprio resolver. A ficha curta serve apenas como estado de andamento; o resultado normal monta páginas ricas com os campos coletados e envia Markdown, JSONL e ZIP de mídia acessível. `MODO=resumo` fica disponível somente quando escolhido explicitamente no dispatch. Isso remove o clique extra para a coleta ampla, mas não afirma cobertura exaustiva de todos os métodos elegíveis nem confirma a entrega real posterior à alteração.
