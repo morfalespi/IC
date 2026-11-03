@@ -1,3 +1,13 @@
+## Auditoria de métodos estatísticos por peer — 2026-11-03
+
+**LACUNAS DOCUMENTADAS:** o Telegram marca `stats.getBroadcastRevenueStats` e `stats.getBroadcastRevenueTransactions` como acessíveis a bots, porém não publica seus parâmetros/schema no estado atual das páginas, e o schema TL layer 225 não contém essas funções. Não foram implementadas por falta de assinatura verificável. `stats.getBroadcastRevenueWithdrawalUrl` inicia saque e foi excluído por ser ação; `payments.getStarsRevenueStats`, `payments.getStarsStatus`, `stats.getBroadcastStats`, `stats.getMegagroupStats` e `stats.getMessageStats` são exclusivos de usuários.
+
+**SEM NOVO CAMPO:** `channels.getParticipant` aceita bots, mas repete o tipo `ChannelParticipant` já preservado pela listagem `channels.getParticipants`; não justifica chamadas redundantes por membro.
+
+**FONTES OFICIAIS:** https://core.telegram.org/api/bots ; https://core.telegram.org/scheme ; https://core.telegram.org/method/stats.getBroadcastRevenueStats ; https://core.telegram.org/method/stats.getBroadcastRevenueTransactions ; https://core.telegram.org/method/stats.getBroadcastRevenueWithdrawalUrl ; https://core.telegram.org/method/payments.getStarsRevenueStats ; https://core.telegram.org/method/payments.getStarsStatus ; https://core.telegram.org/method/stats.getBroadcastStats ; https://core.telegram.org/method/stats.getMegagroupStats ; https://core.telegram.org/method/stats.getMessageStats ; https://core.telegram.org/method/channels.getParticipant
+
+---
+
 ## Correção de elegibilidade MTProto para boosts — 2026-11-03
 
 **CORRIGIDO NO CÓDIGO:** a documentação oficial do MTProto determina que métodos chamáveis por bots exibem um aviso explícito de suporte a bots. `stories.getBoostsStatus` e `stories.getBoostersList` não exibem esse aviso; removemos as chamadas para não tratar disponibilidade em contas de usuário como capacidade da sessão de bot. `premium.getUserBoosts` tem o aviso oficial de suporte a bots e agora é tentado para IDs de participantes que o próprio coletor já conhece. Falhas por usuário permanecem registradas.
