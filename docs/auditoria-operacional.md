@@ -54,7 +54,7 @@ Revisão-base: main no commit 0bef0e38ebeec2eaa18bb73b8170d99d6f5dba60. As compl
 ## Segurança residual e limites não solucionados
 
 - O dispatch do GitHub recebe alvo, expected_id, chat, message_id e origem_id como inputs; o repositório é público. Não afirmar privacidade dos identificadores pesquisados. Resolver exige redesenho do transporte, não apenas mascarar logs.
-- A Bot API e MTProto não garantem qualquer informação adicional para um ID desconhecido. O access_hash é vinculado ao contexto e pode ser necessário.
+- A Bot API e MTProto não garantem qualquer informação adicional para um ID desconhecido. O `access_hash` depende do contexto; para bots, a API oficial orienta `access_hash=0` em chamadas compatíveis quando não há hash utilizável, mas o servidor ainda pode negar o método.
 - O seletor fornece metadados oficiais, mas não concede necessariamente acesso MTProto e o worker não persiste esses metadados em separado até a ficha final.
 - Não há mecanismo para provar que o usuário recebeu/abriu um documento apenas porque sendDocument retornou ok; isso confirma aceitação pelo servidor. A inspeção do chat dá evidência adicional.
 - Falhas após entrega parcial de páginas ricas podem produzir mensagens complementares pelo fallback. Esse caso não foi reproduzido em runtime real nesta auditoria.
@@ -99,7 +99,13 @@ Também passou a ser tentado `channels.getParticipant` com `InputPeerSelf` para 
 
 ## Fallback de resolução de IDs numéricos — 2026-11-03
 
-Quando MTProto não consegue resolver um ID de usuário, grupo, supergrupo ou canal, o resolver agora tenta `getChat` da Bot API com o ID numérico. Se o bot puder ler o peer, preserva a resposta completa e entrega campos, anexos e presentes permitidos pela Bot API. Se o `ChatFullInfo` trouxer username, tenta obter também o peer MTProto correspondente e confirma que o ID bate. Sem esse contexto, o relatório registra a lacuna de `access_hash` e não simula chamadas MTProto. O ID numérico do teste ainda precisa ser executado novamente para confirmar a resposta real de `getChat` e a entrega.
+Quando MTProto não consegue resolver um ID, o resolver tenta `getChat` da Bot API com o ID numérico. Se o bot puder ler o peer, preserva `ChatFullInfo`, tenta recuperar o peer MTProto por username e, sem username, tenta os métodos compatíveis de bot com os construtores de hash zero descritos na documentação oficial. Cada chamada registra a resposta ou a recusa real. A execução para esse alvo após esta alteração continua pendente.
+
+## Correção de interpretação do access_hash zero — 2026-11-03
+
+A revisão inicial do fallback tratou a ausência de hash como motivo para omitir leituras MTProto. A documentação oficial do banco de peers especifica que bots devem usar `access_hash=0` quando não dispõem de hash completo ou não têm hash local. As páginas oficiais também marcam `users.getFullUser`, `channels.getFullChannel`, `photos.getUserPhotos`, `users.getSavedMusic`, `channels.getParticipants` e `channels.getParticipant` como chamáveis por bots. O worker agora tenta esses métodos para peers retornados por `getChat`, usando `InputUser` ou `InputChannel` apropriados; usuários e canais permanecem sujeitos a acesso, privacidade e direitos. Recusas são registradas como falhas reais, não presumidas antes da chamada. A mudança está implementada, mas ainda requer execução com o bot.
+
+Fontes: https://core.telegram.org/api/peers ; https://core.telegram.org/method/users.getFullUser ; https://core.telegram.org/method/channels.getFullChannel ; https://core.telegram.org/method/photos.getUserPhotos ; https://core.telegram.org/method/users.getSavedMusic ; https://core.telegram.org/method/channels.getParticipants ; https://core.telegram.org/method/channels.getParticipant .
 
 ## Revisão de entrega integral — 2026-11-02
 

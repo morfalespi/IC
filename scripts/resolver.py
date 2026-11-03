@@ -59,6 +59,31 @@ def id_peer(entidade):
     return entidade.id if isinstance(entidade, BotAPIEntity) else utils.get_peer_id(entidade)
 
 
+def input_usuario_bot(entidade):
+    if isinstance(entidade, BotAPIEntity) and entidade.type == "private":
+        return InputUser(entidade.id, 0)
+    return entidade if isinstance(entidade, User) else None
+
+
+def input_canal_bot(entidade):
+    if isinstance(entidade, Channel):
+        return entidade
+    if isinstance(entidade, BotAPIEntity) and entidade.type in ("supergroup", "channel"):
+        id_real, tipo = utils.resolve_id(entidade.id)
+        if tipo is PeerChannel:
+            return InputChannel(id_real, 0)
+    return None
+
+
+def input_peer_canal_bot(entidade):
+    canal = input_canal_bot(entidade)
+    if isinstance(canal, Channel):
+        return canal
+    if isinstance(canal, InputChannel):
+        return InputPeerChannel(canal.channel_id, canal.access_hash)
+    return None
+
+
 
 def esc(valor):
     return html.escape(str(valor), quote=False)
@@ -710,7 +735,8 @@ async def coletar_catalogo_presentes_mtproto(cliente, dados):
 
 
 async def coletar_boosts_mtproto(cliente, dados, entidade):
-    if not isinstance(entidade, Channel):
+    canal = input_peer_canal_bot(entidade)
+    if canal is None:
         return
     metodo = "premium.getUserBoosts"
     try:
@@ -730,9 +756,14 @@ async def coletar_boosts_mtproto(cliente, dados, entidade):
         return
     for id_usuario in ids_com_boosts:
         try:
-            peer_usuario = await cliente.get_input_entity(id_usuario)
+            try:
+                peer_usuario = utils.get_input_user(
+                    await cliente.get_input_entity(id_usuario)
+                )
+            except Exception:
+                peer_usuario = InputUser(id_usuario, 0)
             resposta = await com_espera(lambda: cliente(
-                GetUserBoostsRequest(peer=entidade, user_id=peer_usuario)
+                GetUserBoostsRequest(peer=canal, user_id=peer_usuario)
             ))
             resultados.append({
                 "user_id": id_usuario,
@@ -747,14 +778,15 @@ async def coletar_boosts_mtproto(cliente, dados, entidade):
 
 
 async def coletar_participacao_bot_mtproto(cliente, dados, entidade):
-    if not isinstance(entidade, Channel):
+    canal = input_canal_bot(entidade)
+    if canal is None:
         return
     metodo = "channels.getParticipant"
     try:
         from telethon.tl.functions.channels import GetParticipantRequest
         from telethon.tl.types import InputPeerSelf
         resposta = await com_espera(lambda: cliente(
-            GetParticipantRequest(channel=entidade, participant=InputPeerSelf())
+            GetParticipantRequest(channel=canal, participant=InputPeerSelf())
         ))
         dados["participacao_bot_mtproto"] = resposta
     except Exception as erro:
@@ -1329,10 +1361,17 @@ async def completo(cliente, entidade):
         return await cliente(GetFullChannelRequest(entidade))
     if isinstance(entidade, Chat):
         return await cliente(GetFullChatRequest(entidade.id))
-    if isinstance(entidade, BotAPIEntity) and entidade.type == "group":
-        id_real, tipo = utils.resolve_id(entidade.id)
-        if tipo is PeerChat:
-            return await cliente(GetFullChatRequest(id_real))
+    if isinstance(entidade, BotAPIEntity):
+        usuario = input_usuario_bot(entidade)
+        if usuario is not None:
+            return await cliente(GetFullUserRequest(usuario))
+        canal = input_canal_bot(entidade)
+        if canal is not None:
+            return await cliente(GetFullChannelRequest(canal))
+        if entidade.type == "group":
+            id_real, tipo = utils.resolve_id(entidade.id)
+            if tipo is PeerChat:
+                return await cliente(GetFullChatRequest(id_real))
     return None
 
 
@@ -1550,7 +1589,7 @@ async def resolver_alvo(cliente, alvo):
                     except Exception:
                         pass
                 return BotAPIEntity(chat), (
-                    "ID consultado pela Bot API; MTProto sem access_hash/contexto: "
+                    "ID confirmado pela Bot API após MTProto não resolver; leituras MTProto compatíveis serão tentadas com access_hash zero: "
                     + str(erro_mtproto)
                 ), {"bot_api_getChat": resposta_bot, "mtproto_error": str(erro_mtproto)}
             detalhe_bot = resposta_bot.get("description") or "getChat não retornou o chat"
@@ -1579,20 +1618,9 @@ async def coletar(alvo):
             if resposta_chat_bot:
                 dados["respostas_bot_api"]["getChat"] = [resposta_chat_bot]
                 dados["chat_bot_api"] = resposta_chat_bot.get("result") or {}
-            dados["falhas_coleta"].append({
-                "method": "resolução MTProto por ID",
-                "error": resposta_resolucao["mtproto_error"].split("(")[-1].split(")")[0],
-                "detail": resposta_resolucao["mtproto_error"],
-            })
             dados["notas"].append(
-                "MTProto não recebeu um access_hash para este peer; os métodos Bot API continuam sendo consultados."
+                "A Bot API confirmou o peer após a resolução MTProto por ID falhar; métodos compatíveis de bot continuam com access_hash zero e cada resposta ou recusa é registrada."
             )
-            if entidade.type in ("private", "supergroup", "channel"):
-                dados.setdefault("metodos_nao_aplicaveis", []).append({
-                    "method": "MTProto methods requiring peer access_hash",
-                    "entity_type": entidade.type,
-                    "reason": "A Bot API retornou o peer, mas não fornece o access_hash desta sessão MTProto.",
-                })
         if dados["midias_dir"]:
             atexit.register(shutil.rmtree, dados["midias_dir"], ignore_errors=True)
         atualizar_status("1/2 · Identificação confirmada; buscando campos adicionais", entidade)
@@ -1602,9 +1630,10 @@ async def coletar(alvo):
             mensagem_fixada_id = getattr(dados["completo"], "pinned_msg_id", None)
             if MODO == "completo" and mensagem_fixada_id:
                 try:
-                    if isinstance(entidade, Channel):
+                    canal = input_canal_bot(entidade)
+                    if canal is not None:
                         fixadas = await com_espera(lambda: cliente(GetChannelMessagesRequest(
-                            channel=entidade, id=[InputMessageID(mensagem_fixada_id)]
+                            channel=canal, id=[InputMessageID(mensagem_fixada_id)]
                         )))
                     else:
                         fixadas = await com_espera(lambda: cliente(GetMessagesRequest(
@@ -1624,7 +1653,8 @@ async def coletar(alvo):
                         "error": type(erro_fixadas).__name__,
                     })
                     dados["notas"].append(f"Mensagem fixada indisponível: {type(erro_fixadas).__name__}")
-            if MODO == "completo" and isinstance(entidade, Channel):
+            canal = input_canal_bot(entidade)
+            if MODO == "completo" and canal is not None:
                 filtros_participantes = (
                     ("recent", ChannelParticipantsRecent()),
                     ("admins", ChannelParticipantsAdmins()),
@@ -1641,7 +1671,7 @@ async def coletar(alvo):
                         try:
                             pagina_participantes = await com_espera(
                                 lambda offset=offset_participantes: cliente(GetParticipantsRequest(
-                                    channel=entidade,
+                                    channel=canal,
                                     filter=filtro_participantes,
                                     offset=offset,
                                     limit=100,
@@ -1707,7 +1737,8 @@ async def coletar(alvo):
                     registrar_midia(dados, "foto_perfil_atual", "foto_perfil_atual.jpg", caminho_foto)
             except Exception as erro:
                 dados["notas"].append(f"Foto não baixada: {type(erro).__name__}: {erro}")
-        if isinstance(entidade, User):
+        usuario = input_usuario_bot(entidade)
+        if usuario is not None:
             try:
                 from telethon.tl.functions.photos import GetUserPhotosRequest
                 offset = 0
@@ -1715,7 +1746,7 @@ async def coletar(alvo):
                 while True:
                     fotos = await com_espera(
                         lambda offset=offset: cliente(GetUserPhotosRequest(
-                            user_id=entidade, offset=offset, max_id=0, limit=(100 if MODO == "completo" else 1)
+                            user_id=usuario, offset=offset, max_id=0, limit=(100 if MODO == "completo" else 1)
                         ))
                     )
                     dados["fotos_mtproto"].append(fotos)
@@ -1758,7 +1789,7 @@ async def coletar(alvo):
                 while True:
                     musicas = await com_espera(
                         lambda offset=offset: cliente(GetSavedMusicRequest(
-                            id=entidade, offset=offset, limit=(100 if MODO == "completo" else 1), hash=0
+                            id=usuario, offset=offset, limit=(100 if MODO == "completo" else 1), hash=0
                         ))
                     )
                     dados["musicas_mtproto"].append(musicas)
