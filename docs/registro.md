@@ -1,3 +1,13 @@
+## Auditoria oficial de mensagens e pins — 2026-11-03
+
+**CAPACIDADE DE BOT:** `messages.getMessages` e `channels.getMessages` aceitam bots para IDs conhecidos; o exportador obtém a mensagem fixada mais recente indicada pelo peer. Não servem para enumerar o histórico.
+
+**LIMITES DE AUTENTICAÇÃO:** `messages.getHistory`, `messages.search` (inclusive filtro de pins), `messages.getReplies` e `messages.getDiscussionMessage` são user-only. A Bot API `getChat` e os objetos completos MTProto só fornecem a referência da mensagem fixada mais recente, não a lista de pins anteriores. `messages.getMessagesViews` é user-only e pode alterar o contador de visualizações.
+
+**FONTES OFICIAIS:** https://core.telegram.org/api/bots ; https://core.telegram.org/api/search ; https://core.telegram.org/api/pin ; https://core.telegram.org/method/messages.getMessages ; https://core.telegram.org/method/channels.getMessages ; https://core.telegram.org/method/messages.getHistory ; https://core.telegram.org/method/messages.search ; https://core.telegram.org/method/messages.getReplies ; https://core.telegram.org/method/messages.getDiscussionMessage ; https://core.telegram.org/method/messages.getMessagesViews ; https://core.telegram.org/bots/api#getchat
+
+---
+
 ## Redução de chamadas redundantes de boosts — 2026-11-03
 
 **IMPLEMENTADO:** `premium.getUserBoosts` agora é chamado somente para participantes cuja resposta `getUserChatBoosts` contém ao menos um boost. Isso preserva o detalhe MTProto para boosters e evita uma chamada duplicada para cada participante sem boost. Se a consulta Bot API não identifica nenhum booster, o relatório registra o método como sem dados e não dispara chamadas MTProto por usuário.
