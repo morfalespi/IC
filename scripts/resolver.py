@@ -373,44 +373,72 @@ def ids_participantes_para_boosts(dados):
     return sorted(id_usuario for id_usuario in ids if id_usuario not in ids_bot)
 
 
-async def coletar_boosts_bot_api(dados, entidade, chat_id):
+def registrar_coleta_participantes_incompleta(dados, metodo, esperado, recebido):
+    dados.setdefault("coletas_incompletas", []).append({
+        "method": metodo, "expected": esperado, "received": recebido,
+    })
+    dados.setdefault("notas", []).append(
+        f"{metodo}: consulta interrompida após {recebido} respostas bem-sucedidas de {esperado} participantes."
+    )
+
+
+async def coletar_dados_participante_bot_api(dados, entidade, chat_id):
     if not isinstance(entidade, Channel):
         return
     ids_usuarios = ids_participantes_para_boosts(dados)
     if not ids_usuarios:
         return
-    mapeamentos = dados.setdefault("boosts_por_participante_bot_api", [])
-    total_respostas = 0
-    parou_antes_do_fim = False
+    estados = dados.setdefault("membros_bot_api_por_participante", [])
+    boosts = dados.setdefault("boosts_por_participante_bot_api", [])
+    membros_ok = 0
+    boosts_ok = 0
     for indice, id_usuario in enumerate(ids_usuarios):
-        respostas = dados.get("respostas_bot_api", {}).get("getUserChatBoosts", [])
-        indice_resposta = len(respostas)
-        resposta = await bot_api_leitura(
+        respostas_membros = dados.get("respostas_bot_api", {}).get("getChatMember", [])
+        indice_membro = len(respostas_membros)
+        membro = await bot_api_leitura(
+            dados, "getChatMember",
+            {"chat_id": chat_id, "user_id": id_usuario}
+        )
+        estados.append({
+            "user_id": id_usuario,
+            "response_index": indice_membro,
+            "ok": bool(membro.get("ok")),
+        })
+        if membro.get("ok"):
+            membros_ok += 1
+        else:
+            descricao = str(membro.get("description", "")).upper()
+            estado = membro.get("error_code")
+            if estado == 429 or (isinstance(estado, int) and estado >= 500) or "CHAT_ADMIN_REQUIRED" in descricao:
+                registrar_coleta_participantes_incompleta(
+                    dados, "getChatMember", len(ids_usuarios), membros_ok
+                )
+                registrar_coleta_participantes_incompleta(
+                    dados, "getUserChatBoosts", len(ids_usuarios), boosts_ok
+                )
+                break
+
+        respostas_boosts = dados.get("respostas_bot_api", {}).get("getUserChatBoosts", [])
+        indice_boost = len(respostas_boosts)
+        resposta_boost = await bot_api_leitura(
             dados, "getUserChatBoosts",
             {"chat_id": chat_id, "user_id": id_usuario}
         )
-        mapeamentos.append({
+        boosts.append({
             "user_id": id_usuario,
-            "response_index": indice_resposta,
-            "ok": bool(resposta.get("ok")),
+            "response_index": indice_boost,
+            "ok": bool(resposta_boost.get("ok")),
         })
-        if resposta.get("ok"):
-            total_respostas += 1
+        if resposta_boost.get("ok"):
+            boosts_ok += 1
             continue
-        descricao = str(resposta.get("description", "")).upper()
-        estado = resposta.get("error_code")
+        descricao = str(resposta_boost.get("description", "")).upper()
+        estado = resposta_boost.get("error_code")
         if estado == 429 or (isinstance(estado, int) and estado >= 500) or "CHAT_ADMIN_REQUIRED" in descricao:
-            parou_antes_do_fim = indice + 1 < len(ids_usuarios)
+            registrar_coleta_participantes_incompleta(
+                dados, "getUserChatBoosts", len(ids_usuarios), boosts_ok
+            )
             break
-    if parou_antes_do_fim:
-        dados.setdefault("coletas_incompletas", []).append({
-            "method": "getUserChatBoosts",
-            "expected": len(ids_usuarios),
-            "received": total_respostas,
-        })
-        dados.setdefault("notas", []).append(
-            f"getUserChatBoosts: consulta interrompida após {total_respostas} respostas bem-sucedidas de {len(ids_usuarios)} participantes."
-        )
 
 
 async def coletar_stickers_bot_api(dados, objeto):
@@ -570,7 +598,7 @@ async def coletar_bot_api(dados, entidade, info):
         )
         await bot_api_leitura(dados, "getChatMemberCount", {"chat_id": chat_id})
         if MODO == "completo":
-            await coletar_boosts_bot_api(dados, entidade, chat_id)
+            await coletar_dados_participante_bot_api(dados, entidade, chat_id)
 
     await coletar_stickers_bot_api(dados, dados.get("respostas_bot_api", {}))
 
@@ -812,6 +840,7 @@ def registros_telegram(dados, alvo, info):
         "musicas_perfil": dados.get("musicas_mtproto", []),
         "participantes": dados.get("participantes_mtproto", []),
         "participantes_filtrados": dados.get("participantes_filtrados_mtproto", {}),
+        "membros_bot_api_por_participante": dados.get("membros_bot_api_por_participante", []),
         "boosts_por_participante": dados.get("boosts_por_participante_bot_api", []),
         "midias": [{chave: valor for chave, valor in item.items() if chave != "path"} for item in dados.get("midias", [])],
         "metodos_com_falha": dados.get("falhas_coleta", []),
@@ -850,6 +879,7 @@ def secoes_completas_telegram(dados, alvo, info):
         "musicas_perfil": "MTProto · músicas de perfil",
         "participantes": "MTProto · participantes recentes",
         "participantes_filtrados": "MTProto · participantes por filtro",
+        "membros_bot_api_por_participante": "Bot API · estado de participantes",
         "boosts_por_participante": "Bot API · boosts por participante",
         "midias": "Mídia · arquivos e estado de download",
         "metodos_com_falha": "MTProto · erros retornados",
