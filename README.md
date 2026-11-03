@@ -24,7 +24,7 @@ O formato ID @username é convenção de entrada **deste bot**. Não utilizar o 
 ## Resultado
 
 1. **Ficha de andamento:** cartão rico do Telegram com identificação de consulta e status.
-2. **Resultado na tela:** identificação e campos mapeados que as APIs retornarem, em tantas Rich Messages quanto necessárias, com foto e botões quando permitidos. A exportação JSONL preserva também respostas brutas que ainda não tenham mapeamento visual.
+2. **Resultado na tela:** identificação e campos mapeados que as APIs retornarem, em tantas Rich Messages quanto necessárias, com foto e botões quando permitidos. A exportação JSONL preserva também respostas brutas que ainda não tenham mapeamento visual. O exportador percorre respostas da Bot API em busca de anexos aninhados com `file_id`, deduplica arquivos e registra os que excedem o limite de download.
 3. **Obter Markdown completo:** ação opcional que faz uma nova consulta, repete as informações na tela em páginas ricas e envia o anexo .md em UTF-8. Se a API recusar Rich Messages, tenta HTML convencional paginado; se recusar a mídia embutida, tenta foto separada.
 4. **Falhas:** mensagem de erro e possibilidade de nova pesquisa. Quando o Telegram/GitHub estiver indisponível, a notificação não é garantida.
 
