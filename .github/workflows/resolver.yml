@@ -31,6 +31,11 @@ on:
         description: "ID da mensagem original que solicitou o relatório completo"
         required: false
         default: ""
+      coletar_midia:
+        description: "Baixar mídia mesmo sem chat de destino para validar a coleta; não envia arquivos nem mensagens sem chat"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -49,6 +54,7 @@ jobs:
       MESSAGE_ID: ${{ inputs.message_id }}
       MODO: ${{ inputs.modo }}
       ORIGEM_ID: ${{ inputs.origem_id }}
+      COLETAR_MIDIA: ${{ inputs.coletar_midia }}
     steps:
       - name: Healthcheck do dispatch
         if: ${{ inputs.healthcheck }}

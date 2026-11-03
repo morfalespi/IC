@@ -667,7 +667,7 @@ async def coletar_presentes_bot_api(dados, entidade, chat_id):
     registrar_paginacao_incompleta(dados, metodo, total, recebidos)
 
 
-def documentos_mtproto(valor, visitados=None):
+def objetos_mtproto(valor, visitados=None):
     if visitados is None:
         visitados = set()
     if valor is None or isinstance(valor, (str, bytes, int, float, bool)):
@@ -676,19 +676,13 @@ def documentos_mtproto(valor, visitados=None):
     if identidade in visitados:
         return
     visitados.add(identidade)
-    try:
-        from telethon.tl.types import Document
-        if isinstance(valor, Document):
-            yield valor
-            return
-    except Exception:
-        pass
+    yield valor
     if isinstance(valor, dict):
         filhos = valor.values()
     elif isinstance(valor, (list, tuple, set)):
         filhos = valor
     else:
-        atributos = {}
+        atributos = dict(vars(valor)) if hasattr(valor, "__dict__") else {}
         for classe in type(valor).__mro__:
             slots = getattr(classe, "__slots__", ())
             if isinstance(slots, str):
@@ -696,19 +690,84 @@ def documentos_mtproto(valor, visitados=None):
             for nome in slots:
                 if not nome.startswith("_") and hasattr(valor, nome):
                     atributos[nome] = getattr(valor, nome)
-        if not atributos and hasattr(valor, "to_dict"):
-            atributos = valor.to_dict()
-        filhos = atributos.values() if isinstance(atributos, dict) else ()
+        filhos = (item for nome, item in atributos.items() if not nome.startswith("_"))
     for filho in filhos:
-        yield from documentos_mtproto(filho, visitados)
+        yield from objetos_mtproto(filho, visitados)
+
+
+def documentos_mtproto(valor):
+    from telethon.tl.types import Document
+    for objeto in objetos_mtproto(valor):
+        if isinstance(objeto, Document):
+            yield objeto
 
 
 async def baixar_documentos_presente_mtproto(cliente, presente, dados, categoria, nome):
+    if not dados.get("midias_dir"):
+        return
+    processados = dados.setdefault("_documentos_mtproto_processados", set())
     for indice, documento in enumerate(documentos_mtproto(presente), 1):
+        if documento.id in processados:
+            continue
+        processados.add(documento.id)
         await baixar_midia(
             cliente, documento, dados, categoria,
             f"{nome}_documento_{indice:02d}"
         )
+
+
+async def coletar_stickers_mtproto(cliente, dados):
+    from telethon.tl.functions.messages import GetCustomEmojiDocumentsRequest, GetStickerSetRequest
+    from telethon.tl.types import (
+        DocumentAttributeCustomEmoji, DocumentAttributeSticker, EmojiStatus,
+        EmojiStatusCollectible, InputStickerSetEmpty, InputStickerSetID,
+        MessageEntityCustomEmoji, StickerSet,
+    )
+    fontes = list(objetos_mtproto(dados))
+    ids_emoji = set()
+    for objeto in fontes:
+        if isinstance(objeto, (MessageEntityCustomEmoji, EmojiStatus, EmojiStatusCollectible)):
+            ids_emoji.add(objeto.document_id)
+        if isinstance(objeto, EmojiStatusCollectible):
+            ids_emoji.add(objeto.pattern_document_id)
+    ids_emoji = sorted(ids_emoji)
+    respostas_emoji = dados.setdefault("emojis_personalizados_mtproto", [])
+    for inicio in range(0, len(ids_emoji), 100):
+        lote = ids_emoji[inicio:inicio + 100]
+        try:
+            resposta = await com_espera(lambda: cliente(GetCustomEmojiDocumentsRequest(document_id=lote)))
+            respostas_emoji.append({"request_ids": lote, "response": resposta})
+        except Exception as erro:
+            dados.setdefault("falhas_coleta", []).append({
+                "method": "messages.getCustomEmojiDocuments", "error": type(erro).__name__,
+                "document_ids": lote,
+            })
+    fontes.extend(objetos_mtproto(respostas_emoji))
+    conjuntos = {}
+    for objeto in fontes:
+        referencia = None
+        if isinstance(objeto, StickerSet):
+            referencia = InputStickerSetID(objeto.id, objeto.access_hash)
+        elif isinstance(objeto, (DocumentAttributeSticker, DocumentAttributeCustomEmoji)):
+            referencia = objeto.stickerset
+        if referencia is not None and not isinstance(referencia, InputStickerSetEmpty):
+            conjuntos.setdefault(bytes(referencia), referencia)
+    respostas_conjuntos = dados.setdefault("conjuntos_stickers_mtproto", [])
+    for referencia in conjuntos.values():
+        try:
+            resposta = await com_espera(lambda: cliente(GetStickerSetRequest(stickerset=referencia, hash=0)))
+            respostas_conjuntos.append({"request": referencia, "response": resposta})
+        except Exception as erro:
+            dados.setdefault("falhas_coleta", []).append({
+                "method": "messages.getStickerSet", "error": type(erro).__name__,
+                "request": referencia,
+            })
+    await baixar_documentos_presente_mtproto(
+        cliente, respostas_emoji, dados, "emoji_personalizado_mtproto", "emoji_personalizado_mtproto"
+    )
+    await baixar_documentos_presente_mtproto(
+        cliente, respostas_conjuntos, dados, "conjunto_stickers_mtproto", "conjunto_stickers_mtproto"
+    )
 
 
 async def coletar_catalogo_presentes_mtproto(cliente, dados):
@@ -1181,8 +1240,8 @@ async def baixar_midia(cliente, objeto, dados, categoria, nome):
     caminho = os.path.join(dados["midias_dir"], nome)
     try:
         retorno = await com_espera(lambda: cliente.download_media(objeto, file=caminho))
-        if retorno and os.path.isfile(caminho):
-            return registrar_midia(dados, categoria, nome, caminho)
+        if isinstance(retorno, str) and os.path.isfile(retorno):
+            return registrar_midia(dados, categoria, os.path.basename(retorno), retorno)
         return registrar_midia(dados, categoria, nome, status="unavailable", erro="Telegram não retornou o arquivo")
     except Exception as erro:
         return registrar_midia(dados, categoria, nome, status="failed", erro=type(erro).__name__)
@@ -1427,6 +1486,8 @@ def registros_telegram(dados, alvo, info):
         "historico_canal_pessoal_mtproto": dados.get("historico_canal_pessoal_mtproto", []),
         "fotos_perfil": dados.get("fotos_mtproto", []),
         "musicas_perfil": dados.get("musicas_mtproto", []),
+        "emojis_personalizados_mtproto": dados.get("emojis_personalizados_mtproto", []),
+        "conjuntos_stickers_mtproto": dados.get("conjuntos_stickers_mtproto", []),
         "participantes": dados.get("participantes_mtproto", []),
         "participantes_filtrados": dados.get("participantes_filtrados_mtproto", {}),
         "membros_bot_api_por_participante": dados.get("membros_bot_api_por_participante", []),
@@ -1479,6 +1540,8 @@ def secoes_completas_telegram(dados, alvo, info):
         "historico_canal_pessoal_mtproto": "MTProto · histórico do canal pessoal",
         "fotos_perfil": "MTProto · fotos de perfil",
         "musicas_perfil": "MTProto · músicas de perfil",
+        "emojis_personalizados_mtproto": "MTProto · emojis personalizados referenciados",
+        "conjuntos_stickers_mtproto": "MTProto · conjuntos de stickers referenciados",
         "participantes": "MTProto · participantes recentes",
         "participantes_filtrados": "MTProto · participantes por filtro",
         "membros_bot_api_por_participante": "Bot API · estado de participantes",
@@ -1634,7 +1697,7 @@ async def coletar(alvo):
     try:
         await com_espera(lambda: cliente.start(bot_token=os.environ["BOT_TOKEN"]))
         entidade, origem, resposta_resolucao = await resolver_alvo(cliente, alvo)
-        dados = {"entidade": entidade, "completo": None, "resposta_completa": None, "resposta_resolucao": resposta_resolucao, "foto": None, "notas": [origem], "fotos_info": None, "musicas_info": None, "fotos_mtproto": [], "musicas_mtproto": [], "participantes_mtproto": [], "participantes_filtrados_mtproto": {}, "midias": [], "pacotes_midias": [], "falhas_coleta": [], "coletas_incompletas": [], "respostas_bot_api": {}, "falhas_bot_api": [], "mensagens_fixadas_mtproto": [], "midias_dir": tempfile.mkdtemp(prefix="infocard_telegram_") if MODO == "completo" and CHAT_DESTINO else None}
+        dados = {"entidade": entidade, "completo": None, "resposta_completa": None, "resposta_resolucao": resposta_resolucao, "foto": None, "notas": [origem], "fotos_info": None, "musicas_info": None, "fotos_mtproto": [], "musicas_mtproto": [], "participantes_mtproto": [], "participantes_filtrados_mtproto": {}, "midias": [], "pacotes_midias": [], "falhas_coleta": [], "coletas_incompletas": [], "respostas_bot_api": {}, "falhas_bot_api": [], "mensagens_fixadas_mtproto": [], "midias_dir": tempfile.mkdtemp(prefix="infocard_telegram_") if MODO == "completo" and (CHAT_DESTINO or os.environ.get("COLETAR_MIDIA") == "true") else None}
         if isinstance(entidade, BotAPIEntity) and resposta_resolucao.get("mtproto_error"):
             resposta_chat_bot = resposta_resolucao.get("bot_api_getChat")
             if resposta_chat_bot:
@@ -1882,6 +1945,7 @@ async def coletar(alvo):
             await coletar_participacao_bot_mtproto(cliente, dados, entidade)
             await coletar_presentes_mtproto(cliente, dados, entidade)
             await coletar_historico_canal_pessoal(cliente, dados, entidade)
+            await coletar_stickers_mtproto(cliente, dados)
         atualizar_status("2/2 · Tentativas de coleta encerradas; consolidando ficha", entidade)
         resumo = {
             "bot_api": {
@@ -1900,6 +1964,19 @@ async def coletar(alvo):
                 for falha in dados.get("falhas_bot_api", [])
             ],
             "incomplete_pagination": len(dados.get("coletas_incompletas", [])),
+            "mtproto_references": {
+                "custom_emoji_batches": len(dados.get("emojis_personalizados_mtproto", [])),
+                "sticker_sets": len(dados.get("conjuntos_stickers_mtproto", [])),
+            },
+            "media": {
+                categoria: {
+                    estado: sum(item.get("category") == categoria and item.get("status") == estado
+                                for item in dados.get("midias", []))
+                    for estado in sorted({item.get("status") for item in dados.get("midias", [])
+                                          if item.get("category") == categoria})
+                }
+                for categoria in sorted({item.get("category") for item in dados.get("midias", [])})
+            },
         }
         print("Resumo das leituras: " + json.dumps(resumo, ensure_ascii=False, sort_keys=True))
         return dados
@@ -2185,6 +2262,7 @@ async def principal():
                 coleta_parcial = bool(
                     dados.get("falhas_coleta") or dados.get("falhas_bot_api")
                     or dados.get("coletas_incompletas")
+                    or any(item.get("status") != "downloaded" for item in dados.get("midias", []))
                 )
                 print("Coleta sem destino: " + ("parcial" if coleta_parcial else "sem falhas registradas")
                       + "; entrega de mensagens e arquivos não executada.")

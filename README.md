@@ -105,3 +105,9 @@ Os cinco secrets existentes são TGCLOUD_TOKEN, GH_DISPATCH_TOKEN, API_ID, API_H
 - https://docs.github.com/en/rest/actions/workflows#create-a-workflow-dispatch-event
 
 Documentação oficial vigente determina as capacidades disponíveis. O código executável comprova somente as capacidades implementadas até aquele commit; toda lacuna oficial elegível deve avançar para implementação e execução real.
+
+### Mídia e referências MTProto
+
+A coleta completa também busca documentos de emojis personalizados e conjuntos de stickers referenciados nas respostas MTProto, por `messages.getCustomEmojiDocuments` e `messages.getStickerSet`. Preserva respostas completas e tenta incluir a mídia acessível no ZIP, mesmo quando a Bot API não devolve o perfil. Presentes e atributos são percorridos como objetos nativos do SDK; o registro usa o nome de arquivo efetivamente devolvido pelo download.
+
+Para verificar downloads sem enviar mensagens, o workflow manual aceita `coletar_midia=true` com `chat` vazio e `modo=completo`. Os arquivos ficam temporariamente no runner, e o log informa contagens por categoria e estado. Essa execução não comprova a entrega de páginas ou anexos a um chat.
