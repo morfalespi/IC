@@ -1,6 +1,6 @@
 # Inventário oficial de métodos com contexto de peer — 2026-11-03
 
-Esta rodada cruzou o schema JSON oficial consultado em `https://core.telegram.org/schema/json` com as páginas oficiais de **109 candidatos** das famílias users, photos, channels, messages, contacts, payments, premium, stories, stats e bots. O recorte seleciona nomes contendo get/resolve/check/search e parâmetros InputPeer, InputUser ou InputChannel. Inclui dois candidatos mutáveis (`messages.editFactCheck` e `messages.deleteFactCheck`) por correspondência textual; ambos são excluídos de execução. Não é um inventário de todas as APIs Telegram: métodos sem esses parâmetros, vetores de peers e contextos empresariais exigem seus próprios recortes.
+Esta rodada cruzou o schema JSON oficial consultado em `https://core.telegram.org/schema/json` com as páginas oficiais de **109 candidatos** das famílias users, photos, channels, messages, contacts, payments, premium, stories, stats e bots. O recorte seleciona nomes contendo get/resolve/check/search e parâmetros InputPeer, InputUser ou InputChannel. O recorte textual também inclui ações, como `messages.editFactCheck` e `messages.deleteFactCheck`; ações são excluídas da execução de leitura. O prefixo get tampouco garante ausência de efeito, como nos getters de callback ou de URL de saque. Não é um inventário de todas as APIs Telegram: métodos sem esses parâmetros, vetores de peers e contextos empresariais exigem seus próprios recortes.
 
 Foram encontrados 17 candidatos com suporte explícito a bots e 92 exclusivos de usuário. Todas as 109 páginas responderam e publicaram a classificação. Os 17 compatíveis com bots possuem construtor no Telethon 1.45.0 instalado (layer 229). O schema oficial consultado anuncia layer 225; assinatura e capacidade da página oficial foram confrontadas separadamente com o SDK, sem presumir equivalência integral entre as layers.
 
@@ -132,3 +132,44 @@ As seguintes páginas oficiais declaram “Only users can use this method”. Os
 `messages.getForumTopicsByID` é oficialmente compatível com bots e está no schema executável. A exclusão ampla de consultas de tópicos era incorreta. O método exige IDs conhecidos: a listagem `messages.getForumTopics` continua exclusiva de usuário. Mensagens fixadas, mensagens do canal pessoal e respostas Bot API podem trazer referências de tópicos; quando trazem, o coletor consulta o peer exato e os IDs recebidos. Não inventa IDs nem usa o ID de uma mensagem comum como ID de tópico.
 
 Verificação de suporte e assinatura não comprova execução real, entrega ou inspeção de conteúdo. Estados de execução e limites permanecem em [registro.md](registro.md).
+
+## Recorte Bot API
+
+A página oficial vigente contém 32 métodos cujo nome começa por get. Abaixo estão os métodos implementados no contexto de coleta e os contextos específicos ausentes; não se presume que um getter de configuração própria descreva um terceiro pesquisado. Métodos de alteração/envio não fazem parte deste recorte de leitura.
+
+| Método e fonte | Contexto |
+|---|---|
+| [getUpdates](https://core.telegram.org/bots/api#getupdates) | Transporte de atualizações do próprio bot; a aplicação usa webhook Serverless, não consulta de perfil. |
+| [getWebhookInfo](https://core.telegram.org/bots/api#getwebhookinfo) | Configuração operacional do webhook do próprio bot, fora da ficha do peer pesquisado. |
+| [getMe](https://core.telegram.org/bots/api#getme) | Implementado quando aplicável ao tipo de alvo e à mídia/contexto retornado; preserva resposta ou erro real. |
+| [getUserProfilePhotos](https://core.telegram.org/bots/api#getuserprofilephotos) | Implementado quando aplicável ao tipo de alvo e à mídia/contexto retornado; preserva resposta ou erro real. |
+| [getUserProfileAudios](https://core.telegram.org/bots/api#getuserprofileaudios) | Implementado quando aplicável ao tipo de alvo e à mídia/contexto retornado; preserva resposta ou erro real. |
+| [getFile](https://core.telegram.org/bots/api#getfile) | Implementado quando aplicável ao tipo de alvo e à mídia/contexto retornado; preserva resposta ou erro real. |
+| [getChat](https://core.telegram.org/bots/api#getchat) | Implementado quando aplicável ao tipo de alvo e à mídia/contexto retornado; preserva resposta ou erro real. |
+| [getChatAdministrators](https://core.telegram.org/bots/api#getchatadministrators) | Implementado quando aplicável ao tipo de alvo e à mídia/contexto retornado; preserva resposta ou erro real. |
+| [getChatMemberCount](https://core.telegram.org/bots/api#getchatmembercount) | Implementado quando aplicável ao tipo de alvo e à mídia/contexto retornado; preserva resposta ou erro real. |
+| [getChatMember](https://core.telegram.org/bots/api#getchatmember) | Implementado quando aplicável ao tipo de alvo e à mídia/contexto retornado; preserva resposta ou erro real. |
+| [getUserPersonalChatMessages](https://core.telegram.org/bots/api#getuserpersonalchatmessages) | Implementado quando aplicável ao tipo de alvo e à mídia/contexto retornado; preserva resposta ou erro real. |
+| [getForumTopicIconStickers](https://core.telegram.org/bots/api#getforumtopiciconstickers) | Implementado quando aplicável ao tipo de alvo e à mídia/contexto retornado; preserva resposta ou erro real. |
+| [getUserChatBoosts](https://core.telegram.org/bots/api#getuserchatboosts) | Implementado quando aplicável ao tipo de alvo e à mídia/contexto retornado; preserva resposta ou erro real. |
+| [getBusinessConnection](https://core.telegram.org/bots/api#getbusinessconnection) | Exige business_connection_id de uma conexão ativa, ausente da consulta por peer. |
+| [getManagedBotToken](https://core.telegram.org/bots/api#getmanagedbottoken) | Retorna uma credencial de managed bot, exige contexto de manager; não pertence à exportação de perfil. |
+| [getManagedBotAccessSettings](https://core.telegram.org/bots/api#getmanagedbotaccesssettings) | Exige relação de manager com um managed bot, ausente do contexto de consulta genérica. |
+| [getMyCommands](https://core.telegram.org/bots/api#getmycommands) | Configuração do próprio Infocard, eventualmente por usuário/idioma/escopo; não é configuração do peer pesquisado. Exige contexto de consulta administrativa/configuração, fora da ficha de terceiros. |
+| [getMyName](https://core.telegram.org/bots/api#getmyname) | Configuração do próprio Infocard, eventualmente por usuário/idioma/escopo; não é configuração do peer pesquisado. Exige contexto de consulta administrativa/configuração, fora da ficha de terceiros. |
+| [getMyDescription](https://core.telegram.org/bots/api#getmydescription) | Configuração do próprio Infocard, eventualmente por usuário/idioma/escopo; não é configuração do peer pesquisado. Exige contexto de consulta administrativa/configuração, fora da ficha de terceiros. |
+| [getMyShortDescription](https://core.telegram.org/bots/api#getmyshortdescription) | Configuração do próprio Infocard, eventualmente por usuário/idioma/escopo; não é configuração do peer pesquisado. Exige contexto de consulta administrativa/configuração, fora da ficha de terceiros. |
+| [getChatMenuButton](https://core.telegram.org/bots/api#getchatmenubutton) | Configuração do próprio Infocard, eventualmente por usuário/idioma/escopo; não é configuração do peer pesquisado. Exige contexto de consulta administrativa/configuração, fora da ficha de terceiros. |
+| [getMyDefaultAdministratorRights](https://core.telegram.org/bots/api#getmydefaultadministratorrights) | Configuração do próprio Infocard, eventualmente por usuário/idioma/escopo; não é configuração do peer pesquisado. Exige contexto de consulta administrativa/configuração, fora da ficha de terceiros. |
+| [getAvailableGifts](https://core.telegram.org/bots/api#getavailablegifts) | Implementado quando aplicável ao tipo de alvo e à mídia/contexto retornado; preserva resposta ou erro real. |
+| [getBusinessAccountStarBalance](https://core.telegram.org/bots/api#getbusinessaccountstarbalance) | Exige conexão empresarial ativa e direitos; falta business_connection_id e contexto autorizado. |
+| [getBusinessAccountGifts](https://core.telegram.org/bots/api#getbusinessaccountgifts) | Exige conexão empresarial ativa e direitos; falta business_connection_id e contexto autorizado. |
+| [getUserGifts](https://core.telegram.org/bots/api#getusergifts) | Implementado quando aplicável ao tipo de alvo e à mídia/contexto retornado; preserva resposta ou erro real. |
+| [getChatGifts](https://core.telegram.org/bots/api#getchatgifts) | Implementado quando aplicável ao tipo de alvo e à mídia/contexto retornado; preserva resposta ou erro real. |
+| [getStickerSet](https://core.telegram.org/bots/api#getstickerset) | Implementado quando aplicável ao tipo de alvo e à mídia/contexto retornado; preserva resposta ou erro real. |
+| [getCustomEmojiStickers](https://core.telegram.org/bots/api#getcustomemojistickers) | Implementado quando aplicável ao tipo de alvo e à mídia/contexto retornado; preserva resposta ou erro real. |
+| [getMyStarBalance](https://core.telegram.org/bots/api#getmystarbalance) | Saldo do próprio bot; requer consulta administrativa autorizada, ausente da ficha genérica. |
+| [getStarTransactions](https://core.telegram.org/bots/api#getstartransactions) | Transações do próprio bot; requer consulta administrativa autorizada, ausente da ficha genérica. |
+| [getGameHighScores](https://core.telegram.org/bots/api#getgamehighscores) | Exige mensagem de jogo da aplicação ou inline_message_id; o Infocard não publica jogos. |
+
+`getChatAdministrators` utiliza `return_bots=true`. Respostas de métodos implementados podem ser recusadas pelo Telegram para um alvo concreto; o estado de execução não é inferido desta tabela.

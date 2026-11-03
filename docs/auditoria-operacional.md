@@ -153,3 +153,9 @@ A coleta de `channels.getParticipants` estava dentro do mesmo bloco de tratament
 ## Evidência desta continuação — 2026-11-03
 
 A main `42dac96` passou no CI (run 41698057540). A consulta real sem destino 41698110117 resolveu `@BotFather` por MTProto e obteve o catálogo global Bot API, mas registrou cinco recusas Bot API com código 400 e encerrou como coleta parcial. Nenhuma entrega foi executada. O run 41697784191 foi cancelado e não comprova resultado. A instalação local do Telethon 1.45.0 declara layer 229; a matriz histórica de layer 225 ainda precisa de reconciliação integral. Detalhes e links em `registro.md`.
+
+## Continuação de cobertura e mídia — 2026-11-03
+
+A main foi ampliada para preservar objetos nativos ao procurar documentos MTProto, usar os nomes de arquivo realmente retornados pelo SDK, consultar emojis/conjuntos referenciados e tópicos de fórum com IDs conhecidos e incluir bots administradores na Bot API. O [inventário atual](inventario-peer-2026-11-03.md) cruza 109 candidatos MTProto e os 32 getters da Bot API, sem alegar cobertura integral de todos os métodos Telegram.
+
+O run 41712370348 comprovou 1.611 downloads sem falha de mídia, incluindo 151 documentos de presentes e 1.436 documentos de conjuntos MTProto. A coleta ainda foi parcial por cinco erros Bot API 400 e cinco `StickersetInvalidError`. Não houve entrega nessa execução. O run anterior 41711068696 comprovou 60 lotes de emojis e 2.430 conjuntos; recusas de participantes foram `ChatAdminRequiredError`. Ainda faltam fórum acessível e inspeção dos anexos recebidos para encerrar a validação funcional. Evidências, revisões e limites detalhados em `registro.md`.
