@@ -501,3 +501,10 @@ A página atual do schema TL oficial informa layer 225; o registro anterior de l
 **NÃO VERIFICADO:** não foi feita uma execução real depois da mudança. O código local não tem `API_ID`, `API_HASH` nem `BOT_TOKEN`, e o workflow GitHub não foi iniciado por autenticação do navegador. Portanto, esta correção remove a omissão comprovada no código, mas não permite afirmar que o grupo do teste ou seus anexos agora foram lidos e entregues.
 
 **FONTES OFICIAIS:** https://core.telegram.org/api/peers ; https://core.telegram.org/method/users.getFullUser ; https://core.telegram.org/method/channels.getFullChannel ; https://core.telegram.org/method/photos.getUserPhotos ; https://core.telegram.org/method/users.getSavedMusic ; https://core.telegram.org/method/channels.getParticipants ; https://core.telegram.org/method/channels.getParticipant .
+
+
+## 2026-11-03 — Continuar leituras independentes quando getChat falhar
+
+A implementação anterior encerrava a busca quando MTProto e `getChat` falhavam, convertendo a segunda recusa em erro terminal. Agora o fluxo preserva as duas respostas e ainda tenta métodos independentes que aceitam o ID numérico: leituras da Bot API e os métodos MTProto compatíveis com `InputUser`/`InputChannel` e hash zero para bots. O tipo de `PeerChannel` permanece explicitamente não confirmado como canal ou supergrupo até uma resposta da API. Isso amplia as oportunidades de obter dados; não demonstra que um alvo específico esteja acessível. O comportamento precisa passar CI e ser executado com os três tipos de referência para provar quais métodos retornam dados.
+
+Fontes normativas: [IDs Bot API](https://core.telegram.org/api/bots/ids), [getChat](https://core.telegram.org/bots/api#getchat), [getChatMemberCount](https://core.telegram.org/bots/api#getchatmembercount), [getChatAdministrators](https://core.telegram.org/bots/api#getchatadministrators), [peer database e zero access_hash](https://core.telegram.org/api/peers).
