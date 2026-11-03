@@ -149,3 +149,7 @@ O coletor Bot API não encerra mais uma lista apenas porque a página veio curta
 ## Independência das leituras de participantes — 2026-11-03
 
 A coleta de `channels.getParticipants` estava dentro do mesmo bloco de tratamento de `getFull`, fazendo uma recusa de perfil completo omitir todos os filtros de participantes. O bloco foi separado: cada filtro passa a ser tentado e conserva seu resultado/erro mesmo se o perfil completo falhar. O andamento de IDs ainda não confirmados informa essa condição. Verificações locais de sintaxe e placeholders passaram; confirmação funcional permanece dependente das respostas reais e da inspeção dos anexos.
+
+## Evidência desta continuação — 2026-11-03
+
+A main `42dac96` passou no CI (run 41698057540). A consulta real sem destino 41698110117 resolveu `@BotFather` por MTProto e obteve o catálogo global Bot API, mas registrou cinco recusas Bot API com código 400 e encerrou como coleta parcial. Nenhuma entrega foi executada. O run 41697784191 foi cancelado e não comprova resultado. A instalação local do Telethon 1.45.0 declara layer 229; a matriz histórica de layer 225 ainda precisa de reconciliação integral. Detalhes e links em `registro.md`.

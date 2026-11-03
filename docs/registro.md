@@ -523,3 +523,15 @@ Fontes normativas: [IDs Bot API](https://core.telegram.org/api/bots/ids), [getCh
 **IMPLEMENTADO:** o resolver imprime um resumo de respostas Bot API por método (`responses`/`ok`), nomes e classes/códigos das falhas e quantidade de paginações incompletas. O resumo não inclui alvos, IDs, conteúdo das respostas nem credenciais. Consultas completas sem chat agora terminam com código não zero se houve falha de coleta ou paginação, em vez de terminarem com sucesso apenas pela resolução inicial. A mensagem de log explicita que a entrega não foi executada.
 
 **VERIFICADO LOCALMENTE:** `npm run check` e `git diff --check` passaram. Nenhum teste autoral foi criado. A execução real deverá ser confrontada com esse resumo; sucesso de execução não equivale à inspeção do conteúdo no Telegram.
+
+## 2026-11-03 — Resultado real e limite da meta
+
+**VERIFICADO EM ACTIONS:** commits `bd1f675c32c5298136f52dd34e1f7dd7d517e168` e `42dac963dbed4b447395423e5269396a28aecd9f` publicados na main. CIs https://github.com/morfalespi/IC/actions/runs/41697772523 e https://github.com/morfalespi/IC/actions/runs/41698057540 concluídos com sucesso.
+
+**VERIFICADO AO VIVO:** https://github.com/morfalespi/IC/actions/runs/41698110117 executou o resolver completo, sem healthcheck e sem chat de destino, para a referência pública `@BotFather`. O MTProto resolveu uma entidade bot e o resumo não registrou falhas MTProto; a Bot API retornou `ok=true` para `getAvailableGifts`. `getChat`, `getUserProfilePhotos`, `getUserProfileAudios`, `getUserPersonalChatMessages` e `getUserGifts` retornaram erro 400, um por método. O job terminou com código 1 e mensagem explícita de coleta parcial sem entrega, como exigido pelo novo tratamento. O resumo não inclui a descrição desses erros, portanto não atribuímos uma causa específica a cada 400. Essas respostas não comprovam inexistência de dados.
+
+**EXECUÇÃO INTERROMPIDA:** https://github.com/morfalespi/IC/actions/runs/41697784191 usou `@telegram` no commit anterior, sem chat, e foi cancelada para substituição pela versão que registra resultados por método. Não conta como prova de coleta nem de entrega.
+
+**SDK VERIFICADO LOCALMENTE:** Telethon 1.45.0 instalado em ambiente virtual separado declara layer 229. `GetFullChannelRequest` recebe `channel`; `GetParticipantsRequest` recebe `channel`, `filter`, `offset`, `limit` e `hash`. As referências anteriores à layer 225 na matriz são históricas e não demonstram auditoria integral da layer 229; a cobertura completa dessa camada permanece pendente.
+
+**BLOQUEIO DO OBJETIVO INTEGRAL:** não há chat de destino autorizado nesta continuação nem acesso ao conteúdo dos relatórios recebidos. Não foram enviadas mensagens a chats. A conclusão requer uma consulta privada normal ao Infocard, execução não-healthcheck na main e inspeção das páginas, Markdown, JSONL e mídia recebidos. Permissões e disponibilidade reais de cada alvo continuam determinadas pelo Telegram; os resultados presentes não sustentam a alegação de pleno sucesso de todas as APIs.
