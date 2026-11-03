@@ -410,14 +410,12 @@ async def coletar_dados_participante_bot_api(dados, entidade, chat_id):
             descricao = str(membro.get("description", "")).upper()
             estado = membro.get("error_code")
             if estado == 429 or (isinstance(estado, int) and estado >= 500) or "CHAT_ADMIN_REQUIRED" in descricao:
-                restante = indice + 1 < len(ids_usuarios)
-                if restante:
-                    registrar_coleta_participantes_incompleta(
-                        dados, "getChatMember", len(ids_usuarios), membros_ok
-                    )
-                    registrar_coleta_participantes_incompleta(
-                        dados, "getUserChatBoosts", len(ids_usuarios), boosts_ok
-                    )
+                registrar_coleta_participantes_incompleta(
+                    dados, "getChatMember", len(ids_usuarios), membros_ok
+                )
+                registrar_coleta_participantes_incompleta(
+                    dados, "getUserChatBoosts", len(ids_usuarios), boosts_ok
+                )
                 break
 
         respostas_boosts = dados.get("respostas_bot_api", {}).get("getUserChatBoosts", [])
@@ -437,10 +435,9 @@ async def coletar_dados_participante_bot_api(dados, entidade, chat_id):
         descricao = str(resposta_boost.get("description", "")).upper()
         estado = resposta_boost.get("error_code")
         if estado == 429 or (isinstance(estado, int) and estado >= 500) or "CHAT_ADMIN_REQUIRED" in descricao:
-            if indice + 1 < len(ids_usuarios):
-                registrar_coleta_participantes_incompleta(
-                    dados, "getUserChatBoosts", len(ids_usuarios), boosts_ok
-                )
+            registrar_coleta_participantes_incompleta(
+                dados, "getUserChatBoosts", len(ids_usuarios), boosts_ok
+            )
             break
 
 
