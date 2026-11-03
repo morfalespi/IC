@@ -4,7 +4,7 @@
 
 Aplicar Partners como método obrigatório de evolução. O resultado desejado é entregar, para a referência consultada, todos os campos e conteúdos de leitura que MTProto e Bot API realmente disponibilizam à sessão de bot, sem reduzir o escopo aos campos já exibidos pelo projeto. Código anterior é inventário, não padrão normativo.
 
-A cobertura deve preservar objetos TL completos, respostas JSON Bot API, wrappers, campos escalares e aninhados, listas, metadados e conteúdo de mídia devolvido pelos métodos elegíveis. Coleções pagináveis devem ser lidas até o fim ou identificadas como parciais. A exportação estruturada preserva também valores vazios, zero e falso quando retornados.
+A cobertura deve preservar objetos TL completos, respostas JSON Bot API, wrappers, campos escalares e aninhados, listas, metadados e conteúdo de mídia devolvido pelos métodos elegíveis. Coleções pagináveis devem ser lidas até o fim ou identificadas como parciais. A exportação estruturada preserva também valores vazios, zero e falso quando retornados. No modo completo, essa representação é apresentada em Rich Messages paginadas: cada linha mostra o caminho do campo e o valor, inclusive valores vazios, zero e falso; os anexos mantêm a representação detalhada.
 
 ## Métodos atualmente tentados
 
@@ -39,7 +39,7 @@ A cobertura deve preservar objetos TL completos, respostas JSON Bot API, wrapper
 | Música salva no perfil | Consultada e paginada no modo completo para todo usuário resolvido | A resposta do Telegram informa a coleção acessível, inclusive vazia |
 | Participantes de canal | Filtros recentes, administradores, bots, restritos e banidos paginados no modo completo | Telegram pode recusar por permissão; CI não comprova que cada filtro retorna dados em execução |
 | Mensagem fixada | Obtida por ID no modo completo quando MTProto retorna `pinned_msg_id` | Métodos aceitam bots; Telegram pode não entregar a mensagem ou sua mídia |
-| Dados estruturados | JSONL sem mapeamento manual, dividido em anexos | Confirmação da Bot API não prova que o arquivo recebido abre ou preserva todo conteúdo |
+| Dados estruturados | Cada campo das respostas coletadas também é exibido em tabelas Rich Message paginadas com caminho e valor; JSONL e Markdown são anexados | A confirmação da Bot API não prova que a pessoa inspecionou o conteúdo; campos que a API não retornou continuam fora do escopo observável |
 | Foto e arquivos de mídia baixáveis | ZIP com manifesto e hash | Itens indisponíveis ou acima do limite são explicitados; não contam como sucesso integral |
 | Histórico de mensagens e stories ativos | Fora do acesso de bot | Métodos exigem sessão de usuário; não serão habilitados mantendo a decisão de autenticação atual |
 | Inventário de todos os outros métodos MTProto elegíveis por tipo de peer | Ainda não concluído | A exportação atual preserva respostas dos métodos chamados, mas não cobre por si só todos os métodos relacionados possíveis |
