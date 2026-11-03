@@ -561,3 +561,15 @@ Fontes normativas: [IDs Bot API](https://core.telegram.org/api/bots/ids), [getCh
 **VERIFICADO:** `npm run check` e `git diff --check` passaram localmente. O CI do commit anterior `cbae6f2` passou (run 41710904060); a execução dos novos downloads permanece em andamento. Esta complementação ainda exige verificação em Actions.
 
 **FONTES:** https://core.telegram.org/bots/api#getchatadministrators ; https://core.telegram.org/constructor/peerColor ; https://core.telegram.org/constructor/peerColorCollectible .
+
+## 2026-11-03 — Inventário oficial ampliado e tópicos por ID
+
+**VERIFICADO NA FONTE:** 109 candidatos com contexto de peer foram cruzados com as respectivas páginas oficiais: 17 declaram suporte a bots, 92 são exclusivos de usuário. O recorte, as fontes, as restrições e suas limitações estão em `docs/inventario-peer-2026-11-03.md`; não equivale à cobertura de todos os namespaces/métodos Telegram. Os 17 candidatos compatíveis com bots possuem construtor no SDK instalado. O recorte textual inclui dois métodos mutáveis que foram identificados e excluídos, sem execução.
+
+**CORREÇÃO NORMATIVA E IMPLEMENTAÇÃO:** a exclusão ampla de tópicos em documentação anterior era incorreta. `messages.getForumTopicsByID` aceita bots e tem assinatura executável com `peer` e `topics`; apenas a listagem geral `messages.getForumTopics` permanece exclusiva de usuário. O resolver agora obtém os IDs conhecidos de cabeçalhos de mensagens de tópico, mensagens de criação e `message_thread_id` de respostas Bot API. Cada chamada usa o peer da referência recebida, inclusive quando a resposta aponta explicitamente para outro peer. Preserva pedidos e respostas completos e tenta os emojis dos ícones retornados. Não inventa IDs de tópico nem enumera tópicos desconhecidos.
+
+**LIMITES EXPLÍCITOS:** leituras de transações Stars exigem contexto de conta própria/bot pertencente à conta e autorização administrativa do solicitante, ausentes na ficha genérica pública; configurações de managed bots exigem relação de manager; placares exigem contexto de jogo da própria aplicação. Nenhuma incompatibilidade com bots é presumida para esses métodos. Sua inclusão futura exige o contexto correspondente.
+
+**VERIFICADO LOCALMENTE:** construtores `GetForumTopicsByIDRequest`, `MessageReplyHeader` e `MessageActionTopicCreate` inspecionados no SDK. `npm run check` e `git diff --check` passaram. A execução por tópico real ainda depende de uma referência que contenha tópico acessível; não foi simulada nem marcada como comprovada.
+
+**FONTES:** https://core.telegram.org/schema/json ; https://core.telegram.org/method/messages.getForumTopicsByID ; https://core.telegram.org/constructor/messageReplyHeader ; https://core.telegram.org/method/messages.getForumTopics ; fontes individuais no inventário.

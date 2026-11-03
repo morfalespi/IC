@@ -721,6 +721,7 @@ async def coletar_stickers_mtproto(cliente, dados):
     from telethon.tl.types import (
         DocumentAttributeCustomEmoji, DocumentAttributeSticker, EmojiStatus,
         EmojiStatusCollectible, InputStickerSetEmpty, InputStickerSetID,
+        ForumTopic, MessageActionTopicCreate, MessageActionTopicEdit,
         MessageEntityCustomEmoji, PeerColor, PeerColorCollectible, StickerSet,
     )
     fontes = list(objetos_mtproto(dados))
@@ -734,6 +735,8 @@ async def coletar_stickers_mtproto(cliente, dados):
             ids_emoji.add(objeto.background_emoji_id)
         if isinstance(objeto, PeerColorCollectible):
             ids_emoji.add(objeto.gift_emoji_id)
+        if isinstance(objeto, (ForumTopic, MessageActionTopicCreate, MessageActionTopicEdit)) and objeto.icon_emoji_id:
+            ids_emoji.add(objeto.icon_emoji_id)
     ids_emoji = sorted(ids_emoji)
     respostas_emoji = dados.setdefault("emojis_personalizados_mtproto", [])
     for inicio in range(0, len(ids_emoji), 100):
@@ -776,6 +779,51 @@ async def coletar_stickers_mtproto(cliente, dados):
     await baixar_documentos_presente_mtproto(
         cliente, documentos_referenciados, dados, "documento_referenciado_mtproto", "documento_referenciado_mtproto"
     )
+
+
+async def coletar_topicos_conhecidos_mtproto(cliente, dados):
+    from telethon.tl.functions.messages import GetForumTopicsByIDRequest
+    from telethon.tl.types import Message, MessageService, MessageActionTopicCreate
+    topicos = {}
+    for objeto in objetos_mtproto(dados):
+        peer_id = None
+        id_topico = None
+        if isinstance(objeto, (Message, MessageService)):
+            resposta = getattr(objeto, "reply_to", None)
+            if getattr(resposta, "forum_topic", False):
+                id_topico = getattr(resposta, "reply_to_top_id", None) or getattr(resposta, "reply_to_msg_id", None)
+            if isinstance(getattr(objeto, "action", None), MessageActionTopicCreate):
+                id_topico = objeto.id
+            peer = getattr(objeto, "peer_id", None)
+            if not isinstance(getattr(objeto, "action", None), MessageActionTopicCreate):
+                peer = getattr(resposta, "reply_to_peer_id", None) or peer
+            if peer is not None:
+                peer_id = utils.get_peer_id(peer)
+        elif isinstance(objeto, dict) and objeto.get("is_topic_message") is True:
+            id_topico = objeto.get("message_thread_id")
+            peer_id = (objeto.get("chat") or {}).get("id")
+        if isinstance(peer_id, int) and isinstance(id_topico, int) and id_topico > 0:
+            topicos.setdefault(peer_id, set()).add(id_topico)
+    respostas = dados.setdefault("topicos_forum_mtproto", [])
+    for peer_id, ids in topicos.items():
+        id_real, tipo = utils.resolve_id(peer_id)
+        if tipo is PeerChannel:
+            peer = InputPeerChannel(id_real, 0)
+        elif tipo is PeerChat:
+            peer = InputPeerChat(id_real)
+        else:
+            peer = InputPeerUser(id_real, 0)
+        ids = sorted(ids)
+        for inicio in range(0, len(ids), 100):
+            lote = ids[inicio:inicio + 100]
+            try:
+                resultado = await com_espera(lambda: cliente(GetForumTopicsByIDRequest(peer=peer, topics=lote)))
+                respostas.append({"peer": peer, "topic_ids": lote, "response": resultado})
+            except Exception as erro:
+                dados.setdefault("falhas_coleta", []).append({
+                    "method": "messages.getForumTopicsByID", "error": type(erro).__name__,
+                    "peer": peer, "topic_ids": lote,
+                })
 
 
 async def coletar_catalogo_presentes_mtproto(cliente, dados):
@@ -1500,6 +1548,7 @@ def registros_telegram(dados, alvo, info):
         "musicas_perfil": dados.get("musicas_mtproto", []),
         "emojis_personalizados_mtproto": dados.get("emojis_personalizados_mtproto", []),
         "conjuntos_stickers_mtproto": dados.get("conjuntos_stickers_mtproto", []),
+        "topicos_forum_mtproto": dados.get("topicos_forum_mtproto", []),
         "participantes": dados.get("participantes_mtproto", []),
         "participantes_filtrados": dados.get("participantes_filtrados_mtproto", {}),
         "membros_bot_api_por_participante": dados.get("membros_bot_api_por_participante", []),
@@ -1554,6 +1603,7 @@ def secoes_completas_telegram(dados, alvo, info):
         "musicas_perfil": "MTProto · músicas de perfil",
         "emojis_personalizados_mtproto": "MTProto · emojis personalizados referenciados",
         "conjuntos_stickers_mtproto": "MTProto · conjuntos de stickers referenciados",
+        "topicos_forum_mtproto": "MTProto · tópicos de fórum conhecidos",
         "participantes": "MTProto · participantes recentes",
         "participantes_filtrados": "MTProto · participantes por filtro",
         "membros_bot_api_por_participante": "Bot API · estado de participantes",
@@ -1957,6 +2007,7 @@ async def coletar(alvo):
             await coletar_participacao_bot_mtproto(cliente, dados, entidade)
             await coletar_presentes_mtproto(cliente, dados, entidade)
             await coletar_historico_canal_pessoal(cliente, dados, entidade)
+            await coletar_topicos_conhecidos_mtproto(cliente, dados)
             await coletar_stickers_mtproto(cliente, dados)
         atualizar_status("2/2 · Tentativas de coleta encerradas; consolidando ficha", entidade)
         resumo = {
@@ -1979,6 +2030,7 @@ async def coletar(alvo):
             "mtproto_references": {
                 "custom_emoji_batches": len(dados.get("emojis_personalizados_mtproto", [])),
                 "sticker_sets": len(dados.get("conjuntos_stickers_mtproto", [])),
+                "forum_topic_batches": len(dados.get("topicos_forum_mtproto", [])),
             },
             "media": {
                 categoria: {
