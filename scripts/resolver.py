@@ -1499,7 +1499,8 @@ async def principal():
                         midias_entregues += 1
                     except Exception as erro_midia:
                         print("Pacote de mídia recusado:", indice, "/", len(pacotes_midias), type(erro_midia).__name__)
-            entrega_ok = (rich_ok or html_ok) and (
+            apresentacao_ok = rich_ok if completo else (rich_ok or html_ok)
+            entrega_ok = apresentacao_ok and (
                 not completo or (
                     arquivos_previstos > 0 and arquivos_entregues == arquivos_previstos and
                     json_previstos > 0 and json_entregues == json_previstos and
