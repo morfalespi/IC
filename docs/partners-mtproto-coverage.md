@@ -10,7 +10,7 @@ A cobertura deve preservar objetos TL completos, respostas JSON Bot API, wrapper
 
 | API | Métodos | Tipo de entidade | Uso na exportação completa |
 |---|---|---|---|
-| Bot API | `getChat` | Usuário, grupo, supergrupo ou canal | Preserva `ChatFullInfo` completo e tenta obter também chats pessoais, pais ou vinculados indicados na resposta. Para ID numérico que MTProto não resolve, tenta `getChat` diretamente; quando aceita, entrega os campos Bot API e deixa claro que métodos MTProto dependentes de `access_hash` não puderam ser chamados. |
+| Bot API | `getChat` | Usuário, grupo, supergrupo ou canal | Preserva `ChatFullInfo` completo e tenta obter também chats pessoais, pais ou vinculados indicados na resposta. Para ID numérico que MTProto não resolve, tenta `getChat` diretamente; quando aceita, continua as chamadas MTProto compatíveis com `access_hash=0`, conforme a regra oficial para bots, além das leituras Bot API. Cada resultado real determina sucesso ou recusa. |
 | Bot API | `getUserProfilePhotos`, `getUserProfileAudios`, `getUserGifts` | Usuário | Pagina fotos, áudios e presentes recebidos/hosteados; tenta baixar os stickers dos presentes. |
 | Bot API | `getUserPersonalChatMessages` | Usuário | Preserva até 20 mensagens do chat pessoal atualmente indicado no perfil e tenta baixar anexos compatíveis. |
 | MTProto | `messages.getPersonalChannelHistory` | Usuário com canal pessoal associado | Pagina as mensagens do canal pessoal e preserva cada resposta `messages.Messages`; tenta baixar a mídia de cada mensagem. Esse método bot-only não concede histórico de conversas privadas nem de chats gerais. |
@@ -20,7 +20,7 @@ A cobertura deve preservar objetos TL completos, respostas JSON Bot API, wrapper
 | MTProto | `channels.getParticipant` | Estado do próprio bot em canal/supergrupo | Faz uma consulta unitária usando `InputPeerSelf`; captura direitos e classe de participante quando acessível. Registra erro de acesso/não membro sem repetir para toda a lista. |
 | Bot API | `getFile` | Mídia retornada por métodos acima | Percorre recursivamente respostas Bot API em busca de `file_id`, escolhendo a maior resolução em vetores de `PhotoSize`; baixa até o limite da Bot API e registra falhas/limites. |
 | Bot API | `getStickerSet`, `getCustomEmojiStickers`, `getForumTopicIconStickers` | Conjuntos e emojis referenciados por chats, perfis e mensagens | Consulta conjuntos de stickers e emojis personalizados citados pelas respostas; em fóruns consulta também stickers permitidos para ícones de tópico e tenta baixar os arquivos acessíveis. |
-| MTProto | `getFullUser`, `getFullChannel`, `getFullChat`, `getUserPhotos`, `getSavedMusic`, `getParticipants`, `getMessages`, `channels.getMessages`, `payments.getSavedStarGifts`, `premium.getUserBoosts` | Conforme tipo de peer | Preserva respostas disponíveis; busca por ID as mensagens fixadas mais recentes indicadas pelos objetos completos, pagina presentes Star para User, Channel e também tenta InputPeerChat em grupos básicos, e coleta boosts de usuários identificados como boosters. `getMessages`/`channels.getMessages` não enumeram IDs de mensagens. |
+| MTProto | `getFullUser`, `getFullChannel`, `getFullChat`, `getUserPhotos`, `getSavedMusic`, `getParticipants`, `getMessages`, `channels.getMessages`, `payments.getSavedStarGifts`, `premium.getUserBoosts` | Conforme tipo de peer | Preserva respostas disponíveis; usa `InputUser`/`InputChannel` com hash zero para os peers numéricos retornados pela Bot API; busca por ID as mensagens fixadas indicadas pelos objetos completos, pagina presentes Star para usuário, canal e grupo básico, e coleta boosts de usuários identificados como boosters. `getMessages`/`channels.getMessages` não enumeram IDs de mensagens. |
 
 ## Limites oficiais da sessão de bot
 
@@ -54,7 +54,7 @@ Estas decisões restringem a cobertura ao que tem suporte explícito de bot, sch
 
 | Capacidade | Estado no código | Limite atual |
 |---|---|---|
-| Entidade resolvida e objeto de perfil completo | Implementado | As respostas completas são serializadas; isso ainda precisa de execução real após a alteração |
+| Entidade resolvida e objeto de perfil completo | Implementado; peer numérico confirmado pela Bot API também tenta `getFullUser`/`getFullChannel` com hash zero | As respostas completas são serializadas; o servidor ainda pode recusar a leitura conforme acesso e privacidade |
 | Leituras Bot API adicionais | Implementadas no modo completo | Chamadas são tentadas e respostas ou falhas ficam no JSONL; o Telegram pode negar acesso |
 | Arquivos da Bot API | Percorridos recursivamente em respostas de chat e mensagens pessoais; deduplicados por `file_unique_id` | `getFile` e download são limitados a 20 MiB; acima disso, ficam parciais |
 | Stickers e emojis Bot API | Conjuntos referenciados, emojis personalizados e stickers dos presentes consultados; resultados percorridos para baixar mídia | Respostas e arquivos ainda dependem de disponibilidade e permissões do Telegram; o CI não confirma retorno ao vivo |
