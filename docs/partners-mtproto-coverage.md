@@ -47,7 +47,7 @@ A cobertura deve preservar objetos TL completos, respostas JSON Bot API, wrapper
 | Participantes de canal | Filtros recentes, administradores, bots, restritos e banidos paginados no modo completo | Telegram pode recusar por permissão; CI não comprova que cada filtro retorna dados em execução |
 | Mensagem fixada | Obtida por ID no modo completo quando MTProto retorna `pinned_msg_id` | Métodos aceitam bots; Telegram pode não entregar a mensagem ou sua mídia |
 | Dados estruturados | Cada campo das respostas coletadas também é exibido em tabelas Rich Message paginadas com caminho e valor; JSONL e Markdown são anexados | A confirmação da Bot API não prova que a pessoa inspecionou o conteúdo; campos que a API não retornou continuam fora do escopo observável |
-| Foto e arquivos de mídia baixáveis | ZIP com manifesto e hash; coleta de presentes tenta baixar stickers regulares via Bot API e MTProto | Itens indisponíveis ou acima do limite são explicitados; presentes únicos podem expor mídia como atributos e exigem revisão adicional |
+| Foto e arquivos de mídia baixáveis | ZIP com manifesto e hash; presentes Bot API percorrem `file_id`; MTProto percorre documentos em stickers regulares e atributos de presentes colecionáveis | Cada documento encontrado tem download tentado e estado registrado; itens inacessíveis continuam explícitos |
 | Histórico de mensagens e stories ativos | Fora do acesso de bot | Métodos exigem sessão de usuário; não serão habilitados mantendo a decisão de autenticação atual |
 | Inventário de todos os outros métodos MTProto elegíveis por tipo de peer | Ainda não concluído | A exportação atual preserva respostas dos métodos chamados, mas não cobre por si só todos os métodos relacionados possíveis |
 

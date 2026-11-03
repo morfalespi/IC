@@ -1,3 +1,13 @@
+# Em andamento no branch — mídia de presentes colecionáveis
+
+**IMPLEMENTADO, PENDENTE DE CI:** o exportador MTProto percorre documentos anexados a presentes, incluindo os modelos em atributos de presentes colecionáveis, e tenta incluí-los no ZIP com registro de estado/hash.
+
+**FONTE OFICIAL:** https://core.telegram.org/constructor/starGiftUnique ; https://core.telegram.org/constructor/starGiftAttributeModel
+
+**PENDENTE DE PROVA AO VIVO:** confirmar em uma execução que o Telethon expõe e baixa os documentos dos atributos e que o ZIP recebido contém esses arquivos.
+
+---
+
 # PR #19 integrado — 2026-11-03: catálogo de presentes e boosts de canais
 
 **IMPLEMENTADO E INTEGRADO; CI #95 PASSOU; PROVA AO VIVO PENDENTE:** a exportação completa consulta `getAvailableGifts` e `payments.getStarGifts(hash=0)`, preserva as respostas completas no JSONL/Rich/Markdown e tenta baixar stickers acessíveis. Em canais, também consulta `stories.getBoostsStatus`, pagina `stories.getBoostersList` e tenta `premium.getUserBoosts` para cada booster retornado. O catálogo global mostra presentes disponíveis para envio; não substitui as listas de presentes pertencentes ao peer (`getUserGifts`, `getChatGifts`, `payments.getSavedStarGifts`).
