@@ -1115,10 +1115,14 @@ def registros_telegram(dados, alvo, info):
         "membros_bot_api_por_participante": dados.get("membros_bot_api_por_participante", []),
         "boosts_por_participante": dados.get("boosts_por_participante_bot_api", []),
         "presentes_bot_api": dados.get("presentes_bot_api", []),
-        "catalogo_presentes_bot_api": dados.get("catalogo_presentes_bot_api", {}),\n        "catalogo_presentes_star_gifts_mtproto": dados.get("catalogo_presentes_star_gifts_mtproto", []),
+        "catalogo_presentes_bot_api": dados.get("catalogo_presentes_bot_api", {}),
+        "catalogo_presentes_star_gifts_mtproto": dados.get("catalogo_presentes_star_gifts_mtproto", []),
         "paginas_presentes_star_gifts_mtproto": dados.get("paginas_presentes_star_gifts_mtproto", []),
         "respostas_presentes_star_gifts_mtproto": dados.get("presentes_star_gifts_mtproto", []),
-        "status_boosts_mtproto": dados.get("status_boosts_mtproto", []),\n        "paginas_boosters_mtproto": dados.get("paginas_boosters_mtproto", []),\n        "boosters_mtproto": dados.get("boosters_mtproto", []),\n        "boosts_por_usuario_mtproto": dados.get("boosts_por_usuario_mtproto", []),
+        "status_boosts_mtproto": dados.get("status_boosts_mtproto", []),
+        "paginas_boosters_mtproto": dados.get("paginas_boosters_mtproto", []),
+        "boosters_mtproto": dados.get("boosters_mtproto", []),
+        "boosts_por_usuario_mtproto": dados.get("boosts_por_usuario_mtproto", []),
         "midias": [{chave: valor for chave, valor in item.items() if chave != "path"} for item in dados.get("midias", [])],
         "metodos_com_falha": dados.get("falhas_coleta", []),
     }
@@ -1160,10 +1164,14 @@ def secoes_completas_telegram(dados, alvo, info):
         "membros_bot_api_por_participante": "Bot API · estado de participantes",
         "boosts_por_participante": "Bot API · boosts por participante",
         "presentes_bot_api": "Bot API · paginação de presentes",
-        "catalogo_presentes_bot_api": "Bot API · catálogo global de presentes",\n        "catalogo_presentes_star_gifts_mtproto": "MTProto · catálogo global de presentes Star",
+        "catalogo_presentes_bot_api": "Bot API · catálogo global de presentes",
+        "catalogo_presentes_star_gifts_mtproto": "MTProto · catálogo global de presentes Star",
         "paginas_presentes_star_gifts_mtproto": "MTProto · paginação de presentes Star",
         "respostas_presentes_star_gifts_mtproto": "MTProto · respostas completas de presentes Star",
-        "status_boosts_mtproto": "MTProto · status de boosts",\n        "paginas_boosters_mtproto": "MTProto · paginação de boosters",\n        "boosters_mtproto": "MTProto · lista completa de boosters",\n        "boosts_por_usuario_mtproto": "MTProto · respostas de boosts por usuário",
+        "status_boosts_mtproto": "MTProto · status de boosts",
+        "paginas_boosters_mtproto": "MTProto · paginação de boosters",
+        "boosters_mtproto": "MTProto · lista completa de boosters",
+        "boosts_por_usuario_mtproto": "MTProto · respostas de boosts por usuário",
         "midias": "Mídia · arquivos e estado de download",
         "metodos_com_falha": "MTProto · erros retornados",
     }
@@ -1449,7 +1457,9 @@ async def coletar(alvo):
                 })
                 dados["notas"].append(f"Leituras Bot API incompletas: {type(erro_api).__name__}")
             await coletar_catalogo_presentes_bot_api(dados)
-            await coletar_catalogo_presentes_mtproto(cliente, dados)\n            await coletar_boosts_mtproto(cliente, dados, entidade)\n            await coletar_presentes_mtproto(cliente, dados, entidade)
+            await coletar_catalogo_presentes_mtproto(cliente, dados)
+            await coletar_boosts_mtproto(cliente, dados, entidade)
+            await coletar_presentes_mtproto(cliente, dados, entidade)
         atualizar_status("2/2 · Tentativas de coleta encerradas; consolidando ficha", entidade)
         return dados
     finally:
