@@ -25,7 +25,7 @@ from telethon.tl.functions.channels import GetFullChannelRequest, GetChannelsReq
 from telethon.tl.functions.contacts import ResolveUsernameRequest
 from telethon.tl.functions.messages import GetChatsRequest, GetFullChatRequest, GetMessagesRequest
 from telethon.tl.functions.users import GetFullUserRequest, GetUsersRequest
-from telethon.tl.types import Channel, Chat, ChannelParticipantsRecent, ChannelParticipantsAdmins, ChannelParticipantsBots, ChannelParticipantsBanned, ChannelParticipantsKicked, InputChannel, InputUser, PeerChannel, PeerChat, PeerUser, User, InputMessageID
+from telethon.tl.types import Channel, Chat, ChannelParticipantsRecent, ChannelParticipantsAdmins, ChannelParticipantsBots, ChannelParticipantsBanned, ChannelParticipantsKicked, InputChannel, InputPeerChannel, InputPeerChat, InputPeerUser, InputUser, PeerChannel, PeerChat, PeerUser, User, InputMessageID
 
 ESPERA_TOTAL = 600
 USERNAME_VALIDO = re.compile(r"[A-Za-z0-9_]{1,32}")
@@ -38,6 +38,25 @@ MODO = "resumo" if os.environ.get("MODO") == "resumo" else "completo"
 EXPECTED_ID = os.environ.get("EXPECTED_ID", "").strip()
 REFERENCIA = os.environ.get("ORIGEM_ID", "")
 ORIGEM_ID = int(REFERENCIA) if REFERENCIA.isdigit() and int(REFERENCIA) > 0 else None
+
+
+class BotAPIEntity:
+    def __init__(self, chat):
+        self.data = chat
+        self.id = chat.get("id")
+        self.type = chat.get("type")
+        self.title = chat.get("title")
+        self.first_name = chat.get("first_name")
+        self.last_name = chat.get("last_name")
+        self.username = chat.get("username")
+        self.photo = chat.get("photo")
+
+    def to_dict(self):
+        return self.data
+
+
+def id_peer(entidade):
+    return entidade.id if isinstance(entidade, BotAPIEntity) else utils.get_peer_id(entidade)
 
 
 
@@ -429,12 +448,17 @@ def registrar_coleta_participantes_incompleta(dados, metodo, esperado, recebido)
 
 
 async def coletar_dados_participante_bot_api(dados, entidade, chat_id):
-    if not isinstance(entidade, (Channel, Chat)):
+    entidade_bot_api_chat = isinstance(entidade, BotAPIEntity) and entidade.type in (
+        "group", "supergroup", "channel"
+    )
+    if not isinstance(entidade, (Channel, Chat)) and not entidade_bot_api_chat:
         return
     ids_usuarios = ids_participantes_conhecidos(dados)
     if not ids_usuarios:
         return
-    consulta_boosts = isinstance(entidade, Channel)
+    consulta_boosts = isinstance(entidade, Channel) or (
+        isinstance(entidade, BotAPIEntity) and entidade.type in ("supergroup", "channel")
+    )
     estados = dados.setdefault("membros_bot_api_por_participante", [])
     boosts = dados.setdefault("boosts_por_participante_bot_api", []) if consulta_boosts else []
     membros_ok = 0
@@ -562,10 +586,13 @@ async def coletar_catalogo_presentes_bot_api(dados):
 
 
 async def coletar_presentes_bot_api(dados, entidade, chat_id):
-    metodo = "getUserGifts" if isinstance(entidade, User) else "getChatGifts"
+    entidade_usuario = isinstance(entidade, User) or (
+        isinstance(entidade, BotAPIEntity) and entidade.type == "private"
+    )
+    metodo = "getUserGifts" if entidade_usuario else "getChatGifts"
     parametros_base = (
         {"user_id": entidade.id}
-        if isinstance(entidade, User)
+        if entidade_usuario
         else {"chat_id": chat_id}
     )
     offset = ""
@@ -753,15 +780,38 @@ async def coletar_presentes_mtproto(cliente, dados, entidade):
             f"{metodo} indisponível nesta versão do Telethon."
         )
         return
-    if not isinstance(entidade, (User, Channel, Chat)):
+    if isinstance(entidade, BotAPIEntity):
+        id_real, tipo = utils.resolve_id(entidade.id)
+        if tipo is PeerChat:
+            peer = InputPeerChat(id_real)
+        elif tipo is PeerChannel:
+            peer = InputPeerChannel(id_real, 0)
+        elif tipo is PeerUser:
+            peer = InputPeerUser(id_real, 0)
+        else:
+            dados.setdefault("metodos_nao_aplicaveis", []).append({
+                "method": metodo,
+                "entity_type": entidade.type,
+                "reason": "O ID retornado pela Bot API não representa Chat/Channel para esta chamada.",
+            })
+            return
+    elif not isinstance(entidade, (User, Channel, Chat)):
         dados.setdefault("metodos_nao_aplicaveis", []).append({
             "method": metodo,
             "entity_type": type(entidade).__name__,
             "reason": "payments.getSavedStarGifts exige um peer Telegram conhecido",
         })
         return
+    else:
+        try:
+            peer = await cliente.get_input_entity(entidade)
+        except Exception as erro:
+            dados.setdefault("falhas_coleta", []).append({
+                "method": metodo,
+                "error": type(erro).__name__,
+            })
+            return
     try:
-        peer = await cliente.get_input_entity(entidade)
         offset = ""
         offsets_vistos = set()
         total = None
@@ -838,13 +888,15 @@ async def coletar_historico_canal_pessoal(cliente, dados, entidade):
             f"{metodo} indisponível nesta versão do Telethon."
         )
         return
-    if not isinstance(entidade, User):
+    entidade_usuario_bot_api = isinstance(entidade, BotAPIEntity) and entidade.type == "private"
+    if not isinstance(entidade, User) and not entidade_usuario_bot_api:
         dados.setdefault("metodos_nao_aplicaveis", []).append({
             "method": metodo,
             "entity_type": type(entidade).__name__,
             "reason": "O método consulta o canal pessoal associado a um usuário.",
         })
         return
+    user_peer = entidade if isinstance(entidade, User) else InputUser(entidade.id, 0)
     perfil_completo = dados.get("completo")
     if perfil_completo is not None and not getattr(perfil_completo, "personal_channel_id", None):
         dados.setdefault("metodos_nao_aplicaveis", []).append({
@@ -864,7 +916,7 @@ async def coletar_historico_canal_pessoal(cliente, dados, entidade):
         while True:
             resposta = await com_espera(lambda: cliente(
                 GetPersonalChannelHistoryRequest(
-                    user_id=entidade,
+                    user_id=user_peer,
                     limit=100,
                     max_id=cursor,
                     min_id=0,
@@ -947,10 +999,15 @@ async def coletar_historico_canal_pessoal(cliente, dados, entidade):
 
 
 async def coletar_bot_api(dados, entidade, info):
-    chat_id = "@" + info["username"] if isinstance(entidade, (Channel, Chat)) and info.get("username") else info.get("id")
+    usa_username = isinstance(entidade, (Channel, Chat, BotAPIEntity))
+    chat_id = "@" + info["username"] if usa_username and info.get("username") else info.get("id")
     if not chat_id:
         return
-    chat = await bot_api_leitura(dados, "getChat", {"chat_id": chat_id})
+    chat = next((resposta for resposta in reversed(
+        dados.get("respostas_bot_api", {}).get("getChat", [])
+    ) if resposta.get("ok") and str((resposta.get("result") or {}).get("id")) == str(info.get("id"))), None)
+    if chat is None:
+        chat = await bot_api_leitura(dados, "getChat", {"chat_id": chat_id})
     if chat.get("ok"):
         dados["chat_bot_api"] = chat.get("result")
         resultado_chat = chat.get("result") or {}
@@ -1009,7 +1066,11 @@ async def coletar_bot_api(dados, entidade, info):
                 )
             await baixar_arquivos_bot_api(dados, chat_relacionado, "chat_relacionado_bot_api")
 
-    if isinstance(entidade, User):
+    entidade_usuario = isinstance(entidade, User) or (
+        isinstance(entidade, BotAPIEntity) and entidade.type == "private"
+    )
+    if entidade_usuario:
+        id_usuario = entidade.id
         for metodo, lista_chave, categoria in (
             ("getUserProfilePhotos", "photos", "foto_perfil_bot_api"),
             ("getUserProfileAudios", "audios", "audio_perfil_bot_api"),
@@ -1018,7 +1079,7 @@ async def coletar_bot_api(dados, entidade, info):
             total = None
             while True:
                 resposta = await bot_api_leitura(
-                    dados, metodo, {"user_id": entidade.id, "offset": offset, "limit": 100}
+                    dados, metodo, {"user_id": id_usuario, "offset": offset, "limit": 100}
                 )
                 if not resposta.get("ok"):
                     break
@@ -1045,7 +1106,7 @@ async def coletar_bot_api(dados, entidade, info):
                     break
             registrar_paginacao_incompleta(dados, metodo, total, offset)
         mensagens = await bot_api_leitura(
-            dados, "getUserPersonalChatMessages", {"user_id": entidade.id, "limit": 20}
+            dados, "getUserPersonalChatMessages", {"user_id": id_usuario, "limit": 20}
         )
         if mensagens.get("ok"):
             for mensagem in mensagens.get("result") or []:
@@ -1069,7 +1130,7 @@ async def coletar_bot_api(dados, entidade, info):
     else:
         await coletar_estado_bot_no_chat(dados, chat_id)
         await bot_api_leitura(
-            dados, "getChatAdministrators", {"chat_id": chat_id, "return_bots": True}
+            dados, "getChatAdministrators", {"chat_id": chat_id}
         )
         await bot_api_leitura(dados, "getChatMemberCount", {"chat_id": chat_id})
         if MODO == "completo":
@@ -1179,7 +1240,7 @@ def atualizar_status(etapa, entidade=None):
         nome = getattr(entidade, "title", None) or " ".join(
             parte for parte in [getattr(entidade, "first_name", None), getattr(entidade, "last_name", None)] if parte
         )
-        id_entidade = utils.get_peer_id(entidade)
+        id_entidade = id_peer(entidade)
     status = status_ficha(etapa, nome, id_entidade)
     sucesso, _, _ = editar_ficha_rica(status)
     if not sucesso:
@@ -1268,6 +1329,10 @@ async def completo(cliente, entidade):
         return await cliente(GetFullChannelRequest(entidade))
     if isinstance(entidade, Chat):
         return await cliente(GetFullChatRequest(entidade.id))
+    if isinstance(entidade, BotAPIEntity) and entidade.type == "group":
+        id_real, tipo = utils.resolve_id(entidade.id)
+        if tipo is PeerChat:
+            return await cliente(GetFullChatRequest(id_real))
     return None
 
 
@@ -1455,8 +1520,44 @@ async def resolver_alvo(cliente, alvo):
     if re.fullmatch(r"-?\d{1,16}", alvo):
         if EXPECTED_ID:
             raise ValueError("ID esperado exige um username público para a verificação.")
-        entidade, resposta = await resolver_id(cliente, int(alvo))
-        return entidade, "Consulta MTProto por ID, sujeita às permissões do Telegram", resposta
+        try:
+            entidade, resposta = await resolver_id(cliente, int(alvo))
+            return entidade, "Consulta MTProto por ID, sujeita às permissões do Telegram", resposta
+        except LookupError as erro_mtproto:
+            resposta_bot = await asyncio.to_thread(
+                chamar,
+                "getChat",
+                json.dumps({"chat_id": int(alvo)}).encode("utf-8"),
+                {"Content-Type": "application/json"},
+                True,
+            )
+            chat = resposta_bot.get("result") or {}
+            if resposta_bot.get("ok") and chat.get("type") in (
+                "private", "group", "supergroup", "channel"
+            ):
+                username = chat.get("username")
+                if username:
+                    try:
+                        resolvido = await com_espera(
+                            lambda: cliente(ResolveUsernameRequest(username))
+                        )
+                        entidade = entidade_de(resolvido)
+                        if entidade is not None and utils.get_peer_id(entidade) == int(chat["id"]):
+                            return entidade, "ID confirmado por Bot API getChat e MTProto username", {
+                                "bot_api_getChat": resposta_bot,
+                                "mtproto_username_resolution": resolvido,
+                            }
+                    except Exception:
+                        pass
+                return BotAPIEntity(chat), (
+                    "ID consultado pela Bot API; MTProto sem access_hash/contexto: "
+                    + str(erro_mtproto)
+                ), {"bot_api_getChat": resposta_bot, "mtproto_error": str(erro_mtproto)}
+            detalhe_bot = resposta_bot.get("description") or "getChat não retornou o chat"
+            raise LookupError(
+                "MTProto não resolveu o ID (" + str(erro_mtproto) + "); "
+                "a Bot API também não conseguiu ler o chat (" + str(detalhe_bot) + ")."
+            ) from erro_mtproto
     resultado = await com_espera(lambda: cliente(ResolveUsernameRequest(alvo)))
     entidade = entidade_de(resultado)
     if entidade is None:
@@ -1473,6 +1574,25 @@ async def coletar(alvo):
         await com_espera(lambda: cliente.start(bot_token=os.environ["BOT_TOKEN"]))
         entidade, origem, resposta_resolucao = await resolver_alvo(cliente, alvo)
         dados = {"entidade": entidade, "completo": None, "resposta_completa": None, "resposta_resolucao": resposta_resolucao, "foto": None, "notas": [origem], "fotos_info": None, "musicas_info": None, "fotos_mtproto": [], "musicas_mtproto": [], "participantes_mtproto": [], "participantes_filtrados_mtproto": {}, "midias": [], "pacotes_midias": [], "falhas_coleta": [], "coletas_incompletas": [], "respostas_bot_api": {}, "falhas_bot_api": [], "mensagens_fixadas_mtproto": [], "midias_dir": tempfile.mkdtemp(prefix="infocard_telegram_") if MODO == "completo" and CHAT_DESTINO else None}
+        if isinstance(entidade, BotAPIEntity) and resposta_resolucao.get("mtproto_error"):
+            resposta_chat_bot = resposta_resolucao.get("bot_api_getChat")
+            if resposta_chat_bot:
+                dados["respostas_bot_api"]["getChat"] = [resposta_chat_bot]
+                dados["chat_bot_api"] = resposta_chat_bot.get("result") or {}
+            dados["falhas_coleta"].append({
+                "method": "resolução MTProto por ID",
+                "error": resposta_resolucao["mtproto_error"].split("(")[-1].split(")")[0],
+                "detail": resposta_resolucao["mtproto_error"],
+            })
+            dados["notas"].append(
+                "MTProto não recebeu um access_hash para este peer; os métodos Bot API continuam sendo consultados."
+            )
+            if entidade.type in ("private", "supergroup", "channel"):
+                dados.setdefault("metodos_nao_aplicaveis", []).append({
+                    "method": "MTProto methods requiring peer access_hash",
+                    "entity_type": entidade.type,
+                    "reason": "A Bot API retornou o peer, mas não fornece o access_hash desta sessão MTProto.",
+                })
         if dados["midias_dir"]:
             atexit.register(shutil.rmtree, dados["midias_dir"], ignore_errors=True)
         atualizar_status("1/2 · Identificação confirmada; buscando campos adicionais", entidade)
@@ -1577,15 +1697,16 @@ async def coletar(alvo):
         except Exception as erro:
             dados["falhas_coleta"].append({"method": "getFull", "error": type(erro).__name__})
             dados["notas"].append(f"Dados completos indisponíveis: {type(erro).__name__}: {erro}")
-        try:
-            dados["foto"] = await com_espera(lambda: cliente.download_profile_photo(entidade, file=bytes))
-            if dados["foto"] and dados["midias_dir"]:
-                caminho_foto = os.path.join(dados["midias_dir"], "foto_perfil_atual.jpg")
-                with open(caminho_foto, "wb") as arquivo_foto:
-                    arquivo_foto.write(dados["foto"])
-                registrar_midia(dados, "foto_perfil_atual", "foto_perfil_atual.jpg", caminho_foto)
-        except Exception as erro:
-            dados["notas"].append(f"Foto não baixada: {type(erro).__name__}: {erro}")
+        if not isinstance(entidade, BotAPIEntity):
+            try:
+                dados["foto"] = await com_espera(lambda: cliente.download_profile_photo(entidade, file=bytes))
+                if dados["foto"] and dados["midias_dir"]:
+                    caminho_foto = os.path.join(dados["midias_dir"], "foto_perfil_atual.jpg")
+                    with open(caminho_foto, "wb") as arquivo_foto:
+                        arquivo_foto.write(dados["foto"])
+                    registrar_midia(dados, "foto_perfil_atual", "foto_perfil_atual.jpg", caminho_foto)
+            except Exception as erro:
+                dados["notas"].append(f"Foto não baixada: {type(erro).__name__}: {erro}")
         if isinstance(entidade, User):
             try:
                 from telethon.tl.functions.photos import GetUserPhotosRequest
@@ -1677,7 +1798,7 @@ async def coletar(alvo):
         if MODO == "completo":
             try:
                 await coletar_bot_api(dados, entidade, {
-                    "id": utils.get_peer_id(entidade),
+                    "id": id_peer(entidade),
                     "username": getattr(entidade, "username", None),
                 })
             except Exception as erro_api:
@@ -1702,6 +1823,8 @@ async def coletar(alvo):
 def campos_presentes(objeto):
     if objeto is None:
         return []
+    if isinstance(objeto, dict):
+        return sorted(chave for chave, valor in objeto.items() if valor not in (None, False, [], "", 0))
     return sorted(chave for chave, valor in objeto.to_dict().items() if valor not in (None, False, [], "", 0) and chave not in ("phone", "access_hash"))
 
 
@@ -1719,7 +1842,7 @@ def descrever(entidade, completo_, alvo):
     foto = getattr(entidade, "photo", None)
     info = {
         "consultado": f"{EXPECTED_ID} @{alvo}" if EXPECTED_ID else (alvo if re.fullmatch(r"-?\d{1,16}", alvo) else f"@{alvo}"),
-        "id": utils.get_peer_id(entidade),
+        "id": id_peer(entidade),
         "username": getattr(entidade, "username", None),
         "usernames": [u.username for u in (getattr(entidade, "usernames", None) or []) if getattr(u, "active", False)],
         "foto": foto is not None and not type(foto).__name__.endswith("Empty"),
@@ -1803,6 +1926,41 @@ def descrever(entidade, completo_, alvo):
                 comandos = [f"/{c.command} — {c.description}" for c in (getattr(info_bot, "commands", None) or [])]
                 add("Comandos", "; ".join(comandos))
                 add("Política de privacidade", getattr(info_bot, "privacy_policy_url", None))
+    elif isinstance(entidade, BotAPIEntity):
+        info["tipo"] = {
+            "private": "usuário",
+            "group": "grupo",
+            "supergroup": "supergrupo",
+            "channel": "canal",
+        }.get(entidade.type, entidade.type or "chat")
+        info["nome"] = entidade.title or " ".join(
+            parte for parte in (entidade.first_name, entidade.last_name) if parte
+        )
+        marcas = ()
+        campos_bot_api = (
+            ("first_name", "Nome"), ("last_name", "Sobrenome"),
+            ("bio", "Bio"), ("description", "Descrição"),
+            ("invite_link", "Link de convite"), ("active_usernames", "Usernames ativos"),
+            ("birthdate", "Aniversário"), ("business_intro", "Intro comercial"),
+            ("business_location", "Local comercial"),
+            ("business_opening_hours", "Horários comerciais"),
+            ("rating", "Avaliação do chat"), ("is_forum", "Fórum"),
+            ("has_visible_history", "Histórico visível"),
+            ("has_protected_content", "Conteúdo protegido"),
+            ("slow_mode_delay", "Modo lento (segundos)"),
+            ("linked_chat_id", "Chat vinculado"), ("parent_chat", "Chat pai"),
+            ("personal_chat", "Chat pessoal associado"),
+        )
+        for chave, rotulo in campos_bot_api:
+            valor = entidade.data.get(chave)
+            if isinstance(valor, (dict, list)):
+                valor = json.dumps(valor, ensure_ascii=False)
+            add(rotulo + " (Bot API)", valor, 600)
+        if completo_ is not None and entidade.type == "group":
+            participantes = getattr(completo_, "participants", None)
+            lista = getattr(participantes, "participants", None)
+            add("Participantes acessíveis (MTProto)", len(lista) if lista is not None else None, zero=True)
+            add("Mensagem fixada", getattr(completo_, "pinned_msg_id", None))
     elif isinstance(entidade, Channel):
         info["tipo"] = "supergrupo" if entidade.megagroup else "canal"
         info["nome"] = entidade.title
