@@ -1,3 +1,13 @@
+# Implementação no branch — 2026-11-03: presentes Star via MTProto
+
+**IMPLEMENTADO, NÃO VERIFICADO AO VIVO:** no modo completo, o resolver tenta `payments.getSavedStarGifts` para o peer MTProto já resolvido, segue `next_offset`, guarda cada resposta TL integral para Rich Messages, Markdown e JSONL, e tenta baixar stickers regulares retornados. Falha de import da classe no Telethon, erro RPC ou loop de offset são registrados sem interromper a coleta já feita por outras APIs.
+
+**FONTES OFICIAIS:** https://core.telegram.org/method/payments.getSavedStarGifts ; https://core.telegram.org/constructor/payments.savedStarGifts ; https://github.com/LonamiWebs/Telethon/blob/v1/telethon_generator/data/api.tl
+
+**PENDENTE:** CI e execução real devem confirmar que a versão resolvida do Telethon expõe a classe, que o Telegram autoriza a leitura por peer, que a paginação termina e que respostas/anexos chegam ao chat. Presentes únicos podem referenciar documentos em atributos cuja extração de mídia ainda precisa ser ampliada.
+
+---
+
 # PR #17 integrado — 2026-11-03: presentes Star da Bot API
 
 **IMPLEMENTADO, NÃO VERIFICADO AO VIVO:** no modo completo, o resolver chama `getUserGifts` para usuários e `getChatGifts` para grupos/canais, segue `next_offset` até terminar e interrompe ciclos de offset com registro de coleta parcial. Cada resposta bruta é mantida em `respostas_bot_api`, cada página é ligada ao índice da resposta, e os stickers retornados passam pela coleta de mídia e anexos. As páginas entram também nas Rich Messages, Markdown e JSONL já gerados a partir do registro integral. Erros da API e diferença entre total informado e itens coletados são marcados como parciais.
