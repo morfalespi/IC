@@ -60,3 +60,10 @@ Mesmo com paginação, o relatório só contém campos oficialmente recebidos; o
 - [getChatGifts](https://core.telegram.org/bots/api#getchatgifts): devolve presentes pertencentes a um chat; aceita paginação por `offset` e `limit` de 1 a 100. As opções de presentes salvos/não salvos podem depender dos direitos administrativos do bot no canal.
 - [OwnedGifts](https://core.telegram.org/bots/api#ownedgifts), [OwnedGift](https://core.telegram.org/bots/api#ownedgift), [Gift](https://core.telegram.org/bots/api#gift) e [Sticker](https://core.telegram.org/bots/api#sticker): tipos de resposta completos; o sticker associado ao presente pode ser baixado usando `getFile`, sujeito à disponibilidade e ao limite oficial.
 - [getBusinessAccountGifts](https://core.telegram.org/bots/api#getbusinessaccountgifts): leitura separada que exige `business_connection_id` e direito `can_view_gifts_and_stars`; não é equivalente à consulta pública por peer.
+
+
+## Presentes Star via MTProto — 2026-11-03
+
+- [payments.getSavedStarGifts](https://core.telegram.org/method/payments.getSavedStarGifts): usuários e bots podem consultar os presentes pertencentes, recebidos ou hospedados por um peer de usuário ou canal. O método aceita `offset` e `limit`, devolve `next_offset` e respostas que incluem contagem, presentes, usuários e chats relacionados.
+- [payments.SavedStarGifts](https://core.telegram.org/constructor/payments.savedStarGifts): estrutura de resposta com os presentes e o próximo offset.
+- [Telethon api.tl](https://github.com/LonamiWebs/Telethon/blob/v1/telethon_generator/data/api.tl): esquema TL mantido pelo projeto Telethon; contém a declaração de `payments.getSavedStarGifts` usada para gerar a classe `GetSavedStarGiftsRequest`. O resolver verifica a existência dessa classe em runtime e registra a coleta como indisponível se a versão instalada não a expuser.
