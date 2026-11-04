@@ -41,7 +41,14 @@ export async function dispararBusca(entrada, chatId, mensagemId, modo = "complet
       body: fetch.body.json({ ref: 'main', inputs: { alvo: String(entrada.username || entrada.id), expected_id: entrada.tipo === "referencia" ? entrada.id : "", chat: String(chatId), message_id: String(mensagemId || ""), modo: modo === "resumo" ? "resumo" : "completo", origem_id: String(origemId || "") } }),
   });
   if (res.status !== 200 && res.status !== 204) {
-    const detalhes = await res.json().catch(() => ({}));
+    let detalhes;
+    try {
+      detalhes = await res.json();
+    } catch (erroResposta) {
+      if (!(erroResposta instanceof SyntaxError)) throw erroResposta;
+      console.error('Resposta de erro GitHub não JSON:', { origin: 'github', status: res.status, error_type: 'invalid_json' });
+      detalhes = { message: 'O servidor retornou um corpo de erro não JSON.' };
+    }
     const erro = new Error(`${EXPLICACOES[res.status] ?? 'O GitHub recusou o disparo.'} (HTTP ${res.status})`);
     erro.status = res.status;
     erro.origin = 'github';
