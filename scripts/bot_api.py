@@ -4,8 +4,15 @@ import re
 import time
 import urllib.error
 import urllib.request
+import traceback
 
 from telegram_ids import tipo_dialogo
+
+
+class BotAPIRequestError(RuntimeError):
+    def __init__(self, metodo, resposta):
+        self.diagnostic = diagnostico_api(resposta, metodo)
+        super().__init__(json.dumps(self.diagnostic, ensure_ascii=False))
 
 
 def chamar(metodo, corpo, cabecalhos):
@@ -20,7 +27,7 @@ def chamar(metodo, corpo, cabecalhos):
                 codigo, bruto = resposta.status, resposta.read()
         except urllib.error.HTTPError as erro:
             codigo, bruto = erro.code, erro.read()
-        except Exception as erro:
+        except (urllib.error.URLError, OSError) as erro:
             return {"ok": False, "error_code": 0, "description": type(erro).__name__, "origin": "transport"}
         try:
             retorno = json.loads(bruto)
@@ -78,3 +85,14 @@ def diagnostico_api(resposta, metodo):
             "description": descricao, "origin": resposta.get("origin", "telegram"),
             "parameters": {k: v for k, v in parametros.items()
                            if k in ("retry_after", "migrate_to_chat_id") and type(v) is int}}
+
+
+def diagnostico_excecao(erro):
+    if isinstance(erro, BotAPIRequestError):
+        return erro.diagnostic
+    dados = diagnostico_api({"error_code": getattr(erro, "code", 0),
+                            "description": getattr(erro, "message", type(erro).__name__)}, "MTProto/runtime")
+    dados["type"] = type(erro).__name__
+    dados["stack"] = [{"file": os.path.basename(frame.filename), "line": frame.lineno,
+                       "function": frame.name} for frame in traceback.extract_tb(erro.__traceback__)]
+    return dados

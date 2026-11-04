@@ -1,7 +1,7 @@
 import { lerEntrada } from './entrada.js';
 import { dispararBusca } from './despacho.js';
 import { reservarDisparo, liberarDisparo } from './limite.js';
-import { relatorioInvalido, relatorioFalha, relatorioBuscando, relatorioInline } from './relatorio.js';
+import { relatorioInvalido, relatorioFalha, relatorioInline } from './relatorio.js';
 import { enviarCartao, editarCartao } from './envio.js';
 import { cartaoPesquisa, cartaoErro } from './cartao.js';
 import { diagnosticoErro, mensagemErro } from './erros.js';
@@ -23,15 +23,10 @@ export async function consultar(texto, contexto) {
 
   let mensagemId = contexto.mensagemId ?? null;
   try {
-    const pendente = relatorioBuscando(entrada);
-    if (modo === 'completo') {
-      pendente.html = '<b>Preparando exportação completa…</b>\n' +
-        'Respostas MTProto e mídia acessível serão entregues em arquivos e páginas legíveis.';
-    }
     if (mensagemId) {
-      await editarCartao(contexto.chatId, mensagemId, cartaoPesquisa(entrada, contexto.dadosCompartilhados, modo), pendente.html);
+      await editarCartao(contexto.chatId, mensagemId, cartaoPesquisa(entrada, contexto.dadosCompartilhados, modo));
     } else {
-      const mensagem = await enviarCartao(contexto.chatId, cartaoPesquisa(entrada, contexto.dadosCompartilhados, modo), pendente.html);
+      const mensagem = await enviarCartao(contexto.chatId, cartaoPesquisa(entrada, contexto.dadosCompartilhados, modo));
       mensagemId = mensagem?.message_id;
       if (!Number.isSafeInteger(mensagemId)) throw new Error('O Telegram não retornou message_id para acompanhar a consulta.');
     }
@@ -46,8 +41,7 @@ export async function consultar(texto, contexto) {
         await editarCartao(
           contexto.chatId,
           mensagemId,
-          cartaoErro(entrada, motivo),
-          relatorioFalha(entrada, motivo).html
+          cartaoErro(entrada, motivo)
         );
         return { enviado: true, mensagemId };
       } catch (erroEdicao) {

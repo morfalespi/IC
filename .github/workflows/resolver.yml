@@ -32,6 +32,11 @@ on:
         description: "Coleta completa com páginas legíveis, Markdown, JSONL e mídia acessível; use resumo só para uma consulta compacta explícita"
         required: false
         default: "completo"
+      formato:
+        description: "Formato explícito do relatório; falhas não alternam o formato automaticamente"
+        type: choice
+        options: [rich, html]
+        default: rich
       origem_id:
         description: "ID da mensagem original que solicitou o relatório completo"
         required: false
@@ -59,6 +64,7 @@ jobs:
       CHAT_ID: ${{ inputs.chat }}
       MESSAGE_ID: ${{ inputs.message_id }}
       MODO: ${{ inputs.modo }}
+      FORMATO_MENSAGEM: ${{ inputs.formato || 'rich' }}
       ORIGEM_ID: ${{ inputs.origem_id }}
       COLETAR_MIDIA: ${{ inputs.coletar_midia }}
     steps:

@@ -21,7 +21,7 @@ from mtproto_export import build_media_archives
 from telethon import TelegramClient, errors, utils
 from telethon.sessions import SQLiteSession
 from telegram_ids import tipo_dialogo
-from bot_api import chamar, diagnostico_api
+from bot_api import chamar, diagnostico_api, diagnostico_excecao, BotAPIRequestError
 from telethon.tl.functions.channels import GetFullChannelRequest, GetChannelsRequest, GetParticipantsRequest, GetMessagesRequest as GetChannelMessagesRequest
 from telethon.tl.functions.contacts import ResolveUsernameRequest
 from telethon.tl.functions.messages import GetChatsRequest, GetFullChatRequest, GetMessagesRequest
@@ -36,6 +36,7 @@ MENSAGEM_ID = os.environ.get("MESSAGE_ID", "").strip()
 CHAT_DESTINO = os.environ.get("CHAT_ID", "").strip()
 ID_MENSAGEM = int(MENSAGEM_ID) if MENSAGEM_ID.isdigit() and int(MENSAGEM_ID) > 0 else None
 MODO = "resumo" if os.environ.get("MODO") == "resumo" else "completo"
+FORMATO_MENSAGEM = os.environ.get("FORMATO_MENSAGEM", "rich")
 EXPECTED_ID = os.environ.get("EXPECTED_ID", "").strip()
 REFERENCIA = os.environ.get("ORIGEM_ID", "")
 ORIGEM_ID = int(REFERENCIA) if REFERENCIA.isdigit() and int(REFERENCIA) > 0 else None
@@ -128,7 +129,7 @@ def postar(chat_id, texto, formatado, teclado=None):
 def enviar(chat_id, texto):
     retorno = postar(chat_id, texto, True)
     if not aceitacao_mensagem(retorno):
-        raise RuntimeError(f"sendMessage falhou: {retorno.get('error_code')} {retorno.get('description')}")
+        raise BotAPIRequestError("sendMessage", retorno)
     open(os.path.join(os.environ.get("RUNNER_TEMP", "/tmp"), "notificado"), "w").close()
 
 
@@ -142,7 +143,7 @@ def enviar_foto(chat_id, conteudo):
     ])
     retorno = chamar("sendPhoto", corpo, {"Content-Type": f"multipart/form-data; boundary={limite}"})
     if not aceitacao_mensagem(retorno):
-        raise RuntimeError(f"sendPhoto falhou: {retorno.get('error_code')} {retorno.get('description')}")
+        raise BotAPIRequestError("sendPhoto", retorno)
 
 
 def solicitar_bot_api(metodo, dados, foto=None):
@@ -170,6 +171,11 @@ def marcar_notificado():
     open(os.path.join(os.environ.get("RUNNER_TEMP", "/tmp"), "notificado"), "w").close()
 
 
+def mensagem_inalterada(resposta):
+    return (resposta.get("error_code") == 400
+            and "message is not modified" in str(resposta.get("description", "")).lower())
+
+
 def editar_ficha_rica(conteudo, foto=None, definitiva=False):
     if not CHAT_DESTINO:
         return False, False, ID_MENSAGEM
@@ -177,22 +183,20 @@ def editar_ficha_rica(conteudo, foto=None, definitiva=False):
     dados = {"chat_id": int(CHAT_DESTINO), "rich_message": {"html": conteudo}}
     if ID_MENSAGEM:
         dados["message_id"] = ID_MENSAGEM
-    if foto and len(foto) <= 10 * 1024 * 1024:
-        resposta = solicitar_bot_api(metodo, dados, foto)
-        if aceitacao_mensagem(resposta):
-            if definitiva:
-                marcar_notificado()
-            print("Rich Message aceita; foto incorporada no mesmo bloco")
-            return True, True, (resposta.get("result") or {}).get("message_id", ID_MENSAGEM)
-        print("mídia embutida indisponível:", resposta.get("error_code"), corte(resposta.get("description"), 180))
-    resposta = solicitar_bot_api(metodo, dados)
-    if aceitacao_mensagem(resposta):
+    incorporar = bool(foto and len(foto) <= 10 * 1024 * 1024)
+    resposta = solicitar_bot_api(metodo, dados, foto if incorporar else None)
+    if metodo == "editMessageText" and mensagem_inalterada(resposta):
+        print("editMessageText: mensagem já está no estado solicitado")
         if definitiva:
             marcar_notificado()
-        print("Rich Message aceita; sem foto incorporada")
-        return True, False, (resposta.get("result") or {}).get("message_id", ID_MENSAGEM)
-    print("ficha rica indisponível:", resposta.get("error_code"), corte(resposta.get("description"), 180))
-    return False, False, ID_MENSAGEM
+        return True, incorporar, ID_MENSAGEM
+    if not aceitacao_mensagem(resposta):
+        diagnostico = diagnostico_api(resposta, metodo)
+        print(json.dumps(diagnostico, ensure_ascii=False))
+        raise BotAPIRequestError(metodo, resposta)
+    if definitiva:
+        marcar_notificado()
+    return True, incorporar, resposta["result"]["message_id"]
 
 
 def callback_data(acao, alvo):
@@ -238,8 +242,7 @@ def enviar_documento_md(chat, conteudo, id_entidade, indice, total):
     resposta = chamar("sendDocument", b"".join(partes),
                      {"Content-Type": f"multipart/form-data; boundary={limite}"})
     if not aceitacao_mensagem(resposta):
-        raise RuntimeError("Envio Markdown recusado: " + str(resposta.get("error_code")) +
-                           " " + str(resposta.get("description", ""))[:180])
+        raise BotAPIRequestError("sendDocument", resposta)
     print(f"documento Markdown {indice}/{total} confirmado: {len(conteudo)} bytes")
 
 
@@ -320,7 +323,8 @@ async def baixar_arquivo_bot_api(dados, file_id, categoria, file_unique_id=None)
         try:
             with urllib.request.urlopen(urllib.request.Request(url), timeout=60) as resposta:
                 conteudo = resposta.read(20 * 1024 * 1024 + 1)
-        except Exception as erro:
+        except (errors.RPCError, OSError, BotAPIRequestError) as erro:
+            print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
             return registrar_midia(dados, categoria, hash_nome, status="failed",
                                    erro=f"download: {type(erro).__name__}")
         if len(conteudo) > 20 * 1024 * 1024:
@@ -334,7 +338,8 @@ async def baixar_arquivo_bot_api(dados, file_id, categoria, file_unique_id=None)
         item = registrar_midia(dados, categoria, nome, caminho_local)
         item["source"] = "Bot API"
         return item
-    except Exception as erro:
+    except (errors.RPCError, OSError, BotAPIRequestError) as erro:
+        print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
         return registrar_midia(dados, categoria, hash_nome, status="failed",
                                erro=type(erro).__name__)
 
@@ -421,12 +426,8 @@ def chave_participante_mtproto(participante):
         return ("user", id_usuario)
     peer = getattr(participante, "peer", None)
     if peer is not None:
-        try:
-            return ("peer", utils.get_peer_id(peer))
-        except Exception:
-            pass
-    serializado = participante.to_dict() if hasattr(participante, "to_dict") else str(participante)
-    return ("tl", json.dumps(valor_mtproto(serializado), ensure_ascii=False, sort_keys=True))
+        return ("peer", utils.get_peer_id(peer))
+    raise TypeError("Construtor de participante sem user_id ou peer reconhecido.")
 
 
 def ids_participantes_com_boosts_bot_api(dados):
@@ -729,9 +730,10 @@ async def coletar_stickers_mtproto(cliente, dados):
         try:
             resposta = await com_espera(lambda: cliente(GetCustomEmojiDocumentsRequest(document_id=lote)))
             respostas_emoji.append({"request_ids": lote, "response": resposta})
-        except Exception as erro:
+        except (errors.RPCError, OSError, BotAPIRequestError) as erro:
+            print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
             dados.setdefault("falhas_coleta", []).append({
-                "method": "messages.getCustomEmojiDocuments", "error": type(erro).__name__,
+                "method": "messages.getCustomEmojiDocuments", "error": type(erro).__name__, "diagnostic": diagnostico_excecao(erro),
                 "document_ids": lote,
             })
     fontes.extend(objetos_mtproto(respostas_emoji))
@@ -749,9 +751,10 @@ async def coletar_stickers_mtproto(cliente, dados):
         try:
             resposta = await com_espera(lambda: cliente(GetStickerSetRequest(stickerset=referencia, hash=0)))
             respostas_conjuntos.append({"request": referencia, "response": resposta})
-        except Exception as erro:
+        except (errors.RPCError, OSError, BotAPIRequestError) as erro:
+            print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
             dados.setdefault("falhas_coleta", []).append({
-                "method": "messages.getStickerSet", "error": type(erro).__name__,
+                "method": "messages.getStickerSet", "error": type(erro).__name__, "diagnostic": diagnostico_excecao(erro),
                 "request": referencia,
             })
     await baixar_documentos_presente_mtproto(
@@ -804,9 +807,10 @@ async def coletar_topicos_conhecidos_mtproto(cliente, dados):
             try:
                 resultado = await com_espera(lambda: cliente(GetForumTopicsByIDRequest(peer=peer, topics=lote)))
                 respostas.append({"peer": peer, "topic_ids": lote, "response": resultado})
-            except Exception as erro:
+            except (errors.RPCError, OSError, BotAPIRequestError) as erro:
+                print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
                 dados.setdefault("falhas_coleta", []).append({
-                    "method": "messages.getForumTopicsByID", "error": type(erro).__name__,
+                    "method": "messages.getForumTopicsByID", "error": type(erro).__name__, "diagnostic": diagnostico_excecao(erro),
                     "peer": peer, "topic_ids": lote,
                 })
 
@@ -824,10 +828,11 @@ async def coletar_catalogo_presentes_mtproto(cliente, dados):
                     cliente, presente, dados, "catalogo_presente_mtproto",
                     f"catalogo_presente_mtproto_{indice:04d}"
                 )
-    except Exception as erro:
+    except (errors.RPCError, OSError, BotAPIRequestError) as erro:
+        print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
         dados.setdefault("falhas_coleta", []).append({
             "method": metodo,
-            "error": type(erro).__name__,
+            "error": type(erro).__name__, "diagnostic": diagnostico_excecao(erro),
         })
         dados.setdefault("notas", []).append(
             f"{metodo} indisponível nesta sessão: {type(erro).__name__}."
@@ -841,10 +846,10 @@ async def coletar_boosts_mtproto(cliente, dados, entidade):
     metodo = "premium.getUserBoosts"
     try:
         from telethon.tl.functions.premium import GetUserBoostsRequest
-    except Exception as erro:
+    except ImportError as erro:
         dados.setdefault("falhas_coleta", []).append({
             "method": metodo,
-            "error": type(erro).__name__,
+            "error": type(erro).__name__, "diagnostic": diagnostico_excecao(erro),
         })
         return
     resultados = dados.setdefault("boosts_por_usuario_mtproto", [])
@@ -858,9 +863,9 @@ async def coletar_boosts_mtproto(cliente, dados, entidade):
         try:
             try:
                 peer_usuario = utils.get_input_user(
-                    await cliente.get_input_entity(id_usuario)
+                    cliente.session.get_input_entity(PeerUser(id_usuario))
                 )
-            except Exception:
+            except ValueError:
                 peer_usuario = InputUser(id_usuario, 0)
             resposta = await com_espera(lambda: cliente(
                 GetUserBoostsRequest(peer=canal, user_id=peer_usuario)
@@ -869,11 +874,12 @@ async def coletar_boosts_mtproto(cliente, dados, entidade):
                 "user_id": id_usuario,
                 "response": resposta,
             })
-        except Exception as erro:
+        except (errors.RPCError, OSError, BotAPIRequestError) as erro:
+            print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
             dados.setdefault("falhas_coleta", []).append({
                 "method": metodo,
                 "user_id": id_usuario,
-                "error": type(erro).__name__,
+                "error": type(erro).__name__, "diagnostic": diagnostico_excecao(erro),
             })
 
 
@@ -889,11 +895,12 @@ async def coletar_participacao_bot_mtproto(cliente, dados, entidade):
             GetParticipantRequest(channel=canal, participant=InputPeerSelf())
         ))
         dados["participacao_bot_mtproto"] = resposta
-    except Exception as erro:
+    except (errors.RPCError, OSError, BotAPIRequestError) as erro:
+        print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
         dados.setdefault("falhas_coleta", []).append({
             "method": metodo,
             "participant": "self",
-            "error": type(erro).__name__,
+            "error": type(erro).__name__, "diagnostic": diagnostico_excecao(erro),
         })
         dados.setdefault("notas", []).append(
             f"{metodo} para o próprio bot indisponível: {type(erro).__name__}."
@@ -903,10 +910,10 @@ async def coletar_presentes_mtproto(cliente, dados, entidade):
     metodo = "payments.getSavedStarGifts"
     try:
         from telethon.tl.functions.payments import GetSavedStarGiftsRequest
-    except Exception as erro:
+    except ImportError as erro:
         dados.setdefault("falhas_coleta", []).append({
             "method": metodo,
-            "error": type(erro).__name__,
+            "error": type(erro).__name__, "diagnostic": diagnostico_excecao(erro),
         })
         dados.setdefault("notas", []).append(
             f"{metodo} indisponível nesta versão do Telethon."
@@ -937,10 +944,10 @@ async def coletar_presentes_mtproto(cliente, dados, entidade):
     else:
         try:
             peer = await cliente.get_input_entity(entidade)
-        except Exception as erro:
+        except ValueError as erro:
             dados.setdefault("falhas_coleta", []).append({
                 "method": metodo,
-                "error": type(erro).__name__,
+                "error": type(erro).__name__, "diagnostic": diagnostico_excecao(erro),
             })
             return
     try:
@@ -993,10 +1000,11 @@ async def coletar_presentes_mtproto(cliente, dados, entidade):
                 break
             offsets_vistos.add(offset)
             offset = proximo
-    except Exception as erro:
+    except (errors.RPCError, OSError, BotAPIRequestError) as erro:
+        print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
         dados.setdefault("falhas_coleta", []).append({
             "method": metodo,
-            "error": type(erro).__name__,
+            "error": type(erro).__name__, "diagnostic": diagnostico_excecao(erro),
         })
         dados.setdefault("notas", []).append(
             f"{metodo}: coleta interrompida por {type(erro).__name__}."
@@ -1011,10 +1019,10 @@ async def coletar_historico_canal_pessoal(cliente, dados, entidade):
     metodo = "messages.getPersonalChannelHistory"
     try:
         from telethon.tl.functions.messages import GetPersonalChannelHistoryRequest
-    except Exception as erro:
+    except ImportError as erro:
         dados.setdefault("falhas_coleta", []).append({
             "method": metodo,
-            "error": type(erro).__name__,
+            "error": type(erro).__name__, "diagnostic": diagnostico_excecao(erro),
         })
         dados.setdefault("notas", []).append(
             f"{metodo} indisponível nesta versão do Telethon."
@@ -1117,10 +1125,11 @@ async def coletar_historico_canal_pessoal(cliente, dados, entidade):
                     f"{metodo}: count ({total}) menor que mensagens distintas ({recebidos}); a paginação segue pelo cursor."
                 )
             cursor = proximo_cursor
-    except Exception as erro:
+    except (errors.RPCError, OSError, BotAPIRequestError) as erro:
+        print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
         dados.setdefault("falhas_coleta", []).append({
             "method": metodo,
-            "error": type(erro).__name__,
+            "error": type(erro).__name__, "diagnostic": diagnostico_excecao(erro),
         })
         dados.setdefault("notas", []).append(
             f"{metodo}: coleta interrompida por {type(erro).__name__}."
@@ -1287,7 +1296,8 @@ async def baixar_midia(cliente, objeto, dados, categoria, nome):
                 dados.setdefault("_documentos_mtproto_processados", set()).add(objeto.id)
             return item
         return registrar_midia(dados, categoria, nome, status="unavailable", erro="Telegram não retornou o arquivo")
-    except Exception as erro:
+    except (errors.RPCError, OSError, BotAPIRequestError) as erro:
+        print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
         return registrar_midia(dados, categoria, nome, status="failed", erro=type(erro).__name__)
 
 
@@ -1319,8 +1329,7 @@ def enviar_documento_arquivo(chat, caminho, id_entidade, indice, total):
     resposta = chamar("sendDocument", b"".join(partes),
                      {"Content-Type": f"multipart/form-data; boundary={limite}"})
     if not aceitacao_mensagem(resposta):
-        raise RuntimeError("Envio do pacote de mídia recusado: " + str(resposta.get("error_code")) +
-                           " " + str(resposta.get("description", ""))[:180])
+        raise BotAPIRequestError("sendDocument", resposta)
     print(f"pacote de mídia {indice}/{total} confirmado: {len(conteudo)} bytes")
 
 def enviar_documento_jsonl(chat, conteudo, id_entidade, indice, total):
@@ -1349,8 +1358,7 @@ def enviar_documento_jsonl(chat, conteudo, id_entidade, indice, total):
     resposta = chamar("sendDocument", b"".join(partes),
                      {"Content-Type": f"multipart/form-data; boundary={limite}"})
     if not aceitacao_mensagem(resposta):
-        raise RuntimeError("Envio JSONL recusado: " + str(resposta.get("error_code")) +
-                           " " + str(resposta.get("description", ""))[:180])
+        raise BotAPIRequestError("sendDocument", resposta)
     print(f"documento JSONL {indice}/{total} confirmado: {len(conteudo)} bytes")
 
 def botao_atualizar(alvo):
@@ -1380,10 +1388,17 @@ def atualizar_status(etapa, entidade=None):
             parte for parte in [getattr(entidade, "first_name", None), getattr(entidade, "last_name", None)] if parte
         )
         id_entidade = id_peer(entidade)
-    status = status_ficha(etapa, nome, id_entidade)
-    sucesso, _, _ = editar_ficha_rica(status)
-    if not sucesso:
-        print("atualização intermediária indisponível; a pesquisa continua")
+    if FORMATO_MENSAGEM == "html":
+        resposta = solicitar_bot_api("editMessageText", {
+            "chat_id": int(CHAT_DESTINO), "message_id": ID_MENSAGEM,
+            "text": "<b>Consulta em andamento</b>\n" + esc(etapa), "parse_mode": "HTML",
+        })
+        if mensagem_inalterada(resposta):
+            print("editMessageText: estado HTML já está atualizado")
+        elif not aceitacao_mensagem(resposta):
+            raise BotAPIRequestError("editMessageText", resposta)
+    else:
+        editar_ficha_rica(status_ficha(etapa, nome, id_entidade))
 
 
 CATEGORIAS = (
@@ -1706,35 +1721,24 @@ async def resolver_alvo(cliente, alvo):
                                 "bot_api_getChat": resposta_bot,
                                 "mtproto_username_resolution": resolvido,
                             }
-                    except Exception:
-                        pass
+                    except errors.UnauthorizedError:
+                        raise
+                    except (errors.RPCError, OSError) as erro_username:
+                        resposta_bot["mtproto_username_error"] = diagnostico_api({
+                            "error_code": getattr(erro_username, "code", 0),
+                            "description": getattr(erro_username, "message", type(erro_username).__name__),
+                        }, "contacts.resolveUsername")
+                        print(json.dumps(resposta_bot["mtproto_username_error"], ensure_ascii=False))
                 return BotAPIEntity(chat), (
                     "ID confirmado pela Bot API após MTProto não resolver; leituras MTProto compatíveis serão tentadas com access_hash zero: "
                     + str(erro_mtproto)
                 ), {"bot_api_getChat": resposta_bot, "bot_api_getChat_attempted": True, "mtproto_error": str(erro_mtproto)}
-            id_marcado = int(alvo)
-            id_real, tipo_peer = utils.resolve_id(id_marcado)
-            tipo_inferido = {
-                PeerUser: "private",
-                PeerChat: "group",
-                PeerChannel: "channel_peer",
-            }.get(tipo_peer)
-            if tipo_inferido is None:
-                detalhe_bot = resposta_bot.get("description") or "getChat não retornou o chat"
-                raise LookupError(
-                    "MTProto não resolveu o ID (" + str(erro_mtproto) + "); "
-                    "a Bot API também não conseguiu ler o chat (" + str(detalhe_bot) + ")."
-                ) from erro_mtproto
-            entidade = BotAPIEntity({"id": id_marcado, "type": tipo_inferido})
-            return entidade, (
-                "ID numérico não resolvido pelo MTProto nem confirmado por getChat; "
-                "leituras Bot API e MTProto independentes seguem pelo ID, com cada resposta registrada."
-            ), {
-                "bot_api_getChat": resposta_bot,
-                "bot_api_getChat_attempted": True,
-                "mtproto_error": str(erro_mtproto),
-                "numeric_id_unconfirmed": True,
-            }
+            diagnostico = diagnostico_api(resposta_bot, "getChat")
+            print(json.dumps(diagnostico, ensure_ascii=False))
+            raise LookupError(
+                "A entidade não foi confirmada pelas APIs. " + str(erro_mtproto) +
+                " Bot API: " + str(diagnostico["error_code"]) + " " + diagnostico["description"]
+            ) from erro_mtproto
     resultado = await com_espera(lambda: cliente(ResolveUsernameRequest(alvo)))
     entidade = entidade_de(resultado)
     if entidade is None:
@@ -1811,14 +1815,16 @@ async def coletar(alvo):
                                     cliente, mensagem, dados, "mensagem_fixada",
                                     f"mensagem_fixada_{getattr(mensagem, 'id', mensagem_fixada_id)}"
                                 )
-                except Exception as erro_fixadas:
+                except (errors.RPCError, OSError, BotAPIRequestError) as erro_fixadas:
+                    print(json.dumps(diagnostico_excecao(erro_fixadas), ensure_ascii=False))
                     dados["falhas_coleta"].append({
                         "method": "messages.getMessages" if isinstance(entidade, Chat) else "channels.getMessages",
-                        "error": type(erro_fixadas).__name__,
+                        "error": type(erro_fixadas).__name__, "diagnostic": diagnostico_excecao(erro_fixadas),
                     })
                     dados["notas"].append(f"Mensagem fixada indisponível: {type(erro_fixadas).__name__}")
-        except Exception as erro:
-            dados["falhas_coleta"].append({"method": "getFull", "error": type(erro).__name__})
+        except (errors.RPCError, OSError, BotAPIRequestError) as erro:
+            print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
+            dados["falhas_coleta"].append({"method": "getFull", "error": type(erro).__name__, "diagnostic": diagnostico_excecao(erro)})
             dados["notas"].append(f"Dados completos indisponíveis: {type(erro).__name__}: {erro}")
 
         canal = input_canal_bot(entidade)
@@ -1846,11 +1852,12 @@ async def coletar(alvo):
                                 hash=0,
                             ))
                         )
-                    except Exception as erro_participantes:
+                    except (errors.RPCError, OSError, BotAPIRequestError) as erro_participantes:
+                        print(json.dumps(diagnostico_excecao(erro_participantes), ensure_ascii=False))
                         dados["falhas_coleta"].append({
                             "method": "channels.getParticipants",
                             "filter": nome_filtro,
-                            "error": type(erro_participantes).__name__,
+                            "error": type(erro_participantes).__name__, "diagnostic": diagnostico_excecao(erro_participantes),
                         })
                         dados["notas"].append(
                             f"Participantes ({nome_filtro}) indisponíveis: {type(erro_participantes).__name__}"
@@ -1900,7 +1907,9 @@ async def coletar(alvo):
                     with open(caminho_foto, "wb") as arquivo_foto:
                         arquivo_foto.write(dados["foto"])
                     registrar_midia(dados, "foto_perfil_atual", "foto_perfil_atual.jpg", caminho_foto)
-            except Exception as erro:
+            except (errors.RPCError, OSError, BotAPIRequestError) as erro:
+                print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
+                dados["falhas_coleta"].append({"method": "download_profile_photo", "error": type(erro).__name__, "diagnostic": diagnostico_excecao(erro)})
                 dados["notas"].append(f"Foto não baixada: {type(erro).__name__}: {erro}")
         usuario = input_usuario_bot(entidade)
         if usuario is not None:
@@ -1944,8 +1953,9 @@ async def coletar(alvo):
                     dados["fotos_info"] = f"{obtidas} de {total} (fotos acessíveis informadas pelo Telegram)"
                 elif obtidas:
                     dados["fotos_info"] = f"{obtidas} foto(s) acessível(is)"
-            except Exception as erro:
-                dados["falhas_coleta"].append({"method": "photos.getUserPhotos", "error": type(erro).__name__})
+            except (errors.RPCError, OSError, BotAPIRequestError) as erro:
+                print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
+                dados["falhas_coleta"].append({"method": "photos.getUserPhotos", "error": type(erro).__name__, "diagnostic": diagnostico_excecao(erro)})
                 dados["notas"].append(f"Contagem de fotos indisponível: {type(erro).__name__}")
             try:
                 from telethon.tl.functions.users import GetSavedMusicRequest
@@ -1988,8 +1998,9 @@ async def coletar(alvo):
                     dados["musicas_info"] = f"{obtidas} de {total} música(s) acessível(is) no perfil"
                 elif obtidas:
                     dados["musicas_info"] = f"{obtidas} música(s) acessível(is) no perfil"
-            except Exception as erro:
-                dados["falhas_coleta"].append({"method": "users.getSavedMusic", "error": type(erro).__name__})
+            except (errors.RPCError, OSError, BotAPIRequestError) as erro:
+                print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
+                dados["falhas_coleta"].append({"method": "users.getSavedMusic", "error": type(erro).__name__, "diagnostic": diagnostico_excecao(erro)})
                 dados["notas"].append(f"Contagem de músicas indisponível: {type(erro).__name__}")
         if MODO == "completo":
             try:
@@ -1997,7 +2008,8 @@ async def coletar(alvo):
                     "id": id_peer(entidade),
                     "username": getattr(entidade, "username", None),
                 })
-            except Exception as erro_api:
+            except (errors.RPCError, OSError, BotAPIRequestError) as erro_api:
+                print(json.dumps(diagnostico_excecao(erro_api), ensure_ascii=False))
                 dados["falhas_bot_api"].append({
                     "method": "coleta Bot API",
                     "error_code": 0,
@@ -2268,6 +2280,8 @@ def falha(alvo, motivo):
 
 async def principal():
     print("telethon", telethon.__version__)
+    if FORMATO_MENSAGEM not in ("rich", "html"):
+        raise ValueError("FORMATO_MENSAGEM deve ser rich ou html.")
     alvo = os.environ.get("ALVO", "").strip().lstrip("@")
     chat = os.environ.get("CHAT_ID", "").strip()
     if chat and (not CHAT_VALIDO.fullmatch(chat) or tipo_dialogo(str(int(chat))) is None):
@@ -2336,7 +2350,7 @@ async def principal():
 
             print("tipo resolvido:", info["tipo"], "| campos extras:", len(info["campos"]))
             codigo = 0
-            if not chat and MODO == "completo":
+            if not chat:
                 coleta_parcial = bool(
                     dados.get("falhas_coleta") or dados.get("falhas_bot_api")
                     or dados.get("coletas_incompletas")
@@ -2367,7 +2381,7 @@ async def principal():
             print(json.dumps(diagnostico, ensure_ascii=False))
             codigo = 1
         except Exception as erro:
-            print("Falha na consulta:", type(erro).__name__)
+            print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
             texto = falha(alvo, f"Falha na consulta: {type(erro).__name__}. Verifique a configuração e tente novamente.")
             codigo = 1
     if chat:
@@ -2391,32 +2405,26 @@ async def principal():
             completo = MODO == "completo"
             secoes = categorias
             notas_publicadas = notas
-            teclado_fallback = None
+            teclado_html = None
             if MODO == "resumo" and callback_data("f", alvo_disparo):
-                teclado_fallback = {"inline_keyboard": [[{
+                teclado_html = {"inline_keyboard": [[{
                     "text": "📥 Exportação completa",
                     "callback_data": callback_data("f", alvo_disparo),
                 }]]}
             total_ricos = 0
             entregues_ricos = 0
             foto_incorporada = False
-            primeira_rica_id = None
-            primeira_rica_nova = False
-            primeira_rica_confirmada = False
-            mensagens_ricas_extra = []
-            avisos_fallback = []
             rich_ok = False
             try:
-                paginas = rich_pages(identidade, secoes, notas_publicadas, controles)
-                total_ricos = len(paginas)
+                paginas = rich_pages(identidade, secoes, notas_publicadas, controles) if FORMATO_MENSAGEM == "rich" else []
+                total_ricos = len(paginas) if FORMATO_MENSAGEM == "rich" else 0
                 total_campos_visiveis = sum(len(linhas) for _, linhas in secoes)
                 print("Rich Messages planejadas:", total_ricos, "| campos exibidos:", total_campos_visiveis)
-                for indice, pagina in enumerate(paginas):
+                for indice, pagina in enumerate(paginas if FORMATO_MENSAGEM == "rich" else []):
                     if indice > 0:
                         time.sleep(1.1)
                     if indice == 0:
                         ok, foto_incorporada, primeira_rica_id = editar_ficha_rica(pagina, dados["foto"])
-                        primeira_rica_nova = not bool(ID_MENSAGEM)
                     else:
                         detalhes = {"chat_id": int(chat), "rich_message": {"html": pagina}}
                         resposta_id = ORIGEM_ID if completo else ID_MENSAGEM
@@ -2426,66 +2434,45 @@ async def principal():
                         ok = aceitacao_mensagem(retorno)
                         if not ok:
                             print("Rich Message recusada:", indice + 1, "status", retorno.get("error_code"))
-                        elif isinstance(retorno.get("result"), dict):
-                            mensagens_ricas_extra.append(retorno["result"].get("message_id"))
                     if not ok:
-                        continue
-                    if indice == 0:
-                        primeira_rica_confirmada = True
+                        break
                     entregues_ricos += 1
                     print("Rich Message aceita:", entregues_ricos, "/", total_ricos)
-                rich_ok = entregues_ricos == total_ricos
-            except Exception as erro_rico:
+                rich_ok = total_ricos > 0 and entregues_ricos == total_ricos
+            except (errors.RPCError, OSError, BotAPIRequestError) as erro_rico:
+                print(json.dumps(diagnostico_excecao(erro_rico), ensure_ascii=False))
                 print("formatação rica indisponível:", type(erro_rico).__name__)
             html_ok = False
             total_html = 0
             entregues_html = 0
-            if not rich_ok:
-                for mensagem_id in ([primeira_rica_id] if primeira_rica_nova else []) + mensagens_ricas_extra:
-                    if not isinstance(mensagem_id, int):
-                        avisos_fallback.append("Uma página rica enviada não teve ID confirmado para limpeza; o fallback pode duplicar conteúdo.")
-                        continue
-                    retorno_exclusao = chamar("deleteMessage", json.dumps({
-                        "chat_id": int(chat), "message_id": mensagem_id
-                    }).encode(), {"Content-Type": "application/json"})
-                    if not retorno_exclusao.get("ok") or retorno_exclusao.get("result") is not True:
-                        avisos_fallback.append("Uma página rica enviada não pôde ser removida; o fallback pode duplicar conteúdo.")
-                try:
-                    paginas_html = basic_pages(identidade, secoes, notas_publicadas)
-                    total_html = len(paginas_html)
-                    for indice, pagina in enumerate(paginas_html):
-                        if indice > 0:
-                            time.sleep(1.1)
-                        retorno = None
-                        if indice == 0 and ID_MENSAGEM:
-                            retorno = solicitar_bot_api("editMessageText", {
-                                "chat_id": int(chat), "message_id": ID_MENSAGEM,
-                                "text": pagina, "parse_mode": "HTML",
-                                **({"reply_markup": teclado_fallback} if teclado_fallback else {}),
-                            })
-                        if not retorno or not aceitacao_mensagem(retorno):
-                            if indice == 0 and primeira_rica_confirmada:
-                                avisos_fallback.append("A página HTML inicial não substituiu a página rica anterior; o fallback pode duplicar conteúdo.")
-                            retorno = postar(chat, pagina, True,
-                                             teclado_fallback if indice == 0 else None)
-                        if not aceitacao_mensagem(retorno):
-                            print("página HTML recusada:", indice + 1, "status", retorno.get("error_code"))
-                            continue
-                        entregues_html += 1
-                        print("página HTML aceita:", entregues_html, "/", len(paginas_html))
-                    html_ok = total_html > 0 and entregues_html == total_html
-                except Exception as erro_html:
-                    print("HTML indisponível:", type(erro_html).__name__)
-            if avisos_fallback:
-                try:
-                    enviar(chat, "<b>⚠️ Fallback com possível duplicação</b>\n" + "\n".join(avisos_fallback))
-                except Exception as erro_aviso:
-                    print("aviso de fallback não confirmado:", type(erro_aviso).__name__)
+            if FORMATO_MENSAGEM == "html":
+                paginas_html = basic_pages(identidade, secoes, notas_publicadas)
+                total_html = len(paginas_html)
+                for indice, pagina in enumerate(paginas_html):
+                    if indice > 0:
+                        time.sleep(1.1)
+                    if indice == 0 and ID_MENSAGEM:
+                        retorno = solicitar_bot_api("editMessageText", {
+                            "chat_id": int(chat), "message_id": ID_MENSAGEM,
+                            "text": pagina, "parse_mode": "HTML",
+                            **({"reply_markup": teclado_html} if teclado_html else {}),
+                        })
+                    else:
+                        retorno = postar(chat, pagina, True, teclado_html if indice == 0 else None)
+                    inalterada = bool(indice == 0 and ID_MENSAGEM and mensagem_inalterada(retorno))
+                    if not aceitacao_mensagem(retorno) and not inalterada:
+                        print(json.dumps(diagnostico_api(retorno, "editMessageText" if indice == 0 and ID_MENSAGEM else "sendMessage"), ensure_ascii=False))
+                        break
+                    entregues_html += 1
+                html_ok = total_html > 0 and entregues_html == total_html
+            foto_entrega_ok = True
             if dados["foto"] and not foto_incorporada:
                 try:
                     enviar_foto(chat, dados["foto"])
                     print("foto enviada separadamente")
-                except Exception as erro_foto:
+                except (errors.RPCError, OSError, BotAPIRequestError) as erro_foto:
+                    print(json.dumps(diagnostico_excecao(erro_foto), ensure_ascii=False))
+                    foto_entrega_ok = False
                     print("foto indisponível:", type(erro_foto).__name__)
             arquivos_previstos = 0
             arquivos_entregues = 0
@@ -2500,7 +2487,8 @@ async def principal():
                     try:
                         pacotes_midias = build_media_archives(dados.get("midias", []), dados["midias_dir"])
                         dados["pacotes_midias"] = pacotes_midias
-                    except Exception as erro_pacotes:
+                    except (errors.RPCError, OSError, BotAPIRequestError) as erro_pacotes:
+                        print(json.dumps(diagnostico_excecao(erro_pacotes), ensure_ascii=False))
                         notas.append(f"Pacotes de mídia indisponíveis: {type(erro_pacotes).__name__}")
                     falhas_midias = sum(1 for item in dados.get("midias", []) if item.get("status") != "packaged")
                     midias_previstas = len(pacotes_midias)
@@ -2513,10 +2501,12 @@ async def principal():
                         try:
                             enviar_documento_md(chat, arquivo, info["id"], indice, arquivos_previstos)
                             arquivos_entregues += 1
-                        except Exception as erro_parte:
+                        except (errors.RPCError, OSError, BotAPIRequestError) as erro_parte:
+                            print(json.dumps(diagnostico_excecao(erro_parte), ensure_ascii=False))
                             print("Documento recusado:", indice, "/", arquivos_previstos,
                                   type(erro_parte).__name__)
-                except Exception as erro_md:
+                except (errors.RPCError, OSError, BotAPIRequestError) as erro_md:
+                    print(json.dumps(diagnostico_excecao(erro_md), ensure_ascii=False))
                     print("Markdown indisponível:", type(erro_md).__name__)
                 try:
                     arquivos_json = jsonl_files(registros_telegram(dados, alvo, info))
@@ -2527,20 +2517,23 @@ async def principal():
                         try:
                             enviar_documento_jsonl(chat, arquivo, info["id"], indice, json_previstos)
                             json_entregues += 1
-                        except Exception as erro_parte:
+                        except (errors.RPCError, OSError, BotAPIRequestError) as erro_parte:
+                            print(json.dumps(diagnostico_excecao(erro_parte), ensure_ascii=False))
                             print("Documento JSONL recusado:", indice, "/", json_previstos,
                                   type(erro_parte).__name__)
-                except Exception as erro_json:
+                except (errors.RPCError, OSError, BotAPIRequestError) as erro_json:
+                    print(json.dumps(diagnostico_excecao(erro_json), ensure_ascii=False))
                     print("Exportação JSONL indisponível:", type(erro_json).__name__)
                 for indice, caminho_pacote in enumerate(pacotes_midias, 1):
                     time.sleep(1.1)
                     try:
                         enviar_documento_arquivo(chat, caminho_pacote, info["id"], indice, len(pacotes_midias))
                         midias_entregues += 1
-                    except Exception as erro_midia:
+                    except (errors.RPCError, OSError, BotAPIRequestError) as erro_midia:
+                        print(json.dumps(diagnostico_excecao(erro_midia), ensure_ascii=False))
                         print("Pacote de mídia recusado:", indice, "/", len(pacotes_midias), type(erro_midia).__name__)
-            apresentacao_ok = rich_ok if completo else (rich_ok or html_ok)
-            entrega_ok = apresentacao_ok and (
+            apresentacao_ok = rich_ok if FORMATO_MENSAGEM == "rich" else html_ok
+            entrega_ok = apresentacao_ok and foto_entrega_ok and (
                 not completo or (
                     arquivos_previstos > 0 and arquivos_entregues == arquivos_previstos and
                     json_previstos > 0 and json_entregues == json_previstos and
@@ -2549,7 +2542,7 @@ async def principal():
             )
             coleta_sem_falhas = not dados.get("falhas_coleta") and not dados.get("falhas_bot_api") and not dados.get("coletas_incompletas") and falhas_midias == 0
             entrega_ok = entrega_ok and not MENSAGENS_PENDENTES
-            relatorio_aceito = entrega_ok and (not completo or coleta_sem_falhas)
+            relatorio_aceito = entrega_ok and coleta_sem_falhas
             if relatorio_aceito:
                 marcar_notificado()
                 print("ENVIOS DO RELATÓRIO ACEITOS PELO TELEGRAM:", len(info["campos"]), "campos,",
@@ -2572,7 +2565,7 @@ async def principal():
                         f"Arquivos JSONL: {json_entregues}/{json_previstos}.",
                         f"Pacotes de mídia enviados: {midias_entregues}/{midias_previstas}.",
                     ])
-                if completo and not coleta_sem_falhas:
+                if not coleta_sem_falhas:
                     if entrega_ok:
                         linhas_aviso.append("<b>⚠️ Resultado parcial enviado</b>")
                     linhas_aviso.append("Algumas leituras tentadas falharam, ficaram abaixo da contagem informada ou tiveram mídia indisponível.")
@@ -2589,13 +2582,15 @@ async def principal():
                 codigo = 1
         else:
             causa = re.sub(r"<[^>]*>", "", texto)
-            ok, _, _ = editar_ficha_rica(ficha_falha(alvo, causa), definitiva=True)
-            if not ok:
-                enviar(chat, texto)
-                print("erro convencional enviado por fallback")
+            enviar(chat, texto)
+            print("Notificação explícita de falha enviada")
         print("processamento do relatório encerrado")
     return codigo
 
 
 if __name__ == "__main__":
-    sys.exit(asyncio.run(principal()))
+    try:
+        sys.exit(asyncio.run(principal()))
+    except Exception as erro:
+        print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
+        sys.exit(1)

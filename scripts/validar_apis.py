@@ -4,6 +4,7 @@ import os
 import sys
 
 from resolver import chamar, coletar, id_peer
+from bot_api import BotAPIRequestError, diagnostico_excecao
 
 
 async def principal():
@@ -11,6 +12,8 @@ async def principal():
         raise ValueError("A validação exige modo resumo sem chat ou mensagem de destino.")
     headers = {"Content-Type": "application/json"}
     me = await asyncio.to_thread(chamar, "getMe", b"{}", headers)
+    if not me.get("ok"):
+        raise BotAPIRequestError("getMe", me)
     bot = me.get("result")
     if not me.get("ok") or not isinstance(bot, dict) or bot.get("is_bot") is not True:
         raise RuntimeError("getMe não confirmou uma conta de bot.")
@@ -19,6 +22,8 @@ async def principal():
         chamar, "getChat", json.dumps({"chat_id": "@telegram"}).encode(), headers
     )
     chat = response.get("result")
+    if not response.get("ok"):
+        raise BotAPIRequestError("getChat", response)
     if (not response.get("ok") or not isinstance(chat, dict)
             or type(chat.get("id")) is not int or chat.get("type") != "channel"):
         raise RuntimeError("getChat não confirmou o canal público de validação.")
@@ -36,5 +41,5 @@ if __name__ == "__main__":
     try:
         sys.exit(asyncio.run(principal()))
     except Exception as erro:
-        print("Validação das APIs falhou:", type(erro).__name__, flush=True)
+        print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False), flush=True)
         sys.exit(1)
