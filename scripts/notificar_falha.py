@@ -2,15 +2,25 @@ import json
 import os
 from pathlib import Path
 
-from bot_api import chamar, diagnostico_api
+from bot_api import chamar, diagnostico_api, diagnostico_excecao
 from telegram_ids import tipo_dialogo
 
 
 def principal():
     marcador = Path(os.environ.get("RUNNER_TEMP", "/tmp")) / "notificado"
     chat = os.environ.get("CHAT_ID", "").strip()
-    if marcador.exists() or not os.environ.get("BOT_TOKEN") or not chat:
+    if marcador.exists():
+        print("Notificação já confirmada nesta execução; nenhum reenvio solicitado")
         return 0
+    if not chat:
+        print("Notificação não solicitada: execução sem chat de destino")
+        return 0
+    if not os.environ.get("BOT_TOKEN"):
+        print("Notificação não enviada: BOT_TOKEN ausente")
+        return 1
+    if (marcador.parent / "bot_api_auth_failed").exists():
+        print("Notificação não enviada: autenticação Bot API recusada nesta execução")
+        return 1
     if tipo_dialogo(chat) is None:
         print("Notificação: CHAT_ID fora dos intervalos oficiais de peers")
         return 1
@@ -30,4 +40,8 @@ def principal():
 
 
 if __name__ == "__main__":
-    raise SystemExit(principal())
+    try:
+        raise SystemExit(principal())
+    except Exception as erro:
+        print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
+        raise SystemExit(1)

@@ -21,7 +21,7 @@ from mtproto_export import build_media_archives
 from telethon import TelegramClient, errors, utils
 from telethon.sessions import SQLiteSession
 from telegram_ids import tipo_dialogo
-from bot_api import chamar, diagnostico_api, diagnostico_excecao, BotAPIRequestError
+from bot_api import chamar, diagnostico_api, diagnostico_excecao, BotAPIRequestError, BotAPIAuthenticationError, APIProtocolError
 from telethon.tl.functions.channels import GetFullChannelRequest, GetChannelsRequest, GetParticipantsRequest, GetMessagesRequest as GetChannelMessagesRequest
 from telethon.tl.functions.contacts import ResolveUsernameRequest
 from telethon.tl.functions.messages import GetChatsRequest, GetFullChatRequest, GetMessagesRequest
@@ -323,6 +323,8 @@ async def baixar_arquivo_bot_api(dados, file_id, categoria, file_unique_id=None)
         try:
             with urllib.request.urlopen(urllib.request.Request(url), timeout=60) as resposta:
                 conteudo = resposta.read(20 * 1024 * 1024 + 1)
+        except errors.UnauthorizedError:
+            raise
         except (errors.RPCError, OSError, BotAPIRequestError) as erro:
             print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
             return registrar_midia(dados, categoria, hash_nome, status="failed",
@@ -338,6 +340,8 @@ async def baixar_arquivo_bot_api(dados, file_id, categoria, file_unique_id=None)
         item = registrar_midia(dados, categoria, nome, caminho_local)
         item["source"] = "Bot API"
         return item
+    except errors.UnauthorizedError:
+        raise
     except (errors.RPCError, OSError, BotAPIRequestError) as erro:
         print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
         return registrar_midia(dados, categoria, hash_nome, status="failed",
@@ -730,6 +734,8 @@ async def coletar_stickers_mtproto(cliente, dados):
         try:
             resposta = await com_espera(lambda: cliente(GetCustomEmojiDocumentsRequest(document_id=lote)))
             respostas_emoji.append({"request_ids": lote, "response": resposta})
+        except errors.UnauthorizedError:
+            raise
         except (errors.RPCError, OSError, BotAPIRequestError) as erro:
             print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
             dados.setdefault("falhas_coleta", []).append({
@@ -751,6 +757,8 @@ async def coletar_stickers_mtproto(cliente, dados):
         try:
             resposta = await com_espera(lambda: cliente(GetStickerSetRequest(stickerset=referencia, hash=0)))
             respostas_conjuntos.append({"request": referencia, "response": resposta})
+        except errors.UnauthorizedError:
+            raise
         except (errors.RPCError, OSError, BotAPIRequestError) as erro:
             print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
             dados.setdefault("falhas_coleta", []).append({
@@ -807,6 +815,8 @@ async def coletar_topicos_conhecidos_mtproto(cliente, dados):
             try:
                 resultado = await com_espera(lambda: cliente(GetForumTopicsByIDRequest(peer=peer, topics=lote)))
                 respostas.append({"peer": peer, "topic_ids": lote, "response": resultado})
+            except errors.UnauthorizedError:
+                raise
             except (errors.RPCError, OSError, BotAPIRequestError) as erro:
                 print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
                 dados.setdefault("falhas_coleta", []).append({
@@ -828,6 +838,8 @@ async def coletar_catalogo_presentes_mtproto(cliente, dados):
                     cliente, presente, dados, "catalogo_presente_mtproto",
                     f"catalogo_presente_mtproto_{indice:04d}"
                 )
+    except errors.UnauthorizedError:
+        raise
     except (errors.RPCError, OSError, BotAPIRequestError) as erro:
         print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
         dados.setdefault("falhas_coleta", []).append({
@@ -874,6 +886,8 @@ async def coletar_boosts_mtproto(cliente, dados, entidade):
                 "user_id": id_usuario,
                 "response": resposta,
             })
+        except errors.UnauthorizedError:
+            raise
         except (errors.RPCError, OSError, BotAPIRequestError) as erro:
             print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
             dados.setdefault("falhas_coleta", []).append({
@@ -895,6 +909,8 @@ async def coletar_participacao_bot_mtproto(cliente, dados, entidade):
             GetParticipantRequest(channel=canal, participant=InputPeerSelf())
         ))
         dados["participacao_bot_mtproto"] = resposta
+    except errors.UnauthorizedError:
+        raise
     except (errors.RPCError, OSError, BotAPIRequestError) as erro:
         print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
         dados.setdefault("falhas_coleta", []).append({
@@ -1000,6 +1016,8 @@ async def coletar_presentes_mtproto(cliente, dados, entidade):
                 break
             offsets_vistos.add(offset)
             offset = proximo
+    except errors.UnauthorizedError:
+        raise
     except (errors.RPCError, OSError, BotAPIRequestError) as erro:
         print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
         dados.setdefault("falhas_coleta", []).append({
@@ -1125,6 +1143,8 @@ async def coletar_historico_canal_pessoal(cliente, dados, entidade):
                     f"{metodo}: count ({total}) menor que mensagens distintas ({recebidos}); a paginação segue pelo cursor."
                 )
             cursor = proximo_cursor
+    except errors.UnauthorizedError:
+        raise
     except (errors.RPCError, OSError, BotAPIRequestError) as erro:
         print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
         dados.setdefault("falhas_coleta", []).append({
@@ -1296,6 +1316,8 @@ async def baixar_midia(cliente, objeto, dados, categoria, nome):
                 dados.setdefault("_documentos_mtproto_processados", set()).add(objeto.id)
             return item
         return registrar_midia(dados, categoria, nome, status="unavailable", erro="Telegram não retornou o arquivo")
+    except errors.UnauthorizedError:
+        raise
     except (errors.RPCError, OSError, BotAPIRequestError) as erro:
         print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
         return registrar_midia(dados, categoria, nome, status="failed", erro=type(erro).__name__)
@@ -1783,6 +1805,11 @@ async def coletar(alvo):
         try:
             dados["resposta_completa"] = await com_espera(lambda: completo(cliente, entidade))
             dados["completo"] = objeto_completo(dados["resposta_completa"])
+            if dados["completo"] is None:
+                raise APIProtocolError("MTProto getFull", {
+                    "error_code": 0, "description": "Resposta sem o perfil completo exigido pelo método",
+                    "origin": "protocol",
+                })
             mensagem_fixada_id = getattr(dados["completo"], "pinned_msg_id", None)
             if MODO == "completo" and mensagem_fixada_id:
                 try:
@@ -1803,6 +1830,8 @@ async def coletar(alvo):
                                     cliente, mensagem, dados, "mensagem_fixada",
                                     f"mensagem_fixada_{getattr(mensagem, 'id', mensagem_fixada_id)}"
                                 )
+                except errors.UnauthorizedError:
+                    raise
                 except (errors.RPCError, OSError, BotAPIRequestError) as erro_fixadas:
                     print(json.dumps(diagnostico_excecao(erro_fixadas), ensure_ascii=False))
                     dados["falhas_coleta"].append({
@@ -1810,6 +1839,8 @@ async def coletar(alvo):
                         "error": type(erro_fixadas).__name__, "diagnostic": diagnostico_excecao(erro_fixadas),
                     })
                     dados["notas"].append(f"Mensagem fixada indisponível: {type(erro_fixadas).__name__}")
+        except errors.UnauthorizedError:
+            raise
         except (errors.RPCError, OSError, BotAPIRequestError) as erro:
             print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
             dados["falhas_coleta"].append({"method": "getFull", "error": type(erro).__name__, "diagnostic": diagnostico_excecao(erro)})
@@ -1840,6 +1871,8 @@ async def coletar(alvo):
                                 hash=0,
                             ))
                         )
+                    except errors.UnauthorizedError:
+                        raise
                     except (errors.RPCError, OSError, BotAPIRequestError) as erro_participantes:
                         print(json.dumps(diagnostico_excecao(erro_participantes), ensure_ascii=False))
                         dados["falhas_coleta"].append({
@@ -1895,6 +1928,8 @@ async def coletar(alvo):
                     with open(caminho_foto, "wb") as arquivo_foto:
                         arquivo_foto.write(dados["foto"])
                     registrar_midia(dados, "foto_perfil_atual", "foto_perfil_atual.jpg", caminho_foto)
+            except errors.UnauthorizedError:
+                raise
             except (errors.RPCError, OSError, BotAPIRequestError) as erro:
                 print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
                 dados["falhas_coleta"].append({"method": "download_profile_photo", "error": type(erro).__name__, "diagnostic": diagnostico_excecao(erro)})
@@ -1941,6 +1976,8 @@ async def coletar(alvo):
                     dados["fotos_info"] = f"{obtidas} de {total} (fotos acessíveis informadas pelo Telegram)"
                 elif obtidas:
                     dados["fotos_info"] = f"{obtidas} foto(s) acessível(is)"
+            except errors.UnauthorizedError:
+                raise
             except (errors.RPCError, OSError, BotAPIRequestError) as erro:
                 print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
                 dados["falhas_coleta"].append({"method": "photos.getUserPhotos", "error": type(erro).__name__, "diagnostic": diagnostico_excecao(erro)})
@@ -1986,6 +2023,8 @@ async def coletar(alvo):
                     dados["musicas_info"] = f"{obtidas} de {total} música(s) acessível(is) no perfil"
                 elif obtidas:
                     dados["musicas_info"] = f"{obtidas} música(s) acessível(is) no perfil"
+            except errors.UnauthorizedError:
+                raise
             except (errors.RPCError, OSError, BotAPIRequestError) as erro:
                 print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
                 dados["falhas_coleta"].append({"method": "users.getSavedMusic", "error": type(erro).__name__, "diagnostic": diagnostico_excecao(erro)})
@@ -1996,6 +2035,8 @@ async def coletar(alvo):
                     "id": id_peer(entidade),
                     "username": getattr(entidade, "username", None),
                 })
+            except errors.UnauthorizedError:
+                raise
             except (errors.RPCError, OSError, BotAPIRequestError) as erro_api:
                 print(json.dumps(diagnostico_excecao(erro_api), ensure_ascii=False))
                 dados["falhas_bot_api"].append({
@@ -2367,6 +2408,13 @@ async def principal():
             texto = falha(alvo, f"Telegram {erro.code}: {diagnostico['description']}")
             print(json.dumps(diagnostico, ensure_ascii=False))
             codigo = 1
+        except BotAPIAuthenticationError as erro:
+            print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
+            return 1
+        except APIProtocolError as erro:
+            print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
+            texto = falha(alvo, erro.diagnostic["description"])
+            codigo = 1
         except Exception as erro:
             print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
             texto = falha(alvo, f"Falha na consulta: {type(erro).__name__}. Verifique a configuração e tente novamente.")
@@ -2426,6 +2474,8 @@ async def principal():
                     entregues_ricos += 1
                     print("Rich Message aceita:", entregues_ricos, "/", total_ricos)
                 rich_ok = total_ricos > 0 and entregues_ricos == total_ricos
+            except errors.UnauthorizedError:
+                raise
             except (errors.RPCError, OSError, BotAPIRequestError) as erro_rico:
                 print(json.dumps(diagnostico_excecao(erro_rico), ensure_ascii=False))
                 print("formatação rica indisponível:", type(erro_rico).__name__)
@@ -2457,6 +2507,8 @@ async def principal():
                 try:
                     enviar_foto(chat, dados["foto"])
                     print("foto enviada separadamente")
+                except errors.UnauthorizedError:
+                    raise
                 except (errors.RPCError, OSError, BotAPIRequestError) as erro_foto:
                     print(json.dumps(diagnostico_excecao(erro_foto), ensure_ascii=False))
                     foto_entrega_ok = False
@@ -2474,6 +2526,8 @@ async def principal():
                     try:
                         pacotes_midias = build_media_archives(dados.get("midias", []), dados["midias_dir"])
                         dados["pacotes_midias"] = pacotes_midias
+                    except errors.UnauthorizedError:
+                        raise
                     except (errors.RPCError, OSError, BotAPIRequestError) as erro_pacotes:
                         print(json.dumps(diagnostico_excecao(erro_pacotes), ensure_ascii=False))
                         notas.append(f"Pacotes de mídia indisponíveis: {type(erro_pacotes).__name__}")
@@ -2488,10 +2542,14 @@ async def principal():
                         try:
                             enviar_documento_md(chat, arquivo, info["id"], indice, arquivos_previstos)
                             arquivos_entregues += 1
+                        except errors.UnauthorizedError:
+                            raise
                         except (errors.RPCError, OSError, BotAPIRequestError) as erro_parte:
                             print(json.dumps(diagnostico_excecao(erro_parte), ensure_ascii=False))
                             print("Documento recusado:", indice, "/", arquivos_previstos,
                                   type(erro_parte).__name__)
+                except errors.UnauthorizedError:
+                    raise
                 except (errors.RPCError, OSError, BotAPIRequestError) as erro_md:
                     print(json.dumps(diagnostico_excecao(erro_md), ensure_ascii=False))
                     print("Markdown indisponível:", type(erro_md).__name__)
@@ -2504,10 +2562,14 @@ async def principal():
                         try:
                             enviar_documento_jsonl(chat, arquivo, info["id"], indice, json_previstos)
                             json_entregues += 1
+                        except errors.UnauthorizedError:
+                            raise
                         except (errors.RPCError, OSError, BotAPIRequestError) as erro_parte:
                             print(json.dumps(diagnostico_excecao(erro_parte), ensure_ascii=False))
                             print("Documento JSONL recusado:", indice, "/", json_previstos,
                                   type(erro_parte).__name__)
+                except errors.UnauthorizedError:
+                    raise
                 except (errors.RPCError, OSError, BotAPIRequestError) as erro_json:
                     print(json.dumps(diagnostico_excecao(erro_json), ensure_ascii=False))
                     print("Exportação JSONL indisponível:", type(erro_json).__name__)
@@ -2516,6 +2578,8 @@ async def principal():
                     try:
                         enviar_documento_arquivo(chat, caminho_pacote, info["id"], indice, len(pacotes_midias))
                         midias_entregues += 1
+                    except errors.UnauthorizedError:
+                        raise
                     except (errors.RPCError, OSError, BotAPIRequestError) as erro_midia:
                         print(json.dumps(diagnostico_excecao(erro_midia), ensure_ascii=False))
                         print("Pacote de mídia recusado:", indice, "/", len(pacotes_midias), type(erro_midia).__name__)

@@ -5,14 +5,38 @@ import time
 import urllib.error
 import urllib.request
 import traceback
+from pathlib import Path
 
 from telegram_ids import tipo_dialogo
 
 
-class BotAPIRequestError(RuntimeError):
+class APIError(RuntimeError):
     def __init__(self, metodo, resposta):
         self.diagnostic = diagnostico_api(resposta, metodo)
         super().__init__(json.dumps(self.diagnostic, ensure_ascii=False))
+
+
+class BotAPIRequestError(APIError):
+    __slots__ = ()
+
+
+class BotAPIAuthenticationError(APIError):
+    __slots__ = ()
+
+
+class APIProtocolError(APIError):
+    __slots__ = ()
+
+
+def recusar_autenticacao(metodo, resposta):
+    runner_temp = os.environ.get("RUNNER_TEMP")
+    if runner_temp:
+        try:
+            (Path(runner_temp) / "bot_api_auth_failed").touch()
+        except OSError as erro:
+            print(json.dumps({"origin": "local", "operation": "record_bot_api_auth_failure",
+                              "type": type(erro).__name__}, ensure_ascii=False))
+    raise BotAPIAuthenticationError(metodo, resposta)
 
 
 def chamar(metodo, corpo, cabecalhos):
@@ -33,13 +57,24 @@ def chamar(metodo, corpo, cabecalhos):
             retorno = json.loads(bruto)
         except ValueError:
             retorno = None
+        if codigo == 401:
+            if not (isinstance(retorno, dict) and retorno.get("ok") is False
+                    and retorno.get("error_code") == 401):
+                retorno = {"ok": False, "error_code": 401,
+                           "description": "HTTP 401: autenticação recusada; corpo sem erro Bot API correspondente",
+                           "origin": "http"}
+            recusar_autenticacao(metodo, retorno)
         if (not isinstance(retorno, dict) or type(retorno.get("ok")) is not bool
                 or (retorno["ok"] and "result" not in retorno)):
             return {"ok": False, "error_code": codigo, "description": "Resposta inválida da Bot API", "origin": "protocol"}
+        if retorno["ok"] and not 200 <= codigo < 300:
+            return {"ok": False, "error_code": codigo, "description": "Status HTTP de erro incompatível com envelope de sucesso", "origin": "protocol"}
         if migracoes:
             retorno["migrations"] = list(migracoes)
         if retorno["ok"]:
             return retorno
+        if codigo == 401 or retorno.get("error_code") == 401:
+            recusar_autenticacao(metodo, retorno)
         parametros = retorno.get("parameters")
         parametros = parametros if isinstance(parametros, dict) else {}
         espera = parametros.get("retry_after")
@@ -88,7 +123,7 @@ def diagnostico_api(resposta, metodo):
 
 
 def diagnostico_excecao(erro):
-    if isinstance(erro, BotAPIRequestError):
+    if isinstance(erro, APIError):
         return erro.diagnostic
     dados = diagnostico_api({"error_code": getattr(erro, "code", 0),
                             "description": getattr(erro, "message", type(erro).__name__)}, "MTProto/runtime")
