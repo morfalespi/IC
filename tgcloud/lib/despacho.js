@@ -1,5 +1,6 @@
 import { fetch } from 'sdk';
 import { GH_DISPATCH_TOKEN, GH_REPOSITORY } from './segredos.js';
+import { textoSeguro } from './erros.js';
 
 const EXPLICACOES = {
   401: 'O token do GitHub é inválido ou expirou. Gere outro e atualize o secret GH_DISPATCH_TOKEN.',
@@ -40,10 +41,12 @@ export async function dispararBusca(entrada, chatId, mensagemId, modo = "complet
       body: fetch.body.json({ ref: 'main', inputs: { alvo: String(entrada.username || entrada.id), expected_id: entrada.tipo === "referencia" ? entrada.id : "", chat: String(chatId), message_id: String(mensagemId || ""), modo: modo === "resumo" ? "resumo" : "completo", origem_id: String(origemId || "") } }),
   });
   if (res.status !== 200 && res.status !== 204) {
+    const detalhes = await res.json().catch(() => ({}));
     const erro = new Error(`${EXPLICACOES[res.status] ?? 'O GitHub recusou o disparo.'} (HTTP ${res.status})`);
     erro.status = res.status;
     erro.origin = 'github';
     erro.publicMessage = erro.message;
+    erro.githubMessage = typeof detalhes?.message === 'string' ? textoSeguro(detalhes.message) : '';
     throw erro;
   }
 }

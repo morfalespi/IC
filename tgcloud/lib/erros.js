@@ -19,7 +19,8 @@ export function diagnosticoErro(erro) {
     };
   }
   if (erro?.origin === 'github') {
-    return { origin: 'github', status: erro.status, description: textoSeguro(erro.publicMessage) };
+    return { origin: 'github', status: erro.status, description: textoSeguro(erro.publicMessage),
+      message: textoSeguro(erro.githubMessage) };
   }
   return { origin: 'runtime', type: erro?.name ?? 'Error' };
 }
@@ -31,5 +32,6 @@ export function mensagemErro(erro) {
     return `Telegram ${dados.error_code}: ${dados.description}` +
       (Number.isSafeInteger(espera) ? ` Aguarde ${espera} s antes de repetir.` : '');
   }
-  return dados.description || 'A comunicação com o serviço falhou. Tente novamente em instantes.';
+  if (dados.origin === 'github') return [dados.description, dados.message].filter(Boolean).join(' ');
+  return 'A comunicação com o serviço falhou. Tente novamente em instantes.';
 }
