@@ -78,7 +78,7 @@ def input_canal_bot(entidade):
             return utils.get_input_channel(utils.get_input_peer(entidade))
         except TypeError:
             return InputChannel(entidade.id, 0)
-    if isinstance(entidade, BotAPIEntity) and entidade.type in ("supergroup", "channel", "channel_peer"):
+    if isinstance(entidade, BotAPIEntity) and entidade.type in ("supergroup", "channel"):
         id_real, tipo = utils.resolve_id(entidade.id)
         if tipo is PeerChannel:
             return InputChannel(id_real, 0)
@@ -460,7 +460,7 @@ def registrar_coleta_participantes_incompleta(dados, metodo, esperado, recebido)
 
 async def coletar_dados_participante_bot_api(dados, entidade, chat_id):
     entidade_bot_api_chat = isinstance(entidade, BotAPIEntity) and entidade.type in (
-        "group", "supergroup", "channel", "channel_peer"
+        "group", "supergroup", "channel"
     )
     if not isinstance(entidade, (Channel, Chat)) and not entidade_bot_api_chat:
         return
@@ -468,7 +468,7 @@ async def coletar_dados_participante_bot_api(dados, entidade, chat_id):
     if not ids_usuarios:
         return
     consulta_boosts = isinstance(entidade, Channel) or (
-        isinstance(entidade, BotAPIEntity) and entidade.type in ("supergroup", "channel", "channel_peer")
+        isinstance(entidade, BotAPIEntity) and entidade.type in ("supergroup", "channel")
     )
     estados = dados.setdefault("membros_bot_api_por_participante", [])
     boosts = dados.setdefault("boosts_por_participante_bot_api", []) if consulta_boosts else []
@@ -1774,24 +1774,12 @@ async def coletar(alvo):
                 dados["chat_bot_api"] = resposta_chat_bot.get("result") or {}
             dados["getChat_alvo_attempted"] = bool(resposta_resolucao.get("bot_api_getChat_attempted"))
             dados["getChat_alvo_id"] = entidade.id
-            if resposta_resolucao.get("numeric_id_unconfirmed"):
-                dados["notas"].append(
-                    "MTProto e getChat não confirmaram a entidade. Leituras independentes continuam pelo ID; respostas bem-sucedidas acrescentam dados, recusas são preservadas e não confirmam a existência do peer."
-                )
-            else:
-                dados["notas"].append(
-                    "A Bot API confirmou o peer após a resolução MTProto por ID falhar; métodos compatíveis de bot continuam com access_hash zero e cada resposta ou recusa é registrada."
-                )
+            dados["notas"].append(
+                "A Bot API confirmou o peer após a resolução MTProto por ID falhar; métodos compatíveis de bot continuam com access_hash zero e cada resposta ou recusa é registrada."
+            )
         if dados["midias_dir"]:
             atexit.register(shutil.rmtree, dados["midias_dir"], ignore_errors=True)
-        identificacao_confirmada = not (
-            isinstance(resposta_resolucao, dict) and resposta_resolucao.get("numeric_id_unconfirmed")
-        )
-        atualizar_status(
-            "1/2 · Identificação confirmada; buscando campos adicionais" if identificacao_confirmada
-            else "1/2 · ID ainda não confirmado; tentando leituras independentes",
-            entidade,
-        )
+        atualizar_status("1/2 · Identificação confirmada; buscando campos adicionais", entidade)
         try:
             dados["resposta_completa"] = await com_espera(lambda: completo(cliente, entidade))
             dados["completo"] = objeto_completo(dados["resposta_completa"])
@@ -2186,7 +2174,6 @@ def descrever(entidade, completo_, alvo):
             "group": "grupo",
             "supergroup": "supergrupo",
             "channel": "canal",
-            "channel_peer": "canal/supergrupo (tipo não confirmado pela Bot API)",
         }.get(entidade.type, entidade.type or "chat")
         info["nome"] = entidade.title or " ".join(
             parte for parte in (entidade.first_name, entidade.last_name) if parte

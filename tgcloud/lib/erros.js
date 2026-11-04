@@ -22,7 +22,10 @@ export function diagnosticoErro(erro) {
     return { origin: 'github', status: erro.status, description: textoSeguro(erro.publicMessage),
       message: textoSeguro(erro.githubMessage) };
   }
-  return { origin: 'runtime', type: erro?.name ?? 'Error' };
+  const linhas = typeof erro?.stack === 'string' ? erro.stack.split('\n') : [];
+  const locais = linhas.filter(linha => /^\s*at\s/.test(linha) || /^[^\s@]+@.+:\d+/.test(linha))
+    .map(textoSeguro);
+  return { origin: 'runtime', type: erro?.name ?? 'Error', stack: locais };
 }
 
 export function mensagemErro(erro) {
