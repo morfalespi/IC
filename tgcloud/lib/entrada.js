@@ -1,12 +1,15 @@
 const ID = /^-?\d{1,16}$/;
 const USERNAME = /^@?([A-Za-z0-9_]{1,32})$/;
 const PAR = /^(-?\d{1,16})\s+@([A-Za-z0-9_]{1,32})$/;
-const LIMITE_ID = 4503599627370495;
 
 function idValido(valor) {
   if (!ID.test(valor)) return null;
   const n = Number(valor);
-  return Number.isSafeInteger(n) && n !== 0 && Math.abs(n) <= LIMITE_ID ? String(n) : null;
+  const permitido = (n >= 1 && n <= 1099511627775) ||
+    (n >= -999999999999 && n <= -1) ||
+    (n >= -1997852516352 && n <= -1000000000001) ||
+    (n >= -4000000000000 && n <= -2002147483649);
+  return Number.isSafeInteger(n) && permitido ? String(n) : null;
 }
 
 function referencia(id, username) {

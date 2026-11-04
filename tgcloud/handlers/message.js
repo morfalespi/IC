@@ -1,3 +1,4 @@
+import { diagnosticoErro } from '../lib/erros.js';
 import { consultar } from '../lib/consulta.js';
 import { enviarMensagem } from '../lib/envio.js';
 import { relatorioErro, relatorioAjuda, relatorioInvalido } from '../lib/relatorio.js';
@@ -86,7 +87,7 @@ export default async function (message) {
         : await consultar(inicio?.[1] ?? texto, { canal: 'privado', chatId: message.chat.id });
     }
   } catch (erro) {
-    console.error('falha ao montar a resposta:', erro?.name ?? "Error");
+    console.error('falha ao montar a resposta:', diagnosticoErro(erro));
     resposta = relatorioErro(erro);
   }
   if (!resposta?.enviado) await enviarMensagem(message.chat.id, resposta.html, resposta.teclado);

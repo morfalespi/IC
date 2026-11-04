@@ -1,75 +1,44 @@
-# Revisão das integrações — 2026-11-04
+# Integrações orientadas pelas APIs — revisão de 2026-11-04
 
-Base: `main`, commit `1d3433a5c2cc7eb73fd6d9294b08eced23cb2fab`.
+Este relatório substitui a lista anterior de políticas locais. A documentação oficial determina os contratos; os testes determinam o que foi observado. As funcionalidades de consulta, relatórios, arquivos e seletores permanecem no projeto. README.md, AGENTS.md e SECURITY.md continuam excluídos na branch do PR #32.
 
-## IMPLEMENTADO
+## Substituições implementadas
 
-- Remoção de README.md, AGENTS.md e SECURITY.md, conforme pedido do proprietário.
-- Autenticação de bot com validação da configuração antes de conectar, sessão somente em memória e conferência do ID e do tipo da conta autenticada. Cada tentativa de start tem limite de 90 segundos, e a conferência da identidade tem limite de 30 segundos; FloodWait é tratado separadamente. O cliente não recebe updates e a espera por FloodWait fica sob controle explícito do worker. O workflow usa saída Python sem buffer para registrar o início e a confirmação da autenticação sem identificadores ou credenciais.
-- IDs fora do intervalo são rejeitados antes do fallback. Erros de autenticação e FloodWait esgotado não viram falha de resolução por falta de contexto.
-- Resolução de username distingue canais de grupos mesmo quando o ID interno coincide. ChatEmpty não confirma uma entidade acessível.
-- getChat no fallback exige resultado com ID e tipo válidos. A coleta subsequente usa o ID estável, evitando consultar outro peer se o username mudar. A resposta já obtida no fallback é reutilizada.
-- Construtores de entrada usam o hash completo quando disponível e hash zero para entidades min ou sem hash, no contexto autenticado de bot.
-- O cliente HTTP rejeita JSON sem o envelope esperado, confirma mensagens apenas com message_id inteiro positivo e respeita retry_after integralmente. Quando a espera ultrapassa o orçamento, retorna a falha sem antecipar a repetição. Escritas não repetem 5xx automaticamente.
-- Logs de exceções JavaScript deixam de imprimir o objeto completo. Erros inesperados e respostas brutas do GitHub deixam de ser apresentados ao usuário. A notificação de falha do workflow descarta o corpo da resposta Telegram, sem imprimir a mensagem e o chat retornados.
-- Deploy manual limitado à main. Checagens locais e validação do token de dispatch antecedem migração e publicação. O healthcheck confirma somente aceitação do dispatch.
-- CI com Node 22/Python 3.12 e Node 24/Python 3.13, instalação do Telethon fixado e inspeção das importações e assinaturas executadas pelo resolver. Todos os módulos Python entram na checagem sintática.
+| Item revisto | Solução implementada | Referência |
+|---|---|---|
+| Regex locais de credenciais, StringSession vazia, timeouts de autenticação 90/30 s e segunda conferência de identidade | TelegramClient.start(bot_token=...) e SQLiteSession do Telethon, com desconexão e fechamento garantidos. Foram removidos os overrides receive_updates=False e flood_sleep_threshold=0. O SDK conserva seu tratamento nativo; FLOOD_WAIT propagado aguarda a duração do servidor, sem teto local de 600 s nem acréscimo de um segundo. | [Cliente Telethon](https://docs.telethon.dev/en/stable/modules/client.html), [sessões](https://docs.telethon.dev/en/stable/concepts/sessions.html), [bots MTProto](https://core.telegram.org/api/bots) |
+| Teto genérico de 52 bits para qualquer ID | Intervalos oficiais distintos para usuários, grupos, canais/supergrupos e monoforums, aplicados no worker, parser e callbacks. O intervalo reservado a secret chats não é aceito, pois a instância oficial da Bot API não os suporta. | [Bot API dialog IDs](https://core.telegram.org/api/bots/ids) |
+| Seleção manual de entidade por ID interno | Comparação do peer marcado retornado por contacts.resolveUsername com os peers marcados das entidades, usando utils.get_peer_id. Assim, IDs sobrepostos de tipos diferentes não colidem. ChatEmpty não é convertido em perfil confirmado. | [contacts.resolveUsername](https://core.telegram.org/method/contacts.resolveUsername), [peers](https://core.telegram.org/api/peers) |
+| Fallback rígido que rejeitava toda mudança de ID | getChat pode seguir migrate_to_chat_id informado pelo servidor e preservar a cadeia de migração. A resolução aceita o novo ID quando a migração foi documentada na resposta. Um ID divergente sem migração continua sendo uma resposta inconsistente. As consultas seguintes usam o ID retornado, e a resposta obtida é reutilizada. | [ResponseParameters](https://core.telegram.org/bots/api#responseparameters), [getChat](https://core.telegram.org/bots/api#getchat) |
+| Construtores manuais como primeira opção | O cache da sessão fornece o hash completo para consultas numéricas; utils.get_input_peer/get_input_user/get_input_channel fazem as conversões. Se faltar um peer completo utilizável, o bot usa os construtores com hash zero previstos pelo protocolo. Não se reaproveitam hashes entre contas ou sessões de autorização. | [Access hash](https://core.telegram.org/api/peers#access-hash), [entidades Telethon](https://docs.telethon.dev/en/stable/concepts/entities.html) |
+| Cinco tentativas, orçamento de 600 s, atraso inventado e confirmação genérica por ID positivo | O campo ok determina o resultado da Bot API. retry_after governa a repetição sem reduzir a espera. migrate_to_chat_id atualiza chat_id em JSON e multipart, preservando os bytes do arquivo. Sem instrução de repetição do servidor, o erro é devolvido com seus parâmetros. message_id=0 é aceito sem disparar fallback duplicado, mas deixa a entrega pendente e impede anunciar conclusão integral. | [Making requests](https://core.telegram.org/bots/api#making-requests), [ResponseParameters](https://core.telegram.org/bots/api#responseparameters), [Message](https://core.telegram.org/bots/api#message) |
+| Erros reduzidos apenas ao nome e notificação curl que descartava o contrato de resposta | JavaScript inspeciona BotApiError: method, code, description e parameters. Falhas de transporte e 429 não viram automaticamente um segundo envio em outro formato. Edição inalterada é tratada sem novo envio. A notificação usa o mesmo cliente Bot API, processa espera/migração, verifica a resposta e registra diagnóstico estruturado. Campos de credenciais não entram no diagnóstico; descrições passam por redação. | [Making requests](https://core.telegram.org/bots/api#making-requests), [erros MTProto](https://core.telegram.org/api/errors), SDK 0.2.0 instalado e sua interface BotApiError |
 
-Permanecem os seletores, referências compartilhadas, comandos, callbacks, modo inline, coleta MTProto/Bot API, páginas ricas, fallback HTML, arquivos Markdown/JSONL e pacotes de mídia. Esta revisão corrige as rotas descritas; não comprova cobertura exaustiva de todos os métodos oficiais.
+Os comportamentos que são exigências do contrato — tipos de peer, resposta ok/result, hash zero para bots sem hash completo e representação de mensagens pendentes — não foram removidos para permitir resultados incorretos. Foram vinculados às fontes acima e integrados ao fluxo real. A API não fornece uma autorização para tratar erro como sucesso.
 
-## Fontes oficiais consultadas
+## Sessão e limites operacionais
 
-| Referência | Aplicação nesta revisão |
-|---|---|
-| [Telegram Bot API](https://core.telegram.org/bots/api) | Envelope de resposta, getChat, identificadores, mensagens e erros |
-| [ResponseParameters](https://core.telegram.org/bots/api#responseparameters) | retry_after informa a espera mínima antes de repetir |
-| [MTProto](https://core.telegram.org/mtproto) | Separação entre transporte, autorização e chamadas RPC |
-| [Bots no MTProto](https://core.telegram.org/api/bots) e [auth.importBotAuthorization](https://core.telegram.org/method/auth.importBotAuthorization) | Token de bot, API ID/hash e autorização |
-| [Peer database](https://core.telegram.org/api/peers#access-hash) | Hash completo, min e zero para bots |
-| [contacts.resolveUsername](https://core.telegram.org/method/contacts.resolveUsername) | Associação entre peer retornado e entidade correspondente |
-| [Telethon: entidades](https://docs.telethon.dev/en/stable/concepts/entities.html) | Entidades, cache e construtores Input* |
-| [Telethon: cliente](https://docs.telethon.dev/en/stable/modules/client.html) | start, get_me, receive_updates e flood_sleep_threshold |
-| [Assinaturas no GitHub](https://docs.github.com/en/authentication/managing-commit-signature-verification/about-commit-signature-verification) | Exigir confirmação de verification.verified pelo GitHub |
+TELETHON_SESSION_DIR permite selecionar um diretório privado para reutilizar a sessão SQLite e o cache de entidades. O diretório é criado com modo 0700; os nomes de sessão derivam do token sem publicá-lo. Arquivos de sessão não são exportados nem entram no Git. Não configurar essa variável em um diretório compartilhado entre processos concorrentes.
 
-A compatibilidade executável foi conferida contra Telethon 1.45.0, layer 229. A documentação web consultada pode ter um layer diferente; a checagem de assinaturas não prova que todos os métodos serão autorizados pelo servidor.
+Sem diretório configurado, o worker usa um diretório temporário privado e o remove ao desconectar. Há persistência SQLite e cache durante a execução; isso não cria persistência entre runners efêmeros do GitHub Actions. Não foi provisionado armazenamento durável de credenciais nem cache de sessão em artifacts/Actions cache.
 
-## VERIFICADO localmente
+O limite de cinco minutos da etapa de validação foi removido para não interromper uma espera legítima de rate limit. O timeout geral do job continua sendo um limite operacional do GitHub Actions, não um prazo definido pelo Telegram. O timeout de transporte HTTP também é uma decisão operacional, distinta das esperas retry_after/FLOOD_WAIT.
 
-| Verificação | Resultado observado |
-|---|---|
-| npm ci --ignore-scripts | 22 pacotes instalados; lockfile preservado |
-| npm run check, Node 24.22.1 e 22.23.4 / Python 3.12.14 | Passou: sintaxe JavaScript/Python e placeholders vazios |
-| Python 3.13.5: compileall e compatibility.py | Passou |
-| Python 3.12.14: compatibility.py | Passou: 58 importações, 52 assinaturas e importação do resolver sem rede |
-| Sondagens Python com respostas simuladas | 33 verificações passaram: envelope inválido, confirmação de mensagem, falha de transporte, 429/espera, escrita sem repetição de 503, hashes min/completos, tipo de peer, IDs inválidos, getChat divergente, erro de autenticação, ChatEmpty e configuração ausente |
-| Sondagens adicionais de autenticação | 4 verificações passaram: conta ausente, conta sem flag de bot, ID divergente e timeout simulado; resolução não iniciou e disconnect foi chamado |
-| Sondagens JavaScript | 17 verificações passaram: entrada, roundtrip dos callbacks r/f, rejeição de dados inválidos e mensagem de erro sem conteúdo sensível |
-| actionlint 1.7.12 | Todos os workflows passaram |
-| tgcloud --version | CLI 0.2.0 executada |
-| git diff --check | Passou |
+Erros sem resposta conclusiva não autorizam repetir uma escrita cegamente: a assinatura consultada de sendMessage não contém chave de idempotência. O cliente apresenta a falha; não afirma que a API garante entrega exatamente uma vez. Migração e rate limit com parâmetros oficiais têm tratamento explícito.
 
-As sondagens exploratórias foram executadas com dados sintéticos e não constituem uma suíte de regressão persistida. Uma primeira execução assíncrona foi interrompida durante o encerramento do executor de threads local; a rodada concluída substituiu a delegação para thread por execução direta nas sondagens simuladas. A concorrência real não foi validada por essas sondagens.
+## Validação desta substituição
 
-## Limites e próximos critérios de aceitação
+- 39 verificações Python passaram: limites oficiais, intervalos excluídos, retry_after de 1000 s simulado sem corte, FLOOD_WAIT de 1000 s simulado sem acréscimo, migração JSON, resposta inválida, escrita 503 sem duplicação, mensagem pendente, redação, hashes completos/min, persistência SQLite do cache e migração na resolução.
+- Uma sondagem adicional de migração multipart confirmou a troca de chat_id preservando os bytes do documento.
+- Quatro cenários da notificação passaram: recusa, aceitação pendente, sucesso com marcador e prevenção de segundo envio.
+- 30 verificações JavaScript passaram para os limites oficiais e roundtrip dos callbacks r/f.
+- 13 verificações JavaScript com modelo do SDK passaram para diagnóstico, redação, ausência de fallback em 429/transporte, fallback após recusa 400 e edição inalterada. Isso não equivale a executar o runtime Serverless publicado.
+- npm run check, actionlint 1.7.12 e git diff --check passaram. A inspeção do Telethon 1.45.0, layer 229, passou em Python 3.12 e 3.13: 58 importações e 54 assinaturas, além da importação dos módulos sem rede.
 
-Não há credenciais Telegram ou TGCloud configuradas no executor local. A [CI remota do primeiro commit](https://github.com/morfalespi/IC/actions/runs/41905727234) passou nas duas combinações da matriz. O commit `b905e033d943e0556476bdfc46549d9431aad99f` foi confirmado pelo GitHub com `verification.verified=true` e motivo `valid`, usando a [mutation createCommitOnBranch](https://docs.github.com/en/graphql/reference/commits#createcommitonbranch). As APIs REST tentadas não assinaram o commit; a regra impediu a atualização da branch pela API de conteúdo. Nenhuma proteção foi alterada.
+Os resultados da CI e da consulta real do novo commit serão vinculados na descrição do PR. Nenhuma consulta real anterior prova automaticamente esta substituição.
 
-Uma [primeira sondagem real pelo workflow](https://github.com/morfalespi/IC/actions/runs/41905850398), no modo resumo, alvo público `telegram` e sem chat de destino, encontrou os secrets no GitHub Actions e iniciou o script. Foi cancelada após alguns minutos sem resultado observável. A saída em buffer não permitiu determinar a etapa de espera; não há comprovação de autenticação ou consulta nessa execução. Esse resultado motivou o limite explícito da autenticação e a saída sem buffer.
+## Evidências anteriores, com escopo restrito
 
-A [nova sondagem real](https://github.com/morfalespi/IC/actions/runs/41906828053), no commit `4659c2f02a6f854acbf982fc46224b692eaa3a31`, terminou com `success`. O log confirmou autenticação MTProto, resolução do alvo público como canal e leitura do perfil completo, com cinco campos extras apresentados pelo resumo. O resumo operacional registrou zero erros MTProto e nenhuma paginação incompleta nessa consulta. A [CI desse commit](https://github.com/morfalespi/IC/actions/runs/41906802508) passou nos dois jobs. O GitHub confirmou também a assinatura desse commit com `verification.verified=true`, motivo `valid`.
+A [consulta MTProto anterior](https://github.com/morfalespi/IC/actions/runs/41906828053) confirmou autenticação e perfil completo antes desta substituição. A [validação entre APIs anterior](https://github.com/morfalespi/IC/actions/runs/41923236979) confirmou getMe, getChat, igualdade do canal e leitura MTProto, após retry_after=203 s e FLOOD_WAIT=80 s. Essas execuções são históricas; usaram o código anterior.
 
-Essa prova cobre autenticação e leitura MTProto do canal público nessa execução. Não houve chamadas Bot API, envio de mensagens ou exportação de arquivos nesse modo; não comprova entrega ao usuário nem coleta completa. Não foram executados migração ou deploy. A foto de perfil foi solicitada pelo fluxo de resumo, mas o log não prova separadamente o sucesso desse download.
-
-Antes de afirmar funcionamento em produção, executar uma consulta autorizada, conferir a entidade e o conteúdo entregue no Telegram e observar as recusas/parcialidades registradas. Não publicar tokens, sessões nem credenciais para realizar essa validação. O transporte atual por workflow_dispatch em repositório público continua expondo metadados das entradas; esta revisão não altera essa arquitetura.
-
-## DECISÃO
-
-Entregar as mudanças por PR para main, mantendo as regras ativas de assinaturas obrigatórias, proteção contra exclusão de branches e contra force-push. Não executar merge nem deploy como parte desta revisão.
-
-## Complemento: Bot API e confronto entre APIs
-
-Nova pesquisa nas fontes oficiais de [Bot API](https://core.telegram.org/bots/api), [peers MTProto](https://core.telegram.org/api/peers) e [erros do Telethon](https://docs.telethon.dev/en/stable/concepts/errors.html). A Bot API documenta o campo result no envelope de sucesso; o cliente agora rejeita ok=true sem esse campo. Booleanos e listas continuam aceitos como resultados válidos.
-
-Adicionado scripts/validar_apis.py, acionado pelo input validar_apis do workflow do resolver: consulta getMe e getChat para o canal público telegram, autentica pelo Telethon e confere a igualdade do ID e a leitura do perfil completo MTProto. Executa em resumo, sem chat/mensagem de destino e com limite de cinco minutos na etapa. Essa rota não envia mensagens nem aciona a notificação de falha ao chat.
-
-Verificação local do complemento: sintaxe, 58 importações/52 assinaturas, actionlint e diff --check passaram. Quatro sondagens do envelope Bot API e quatro do validador passaram, cobrindo sucesso, divergência de ID, perfil completo ausente e bloqueio de destino de mensagens. A execução real dessa nova rota será registrada na descrição do PR, sem presumir sucesso.
+O PR permanece sem merge ou deploy. Não foi validada entrega real de mensagens/arquivos ao usuário nem cobertura exaustiva de todos os métodos oficiais. Não houve exposição de tokens ou sessões como parte das verificações registradas.

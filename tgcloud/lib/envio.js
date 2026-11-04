@@ -1,4 +1,5 @@
-import { api } from 'sdk';
+import { api, BotApiError } from 'sdk';
+import { diagnosticoErro } from './erros.js';
 
 const TECLADO_REFERENCIA = {
   keyboard: [
@@ -33,7 +34,8 @@ export async function enviarCartao(chatId, richHtml, fallbackHtml) {
   try {
     return await api.sendRichMessage({ chat_id: chatId, rich_message: { html: richHtml } });
   } catch (erro) {
-    console.error('sendRichMessage indisponível; usando mensagem convencional:', erro?.name ?? "Error");
+    console.error('sendRichMessage:', diagnosticoErro(erro));
+    if (!(erro instanceof BotApiError) || ![400, 404].includes(erro.code)) throw erro;
     return api.sendMessage({ chat_id: chatId, text: fallbackHtml, parse_mode: 'HTML' });
   }
 }
@@ -42,7 +44,9 @@ export async function editarCartao(chatId, messageId, richHtml, fallbackHtml) {
   try {
     return await api.editMessageText({ chat_id: chatId, message_id: messageId, rich_message: { html: richHtml } });
   } catch (erro) {
-    console.error('edição rica indisponível; usando texto convencional:', erro?.name ?? "Error");
+    console.error('editMessageText:', diagnosticoErro(erro));
+    if (!(erro instanceof BotApiError) || erro.code !== 400) throw erro;
+    if (/message is not modified/i.test(erro.description)) return { message_id: messageId, unchanged: true };
     return api.editMessageText({ chat_id: chatId, message_id: messageId, text: fallbackHtml, parse_mode: 'HTML' });
   }
 }

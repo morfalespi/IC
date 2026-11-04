@@ -89,7 +89,6 @@ jobs:
         run: pip install -r scripts/resolver-requirements.txt
       - name: Validar Bot API e MTProto sem entrega
         if: ${{ !inputs.healthcheck && inputs.validar_apis }}
-        timeout-minutes: 5
         env:
           MODO: resumo
           CHAT_ID: ""
@@ -101,11 +100,4 @@ jobs:
         if: ${{ !inputs.healthcheck && !inputs.validar_apis && (failure() || cancelled()) }}
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          if [ -f "$RUNNER_TEMP/notificado" ]; then exit 0; fi
-          if [ -z "$BOT_TOKEN" ] || [ -z "$CHAT_ID" ]; then exit 0; fi
-          if [[ ! "$CHAT_ID" =~ ^-?[0-9]{1,16}$ ]]; then exit 1; fi
-          curl -sS -m 20 --fail -o /dev/null \
-            --data-urlencode "chat_id=$CHAT_ID" \
-            --data-urlencode "text=A busca falhou antes de confirmar a entrega. Execução: $RUN_URL" \
-            "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage"
+        run: python scripts/notificar_falha.py

@@ -19,14 +19,16 @@ import telethon
 from ficha_completa import rich_pages, basic_pages, markdown_files, jsonl_files
 from mtproto_export import build_media_archives
 from telethon import TelegramClient, errors, utils
-from telethon.sessions import StringSession
+from telethon.sessions import SQLiteSession
+from telegram_ids import tipo_dialogo
+from bot_api import chamar, diagnostico_api
 from telethon.tl.functions.channels import GetFullChannelRequest, GetChannelsRequest, GetParticipantsRequest, GetMessagesRequest as GetChannelMessagesRequest
 from telethon.tl.functions.contacts import ResolveUsernameRequest
 from telethon.tl.functions.messages import GetChatsRequest, GetFullChatRequest, GetMessagesRequest
 from telethon.tl.functions.users import GetFullUserRequest, GetUsersRequest
 from telethon.tl.types import Channel, Chat, ChannelParticipantsRecent, ChannelParticipantsAdmins, ChannelParticipantsBots, ChannelParticipantsBanned, ChannelParticipantsKicked, InputChannel, InputPeerChannel, InputPeerChat, InputPeerUser, InputUser, PeerChannel, PeerChat, PeerUser, User, InputMessageID
 
-ESPERA_TOTAL = 600
+MENSAGENS_PENDENTES = []
 USERNAME_VALIDO = re.compile(r"[A-Za-z0-9_]{1,32}")
 ALVO_VALIDO = re.compile(r"(?:[A-Za-z0-9_]{1,32}|-?\d{1,16})")
 CHAT_VALIDO = re.compile(r"-?[0-9]{1,16}")
@@ -62,13 +64,19 @@ def input_usuario_bot(entidade):
     if isinstance(entidade, BotAPIEntity) and entidade.type == "private":
         return InputUser(entidade.id, 0)
     if isinstance(entidade, User):
-        return InputUser(entidade.id, 0 if entidade.min else (entidade.access_hash or 0))
+        try:
+            return utils.get_input_user(utils.get_input_peer(entidade))
+        except TypeError:
+            return InputUser(entidade.id, 0)
     return None
 
 
 def input_canal_bot(entidade):
     if isinstance(entidade, Channel):
-        return InputChannel(entidade.id, 0 if entidade.min else (entidade.access_hash or 0))
+        try:
+            return utils.get_input_channel(utils.get_input_peer(entidade))
+        except TypeError:
+            return InputChannel(entidade.id, 0)
     if isinstance(entidade, BotAPIEntity) and entidade.type in ("supergroup", "channel", "channel_peer"):
         id_real, tipo = utils.resolve_id(entidade.id)
         if tipo is PeerChannel:
@@ -93,49 +101,19 @@ def corte(valor, limite=400):
     return texto if len(texto) <= limite else texto[:limite] + "…"
 
 
-def chamar(metodo, corpo, cabecalhos, repetir_5xx=False):
-    pedido = urllib.request.Request(
-        f"https://api.telegram.org/bot{os.environ['BOT_TOKEN']}/{metodo}",
-        data=corpo,
-        headers=cabecalhos,
-    )
-    gasto = 0
-    for tentativa in range(5):
-        try:
-            with urllib.request.urlopen(pedido, timeout=30) as resposta:
-                codigo, bruto = resposta.status, resposta.read()
-        except urllib.error.HTTPError as erro:
-            codigo, bruto = erro.code, erro.read()
-        except Exception as erro:
-            return {"ok": False, "error_code": 0, "description": type(erro).__name__}
-        try:
-            retorno = json.loads(bruto)
-        except ValueError:
-            retorno = {"ok": False, "error_code": codigo, "description": "Resposta inválida da Bot API"}
-        if (not isinstance(retorno, dict) or not isinstance(retorno.get("ok"), bool)
-                or (retorno.get("ok") is True and "result" not in retorno)):
-            retorno = {"ok": False, "error_code": codigo, "description": "Resposta inválida da Bot API"}
-        if retorno.get("ok") and 200 <= codigo < 300:
-            return retorno
-        retorno["ok"] = False
-        estado = retorno.get("error_code", codigo)
-        retryable = estado == 429 or (repetir_5xx and estado in (500, 502, 503, 504))
-        if tentativa == 4 or not retryable:
-            return retorno
-        parametros = retorno.get("parameters")
-        parametros = parametros if isinstance(parametros, dict) else {}
-        espera = parametros.get("retry_after") if estado == 429 else None
-        espera = espera if type(espera) is int and espera >= 1 else 2 ** tentativa
-        if gasto + espera > ESPERA_TOTAL:
-            return retorno
-        gasto += espera
-        print("Bot API: nova tentativa", metodo, "status", estado, "após", espera, "s")
-        time.sleep(espera)
-    return {"ok": False, "error_code": 0, "description": "Tentativas esgotadas"}
 
-def confirmacao_mensagem(resposta):
+
+def aceitacao_mensagem(resposta):
     mensagem = resposta.get("result") if isinstance(resposta, dict) else None
-    return isinstance(resposta, dict) and resposta.get("ok") is True and isinstance(mensagem, dict) and type(mensagem.get("message_id")) is int and mensagem["message_id"] > 0
+    if not isinstance(resposta, dict) or resposta.get("ok") is not True or not isinstance(mensagem, dict):
+        return False
+    identificador = mensagem.get("message_id")
+    if type(identificador) is not int or identificador < 0:
+        return False
+    if identificador == 0:
+        MENSAGENS_PENDENTES.append(mensagem.get("ephemeral_message_id"))
+        print("Bot API aceitou mensagem sem ID editável; entrega permanece pendente")
+    return True
 
 
 def postar(chat_id, texto, formatado, teclado=None):
@@ -149,7 +127,7 @@ def postar(chat_id, texto, formatado, teclado=None):
 
 def enviar(chat_id, texto):
     retorno = postar(chat_id, texto, True)
-    if not confirmacao_mensagem(retorno):
+    if not aceitacao_mensagem(retorno):
         raise RuntimeError(f"sendMessage falhou: {retorno.get('error_code')} {retorno.get('description')}")
     open(os.path.join(os.environ.get("RUNNER_TEMP", "/tmp"), "notificado"), "w").close()
 
@@ -163,7 +141,7 @@ def enviar_foto(chat_id, conteudo):
         f"\r\n--{limite}--\r\n".encode(),
     ])
     retorno = chamar("sendPhoto", corpo, {"Content-Type": f"multipart/form-data; boundary={limite}"})
-    if not confirmacao_mensagem(retorno):
+    if not aceitacao_mensagem(retorno):
         raise RuntimeError(f"sendPhoto falhou: {retorno.get('error_code')} {retorno.get('description')}")
 
 
@@ -201,14 +179,14 @@ def editar_ficha_rica(conteudo, foto=None, definitiva=False):
         dados["message_id"] = ID_MENSAGEM
     if foto and len(foto) <= 10 * 1024 * 1024:
         resposta = solicitar_bot_api(metodo, dados, foto)
-        if confirmacao_mensagem(resposta):
+        if aceitacao_mensagem(resposta):
             if definitiva:
                 marcar_notificado()
             print("Rich Message aceita; foto incorporada no mesmo bloco")
             return True, True, (resposta.get("result") or {}).get("message_id", ID_MENSAGEM)
         print("mídia embutida indisponível:", resposta.get("error_code"), corte(resposta.get("description"), 180))
     resposta = solicitar_bot_api(metodo, dados)
-    if confirmacao_mensagem(resposta):
+    if aceitacao_mensagem(resposta):
         if definitiva:
             marcar_notificado()
         print("Rich Message aceita; sem foto incorporada")
@@ -259,7 +237,7 @@ def enviar_documento_md(chat, conteudo, id_entidade, indice, total):
     ])
     resposta = chamar("sendDocument", b"".join(partes),
                      {"Content-Type": f"multipart/form-data; boundary={limite}"})
-    if not confirmacao_mensagem(resposta):
+    if not aceitacao_mensagem(resposta):
         raise RuntimeError("Envio Markdown recusado: " + str(resposta.get("error_code")) +
                            " " + str(resposta.get("description", ""))[:180])
     print(f"documento Markdown {indice}/{total} confirmado: {len(conteudo)} bytes")
@@ -302,7 +280,7 @@ def registrar_paginacao_incompleta(dados, metodo, esperado, recebido):
 async def bot_api_leitura(dados, metodo, parametros):
     resposta = await asyncio.to_thread(
         chamar, metodo, json.dumps(parametros, ensure_ascii=False).encode("utf-8"),
-        {"Content-Type": "application/json"}, True
+        {"Content-Type": "application/json"}
     )
     dados.setdefault("respostas_bot_api", {}).setdefault(metodo, []).append(resposta)
     if not resposta.get("ok"):
@@ -1340,7 +1318,7 @@ def enviar_documento_arquivo(chat, caminho, id_entidade, indice, total):
     ])
     resposta = chamar("sendDocument", b"".join(partes),
                      {"Content-Type": f"multipart/form-data; boundary={limite}"})
-    if not confirmacao_mensagem(resposta):
+    if not aceitacao_mensagem(resposta):
         raise RuntimeError("Envio do pacote de mídia recusado: " + str(resposta.get("error_code")) +
                            " " + str(resposta.get("description", ""))[:180])
     print(f"pacote de mídia {indice}/{total} confirmado: {len(conteudo)} bytes")
@@ -1370,7 +1348,7 @@ def enviar_documento_jsonl(chat, conteudo, id_entidade, indice, total):
     ])
     resposta = chamar("sendDocument", b"".join(partes),
                      {"Content-Type": f"multipart/form-data; boundary={limite}"})
-    if not confirmacao_mensagem(resposta):
+    if not aceitacao_mensagem(resposta):
         raise RuntimeError("Envio JSONL recusado: " + str(resposta.get("error_code")) +
                            " " + str(resposta.get("description", ""))[:180])
     print(f"documento JSONL {indice}/{total} confirmado: {len(conteudo)} bytes")
@@ -1476,14 +1454,9 @@ def ficha_falha(alvo, motivo):
 
 
 def entidade_de(resultado):
-    peer = resultado.peer
-    if isinstance(peer, PeerUser):
-        return next((u for u in resultado.users if u.id == peer.user_id), None)
-    if isinstance(peer, PeerChannel):
-        return next((c for c in resultado.chats if isinstance(c, Channel) and c.id == peer.channel_id), None)
-    if isinstance(peer, PeerChat):
-        return next((c for c in resultado.chats if isinstance(c, Chat) and c.id == peer.chat_id), None)
-    return None
+    esperado = utils.get_peer_id(resultado.peer)
+    return next((entidade for entidade in [*resultado.users, *resultado.chats]
+                 if isinstance(entidade, (User, Channel, Chat)) and utils.get_peer_id(entidade) == esperado), None)
 
 
 async def completo(cliente, entidade):
@@ -1645,34 +1618,33 @@ def secoes_completas_telegram(dados, alvo, info):
 
 
 async def com_espera(operacao):
-    gasto = 0
-    avisado = False
     while True:
         try:
             return await operacao()
         except errors.FloodWaitError as erro:
-            espera = erro.seconds + 1
-            if gasto + espera > ESPERA_TOTAL:
-                raise
-            print("FloodWaitError", erro.seconds, "- aguardando", espera, "s para repetir")
-            if not avisado and os.environ.get("CHAT_ID"):
-                postar(os.environ["CHAT_ID"], f"O Telegram pediu uma espera de {erro.seconds} s. Vou aguardar e repetir a busca.", False)
-                avisado = True
-            gasto += espera
-            await asyncio.sleep(espera)
+            print("MTProto: aguardando FLOOD_WAIT", erro.seconds, "s")
+            await asyncio.sleep(erro.seconds)
 
 
 async def resolver_id(cliente, id_marcado):
-    if abs(id_marcado) > 4503599627370495 or id_marcado == 0:
+    if tipo_dialogo(id_marcado) is None:
         raise LookupError("ID fora do intervalo aceito pelo Telegram.")
 
     id_real, tipo = utils.resolve_id(id_marcado)
     try:
         if tipo is PeerUser:
-            candidatos = await com_espera(lambda: cliente(GetUsersRequest([InputUser(id_real, 0)])))
+            try:
+                referencia = utils.get_input_user(cliente.session.get_input_entity(PeerUser(id_real)))
+            except ValueError:
+                referencia = InputUser(id_real, 0)
+            candidatos = await com_espera(lambda: cliente(GetUsersRequest([referencia])))
             entidade = next((u for u in candidatos if isinstance(u, User) and u.id == id_real), None)
         elif tipo is PeerChannel:
-            candidatos = await com_espera(lambda: cliente(GetChannelsRequest([InputChannel(id_real, 0)])))
+            try:
+                referencia = utils.get_input_channel(cliente.session.get_input_entity(PeerChannel(id_real)))
+            except ValueError:
+                referencia = InputChannel(id_real, 0)
+            candidatos = await com_espera(lambda: cliente(GetChannelsRequest([referencia])))
             entidade = next((c for c in candidatos.chats if isinstance(c, Channel) and c.id == id_real), None)
         elif tipo is PeerChat:
             candidatos = await com_espera(lambda: cliente(GetChatsRequest([id_real])))
@@ -1697,7 +1669,7 @@ async def resolver_id(cliente, id_marcado):
 
 async def resolver_alvo(cliente, alvo):
     if re.fullmatch(r"-?\d{1,16}", alvo):
-        if int(alvo) == 0 or abs(int(alvo)) > 4503599627370495:
+        if tipo_dialogo(str(int(alvo))) is None:
             raise ValueError("ID fora do intervalo aceito pelo Telegram.")
         if EXPECTED_ID:
             raise ValueError("ID esperado exige um username público para a verificação.")
@@ -1710,15 +1682,16 @@ async def resolver_alvo(cliente, alvo):
                 "getChat",
                 json.dumps({"chat_id": int(alvo)}).encode("utf-8"),
                 {"Content-Type": "application/json"},
-                True,
             )
+            migracoes = resposta_bot.get("migrations") or []
+            id_confirmado = migracoes[-1]["to"] if migracoes else int(alvo)
             chat = resposta_bot.get("result")
             chat = chat if isinstance(chat, dict) else {}
-            if resposta_bot.get("ok") and (type(chat.get("id")) is not int or chat["id"] != int(alvo)
+            if resposta_bot.get("ok") and (type(chat.get("id")) is not int or chat["id"] != id_confirmado
                                             or chat.get("type") not in ("private", "group", "supergroup", "channel")):
                 resposta_bot = {"ok": False, "error_code": 0, "description": "getChat retornou uma entidade inválida ou divergente do ID solicitado."}
                 chat = {}
-            if resposta_bot.get("ok") and chat.get("id") == int(alvo) and chat.get("type") in (
+            if resposta_bot.get("ok") and chat.get("id") == id_confirmado and chat.get("type") in (
                 "private", "group", "supergroup", "channel"
             ):
                 username = chat.get("username")
@@ -1773,24 +1746,21 @@ async def resolver_alvo(cliente, alvo):
     return entidade, "Referência obtida por contacts.resolveUsername", resultado
 
 async def coletar(alvo):
-    api_id = os.environ.get("API_ID", "").strip()
-    api_hash = os.environ.get("API_HASH", "").strip()
-    bot_token = os.environ.get("BOT_TOKEN", "")
-    if not re.fullmatch(r"[0-9]+", api_id) or not 0 < int(api_id) < 2 ** 31:
-        raise ValueError("API_ID inválido.")
-    if not re.fullmatch(r"[A-Fa-f0-9]{32}", api_hash):
-        raise ValueError("API_HASH inválido.")
-    if not re.fullmatch(r"[0-9]+:[A-Za-z0-9_-]+", bot_token):
-        raise ValueError("BOT_TOKEN inválido.")
-    cliente = TelegramClient(StringSession(), int(api_id), api_hash,
-                             receive_updates=False, flood_sleep_threshold=0)
+    temporaria = None
+    pasta_sessao = os.environ.get("TELETHON_SESSION_DIR")
+    if not pasta_sessao:
+        temporaria = tempfile.TemporaryDirectory(prefix="infocard_session_")
+        pasta_sessao = temporaria.name
+    os.makedirs(pasta_sessao, mode=0o700, exist_ok=True)
+    os.chmod(pasta_sessao, 0o700)
+    bot_token = os.environ["BOT_TOKEN"]
+    nome_sessao = hashlib.sha256(bot_token.encode()).hexdigest()
+    sessao = SQLiteSession(os.path.join(pasta_sessao, nome_sessao))
+    cliente = None
     try:
-        print("Autenticação MTProto iniciada")
-        await com_espera(lambda: asyncio.wait_for(cliente.start(bot_token=bot_token), timeout=90))
-        identidade = await com_espera(lambda: asyncio.wait_for(cliente.get_me(), timeout=30))
-        if not identidade or not identidade.bot or identidade.id != int(bot_token.split(":", 1)[0]):
-            raise RuntimeError("A sessão MTProto não corresponde ao bot configurado.")
-        print("Autenticação MTProto confirmada")
+        cliente = TelegramClient(sessao, int(os.environ["API_ID"]), os.environ["API_HASH"])
+        await com_espera(lambda: cliente.start(bot_token=bot_token))
+        print("Autenticação concluída pelo Telethon")
         entidade, origem, resposta_resolucao = await resolver_alvo(cliente, alvo)
         dados = {"entidade": entidade, "completo": None, "resposta_completa": None, "resposta_resolucao": resposta_resolucao, "foto": None, "notas": [origem], "fotos_info": None, "musicas_info": None, "fotos_mtproto": [], "musicas_mtproto": [], "participantes_mtproto": [], "participantes_filtrados_mtproto": {}, "midias": [], "pacotes_midias": [], "falhas_coleta": [], "coletas_incompletas": [], "respostas_bot_api": {}, "falhas_bot_api": [], "mensagens_fixadas_mtproto": [], "midias_dir": tempfile.mkdtemp(prefix="infocard_telegram_") if MODO == "completo" and (CHAT_DESTINO or os.environ.get("COLETAR_MIDIA") == "true") else None}
         if isinstance(entidade, BotAPIEntity) and resposta_resolucao.get("mtproto_error"):
@@ -2083,7 +2053,13 @@ async def coletar(alvo):
         print("Resumo das leituras: " + json.dumps(resumo, ensure_ascii=False, sort_keys=True))
         return dados
     finally:
-        await cliente.disconnect()
+        try:
+            if cliente is not None:
+                await cliente.disconnect()
+        finally:
+            sessao.close()
+            if temporaria:
+                temporaria.cleanup()
 
 
 def campos_presentes(objeto):
@@ -2294,11 +2270,11 @@ async def principal():
     print("telethon", telethon.__version__)
     alvo = os.environ.get("ALVO", "").strip().lstrip("@")
     chat = os.environ.get("CHAT_ID", "").strip()
-    if chat and not CHAT_VALIDO.fullmatch(chat):
+    if chat and (not CHAT_VALIDO.fullmatch(chat) or tipo_dialogo(str(int(chat))) is None):
         print("CHAT_ID inválido")
         return 1
     if EXPECTED_ID and (not re.fullmatch(r"-?\d{1,16}", EXPECTED_ID) or
-                        int(EXPECTED_ID) == 0 or abs(int(EXPECTED_ID)) > 4503599627370495):
+                        tipo_dialogo(str(int(EXPECTED_ID))) is None):
         texto = falha(alvo or "(vazio)", "ID esperado inválido; envie ID @username válido.")
         print("EXPECTED_ID inválido")
         codigo = 1
@@ -2386,8 +2362,9 @@ async def principal():
             print("LookupError", erro)
             codigo = 1
         except errors.RPCError as erro:
-            texto = falha(alvo, f"O Telegram respondeu {type(erro).__name__}.")
-            print("RPCError", type(erro).__name__)
+            diagnostico = diagnostico_api({"error_code": erro.code, "description": erro.message}, "MTProto")
+            texto = falha(alvo, f"Telegram {erro.code}: {diagnostico['description']}")
+            print(json.dumps(diagnostico, ensure_ascii=False))
             codigo = 1
         except Exception as erro:
             print("Falha na consulta:", type(erro).__name__)
@@ -2446,7 +2423,7 @@ async def principal():
                         if resposta_id:
                             detalhes["reply_parameters"] = {"message_id": resposta_id}
                         retorno = solicitar_bot_api("sendRichMessage", detalhes)
-                        ok = confirmacao_mensagem(retorno)
+                        ok = aceitacao_mensagem(retorno)
                         if not ok:
                             print("Rich Message recusada:", indice + 1, "status", retorno.get("error_code"))
                         elif isinstance(retorno.get("result"), dict):
@@ -2456,7 +2433,7 @@ async def principal():
                     if indice == 0:
                         primeira_rica_confirmada = True
                     entregues_ricos += 1
-                    print("Rich Message confirmada:", entregues_ricos, "/", total_ricos)
+                    print("Rich Message aceita:", entregues_ricos, "/", total_ricos)
                 rich_ok = entregues_ricos == total_ricos
             except Exception as erro_rico:
                 print("formatação rica indisponível:", type(erro_rico).__name__)
@@ -2486,16 +2463,16 @@ async def principal():
                                 "text": pagina, "parse_mode": "HTML",
                                 **({"reply_markup": teclado_fallback} if teclado_fallback else {}),
                             })
-                        if not retorno or not confirmacao_mensagem(retorno):
+                        if not retorno or not aceitacao_mensagem(retorno):
                             if indice == 0 and primeira_rica_confirmada:
                                 avisos_fallback.append("A página HTML inicial não substituiu a página rica anterior; o fallback pode duplicar conteúdo.")
                             retorno = postar(chat, pagina, True,
                                              teclado_fallback if indice == 0 else None)
-                        if not confirmacao_mensagem(retorno):
+                        if not aceitacao_mensagem(retorno):
                             print("página HTML recusada:", indice + 1, "status", retorno.get("error_code"))
                             continue
                         entregues_html += 1
-                        print("página HTML confirmada:", entregues_html, "/", len(paginas_html))
+                        print("página HTML aceita:", entregues_html, "/", len(paginas_html))
                     html_ok = total_html > 0 and entregues_html == total_html
                 except Exception as erro_html:
                     print("HTML indisponível:", type(erro_html).__name__)
@@ -2571,6 +2548,7 @@ async def principal():
                 )
             )
             coleta_sem_falhas = not dados.get("falhas_coleta") and not dados.get("falhas_bot_api") and not dados.get("coletas_incompletas") and falhas_midias == 0
+            entrega_ok = entrega_ok and not MENSAGENS_PENDENTES
             relatorio_aceito = entrega_ok and (not completo or coleta_sem_falhas)
             if relatorio_aceito:
                 marcar_notificado()
@@ -2582,6 +2560,8 @@ async def principal():
                       midias_entregues, "/", midias_previstas, "pacotes de mídia")
             else:
                 linhas_aviso = []
+                if MENSAGENS_PENDENTES:
+                    linhas_aviso.append("O Telegram aceitou mensagens sem ID editável; a entrega dessas mensagens ainda não foi confirmada.")
                 if not entrega_ok:
                     linhas_aviso.extend([
                         "<b>⚠️ Entrega incompleta</b>",

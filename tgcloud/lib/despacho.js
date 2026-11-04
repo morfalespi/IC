@@ -14,6 +14,8 @@ function urlDisparo() {
   if (!REPOSITORIO_VALIDO.test(GH_REPOSITORY)) {
     const erro = new Error('GH_REPOSITORY não foi injetado no deploy');
     erro.status = 0;
+    erro.origin = 'github';
+    erro.publicMessage = erro.message;
     throw erro;
   }
   return `https://api.github.com/repos/${GH_REPOSITORY}/actions/workflows/resolver.yml/dispatches`;
@@ -23,6 +25,8 @@ export async function dispararBusca(entrada, chatId, mensagemId, modo = "complet
   if (!GH_DISPATCH_TOKEN) {
     const erro = new Error('GH_DISPATCH_TOKEN não foi injetado no deploy');
     erro.status = 0;
+    erro.origin = 'github';
+    erro.publicMessage = erro.message;
     throw erro;
   }
   const res = await fetch(urlDisparo(), {
@@ -38,6 +42,8 @@ export async function dispararBusca(entrada, chatId, mensagemId, modo = "complet
   if (res.status !== 200 && res.status !== 204) {
     const erro = new Error(`${EXPLICACOES[res.status] ?? 'O GitHub recusou o disparo.'} (HTTP ${res.status})`);
     erro.status = res.status;
+    erro.origin = 'github';
+    erro.publicMessage = erro.message;
     throw erro;
   }
 }

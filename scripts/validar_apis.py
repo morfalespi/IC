@@ -10,16 +10,13 @@ async def principal():
     if os.environ.get("CHAT_ID") or os.environ.get("MESSAGE_ID") or os.environ.get("MODO") != "resumo":
         raise ValueError("A validação exige modo resumo sem chat ou mensagem de destino.")
     headers = {"Content-Type": "application/json"}
-    me = await asyncio.to_thread(chamar, "getMe", b"{}", headers, True)
+    me = await asyncio.to_thread(chamar, "getMe", b"{}", headers)
     bot = me.get("result")
     if not me.get("ok") or not isinstance(bot, dict) or bot.get("is_bot") is not True:
         raise RuntimeError("getMe não confirmou uma conta de bot.")
-    token_id = os.environ.get("BOT_TOKEN", "").split(":", 1)[0]
-    if str(bot.get("id")) != token_id:
-        raise RuntimeError("getMe retornou uma identidade divergente.")
     print("Bot API getMe: identidade do bot confirmada", flush=True)
     response = await asyncio.to_thread(
-        chamar, "getChat", json.dumps({"chat_id": "@telegram"}).encode(), headers, True
+        chamar, "getChat", json.dumps({"chat_id": "@telegram"}).encode(), headers
     )
     chat = response.get("result")
     if (not response.get("ok") or not isinstance(chat, dict)

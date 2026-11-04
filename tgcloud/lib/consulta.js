@@ -4,6 +4,7 @@ import { reservarDisparo, liberarDisparo } from './limite.js';
 import { relatorioInvalido, relatorioFalha, relatorioBuscando, relatorioInline } from './relatorio.js';
 import { enviarCartao, editarCartao } from './envio.js';
 import { cartaoPesquisa, cartaoErro } from './cartao.js';
+import { diagnosticoErro, mensagemErro } from './erros.js';
 
 export async function consultar(texto, contexto) {
   const entrada = typeof texto === 'string' ? lerEntrada(texto) : texto;
@@ -15,7 +16,7 @@ export async function consultar(texto, contexto) {
   try {
     reserva = await reservarDisparo(contexto.chatId);
   } catch (erroLimite) {
-    console.error('controle de limite indisponível:', erroLimite?.name ?? "Error");
+    console.error('controle de limite indisponível:', diagnosticoErro(erroLimite));
     return relatorioFalha(entrada, 'O controle de limite das buscas está indisponível. Tente novamente em instantes.');
   }
   if (!reserva.permitido) return relatorioFalha(entrada, reserva.motivo);
@@ -37,11 +38,9 @@ export async function consultar(texto, contexto) {
     await dispararBusca(entrada, contexto.chatId, mensagemId, modo, contexto.origemMensagemId);
     return { enviado: true, mensagemId };
   } catch (erroDespacho) {
-    console.error('pesquisa ou despacho falhou:', erroDespacho?.name ?? "Error");
-    const motivo = Number.isInteger(erroDespacho?.status)
-      ? erroDespacho.message
-      : 'A comunicação com o serviço de pesquisa falhou. Tente novamente em instantes.';
-    await liberarDisparo(reserva.id).catch(erro => console.error('falha ao liberar reserva:', erro?.name ?? "Error"));
+    console.error('pesquisa ou despacho falhou:', diagnosticoErro(erroDespacho));
+    const motivo = mensagemErro(erroDespacho);
+    await liberarDisparo(reserva.id).catch(erro => console.error('falha ao liberar reserva:', diagnosticoErro(erro)));
     if (mensagemId) {
       try {
         await editarCartao(
@@ -52,7 +51,7 @@ export async function consultar(texto, contexto) {
         );
         return { enviado: true, mensagemId };
       } catch (erroEdicao) {
-        console.error('falha ao editar erro da ficha:', erroEdicao?.name ?? "Error");
+        console.error('falha ao editar erro da ficha:', diagnosticoErro(erroEdicao));
       }
     }
     return relatorioFalha(entrada, 'Não foi possível iniciar a busca MTProto: ' + motivo);
