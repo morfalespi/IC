@@ -72,9 +72,9 @@ export function relatorioInline(entrada) {
   };
 }
 
-export function relatorioErro(erro) {
+export function relatorioErro() {
   return {
     titulo: 'Erro',
-    html: '<b>Não foi possível responder</b>\nErro: ' + esc(erro?.name ?? 'Error') + ': ' + esc(recorte(erro?.message ?? erro)),
+    html: '<b>Não foi possível responder</b>\nTente novamente em instantes.',
   };
 }

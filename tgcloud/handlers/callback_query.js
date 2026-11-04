@@ -28,7 +28,7 @@ export default async function (callback) {
     const resposta = await consultar(pedido.entrada, contexto);
     if (!resposta?.enviado) await enviarMensagem(chat.id, resposta.html, resposta.teclado);
   } catch (erro) {
-    console.error('falha ao processar callback:', erro);
+    console.error('falha ao processar callback:', erro?.name ?? "Error");
     await enviarMensagem(chat.id, '<b>Não foi possível processar a ação.</b>\nEnvie uma nova pesquisa.');
   }
 }

@@ -16,7 +16,7 @@ on:
         required: false
         default: ""
       chat:
-        description: "ID do chat que recebe a resposta (vazio: só mostra no log)"
+        description: "ID do chat que recebe a resposta (vazio: coleta sem entrega; logs apenas operacionais)"
         required: false
         default: ""
       message_id:
@@ -90,7 +90,8 @@ jobs:
         run: |
           if [ -f "$RUNNER_TEMP/notificado" ]; then exit 0; fi
           if [ -z "$BOT_TOKEN" ] || [ -z "$CHAT_ID" ]; then exit 0; fi
-          curl -sS -m 20 --fail-with-body \
+          if [[ ! "$CHAT_ID" =~ ^-?[0-9]{1,16}$ ]]; then exit 1; fi
+          curl -sS -m 20 --fail -o /dev/null \
             --data-urlencode "chat_id=$CHAT_ID" \
-            --data-urlencode "text=A busca por @${ALVO} falhou antes de dar resultado. Log: $RUN_URL" \
+            --data-urlencode "text=A busca falhou antes de confirmar a entrega. Execução: $RUN_URL" \
             "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage"

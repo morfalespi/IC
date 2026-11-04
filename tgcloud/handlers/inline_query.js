@@ -13,7 +13,7 @@ export default async function (query) {
   try {
     resposta = await consultar(texto, { canal: 'inline' });
   } catch (e) {
-    console.error('falha ao montar a resposta inline:', e);
+    console.error('falha ao montar a resposta inline:', e?.name ?? "Error");
     resposta = relatorioErro(e);
   }
   await responderInline(query.id, resposta.titulo, resposta.html, resposta.botaoPrivado);

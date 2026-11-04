@@ -86,7 +86,7 @@ export default async function (message) {
         : await consultar(inicio?.[1] ?? texto, { canal: 'privado', chatId: message.chat.id });
     }
   } catch (erro) {
-    console.error('falha ao montar a resposta:', erro);
+    console.error('falha ao montar a resposta:', erro?.name ?? "Error");
     resposta = relatorioErro(erro);
   }
   if (!resposta?.enviado) await enviarMensagem(message.chat.id, resposta.html, resposta.teclado);

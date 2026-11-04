@@ -26,6 +26,7 @@ permissions:
 
 jobs:
   deploy:
+    if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -46,6 +47,32 @@ jobs:
           fi
 
       - run: npm ci
+
+      - run: npm run check
+
+      - name: Validar a permissão do GH_DISPATCH_TOKEN
+        env:
+          GH_DISPATCH_TOKEN: ${{ secrets.GH_DISPATCH_TOKEN }}
+        run: |
+          status=$(curl -sS -m 20 -o "$RUNNER_TEMP/validacao.json" -w "%{http_code}" -X POST \
+            -H "Authorization: Bearer $GH_DISPATCH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2026-03-10" \
+            -d '{"ref":"main","inputs":{"alvo":"healthcheck","healthcheck":true,"chat":""}}' \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/resolver.yml/dispatches")
+          case "$status" in
+            200|204)
+              echo "GH_DISPATCH_TOKEN disparou o healthcheck do resolver.yml (HTTP $status)."
+              ;;
+            401|403|404|422)
+              echo "::error::GH_DISPATCH_TOKEN não pode disparar o resolver.yml (HTTP $status). O token precisa da permissão Actions: Read and write neste repositório. A publicação foi interrompida antes de alterar o serviço."
+              exit 1
+              ;;
+            *)
+              echo "::error::Resposta inesperada do GitHub ao validar o token (HTTP $status)."
+              exit 1
+              ;;
+          esac
 
       - name: Sincronizar estado da nuvem
         run: npx --no-install tgcloud fetch
@@ -85,29 +112,3 @@ jobs:
 
       - name: Estado do webhook
         run: npx --no-install tgcloud webhook
-
-      - name: Validar a permissão do GH_DISPATCH_TOKEN
-        env:
-          GH_DISPATCH_TOKEN: ${{ secrets.GH_DISPATCH_TOKEN }}
-        run: |
-          status=$(curl -sS -m 20 -o "$RUNNER_TEMP/validacao.json" -w "%{http_code}" -X POST \
-            -H "Authorization: Bearer $GH_DISPATCH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2026-03-10" \
-            -d '{"ref":"main","inputs":{"alvo":"healthcheck","healthcheck":true,"chat":""}}' \
-            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/resolver.yml/dispatches")
-          case "$status" in
-            200|204)
-              echo "GH_DISPATCH_TOKEN disparou o healthcheck do resolver.yml (HTTP $status)."
-              ;;
-            401|403|404|422)
-              echo "::error::GH_DISPATCH_TOKEN não pode disparar o resolver.yml (HTTP $status). O token precisa da permissão Actions: Read and write neste repositório. Os módulos já foram publicados; a busca por MTProto fica indisponível até o token ser corrigido."
-              cat "$RUNNER_TEMP/validacao.json"
-              exit 1
-              ;;
-            *)
-              echo "::error::Resposta inesperada do GitHub ao validar o token (HTTP $status)."
-              cat "$RUNNER_TEMP/validacao.json"
-              exit 1
-              ;;
-          esac

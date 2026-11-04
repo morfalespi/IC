@@ -10,7 +10,6 @@ import re
 import shutil
 import tempfile
 import sys
-import traceback
 import time
 import urllib.error
 import urllib.request
@@ -62,12 +61,14 @@ def id_peer(entidade):
 def input_usuario_bot(entidade):
     if isinstance(entidade, BotAPIEntity) and entidade.type == "private":
         return InputUser(entidade.id, 0)
-    return entidade if isinstance(entidade, User) else None
+    if isinstance(entidade, User):
+        return InputUser(entidade.id, 0 if entidade.min else (entidade.access_hash or 0))
+    return None
 
 
 def input_canal_bot(entidade):
     if isinstance(entidade, Channel):
-        return entidade
+        return InputChannel(entidade.id, 0 if entidade.min else (entidade.access_hash or 0))
     if isinstance(entidade, BotAPIEntity) and entidade.type in ("supergroup", "channel", "channel_peer"):
         id_real, tipo = utils.resolve_id(entidade.id)
         if tipo is PeerChannel:
@@ -77,8 +78,6 @@ def input_canal_bot(entidade):
 
 def input_peer_canal_bot(entidade):
     canal = input_canal_bot(entidade)
-    if isinstance(canal, Channel):
-        return canal
     if isinstance(canal, InputChannel):
         return InputPeerChannel(canal.channel_id, canal.access_hash)
     return None
@@ -100,6 +99,7 @@ def chamar(metodo, corpo, cabecalhos, repetir_5xx=False):
         data=corpo,
         headers=cabecalhos,
     )
+    gasto = 0
     for tentativa in range(5):
         try:
             with urllib.request.urlopen(pedido, timeout=30) as resposta:
@@ -112,23 +112,29 @@ def chamar(metodo, corpo, cabecalhos, repetir_5xx=False):
             retorno = json.loads(bruto)
         except ValueError:
             retorno = {"ok": False, "error_code": codigo, "description": "Resposta inválida da Bot API"}
-        if retorno.get("ok"):
+        if not isinstance(retorno, dict) or not isinstance(retorno.get("ok"), bool):
+            retorno = {"ok": False, "error_code": codigo, "description": "Resposta inválida da Bot API"}
+        if retorno.get("ok") and 200 <= codigo < 300:
             return retorno
+        retorno["ok"] = False
         estado = retorno.get("error_code", codigo)
         retryable = estado == 429 or (repetir_5xx and estado in (500, 502, 503, 504))
         if tentativa == 4 or not retryable:
             return retorno
-        parametros = retorno.get("parameters") or {}
+        parametros = retorno.get("parameters")
+        parametros = parametros if isinstance(parametros, dict) else {}
         espera = parametros.get("retry_after") if estado == 429 else None
-        espera = espera if isinstance(espera, (int, float)) and espera >= 1 else 2 ** tentativa
-        espera = min(120, max(1, espera))
+        espera = espera if type(espera) is int and espera >= 1 else 2 ** tentativa
+        if gasto + espera > ESPERA_TOTAL:
+            return retorno
+        gasto += espera
         print("Bot API: nova tentativa", metodo, "status", estado, "após", espera, "s")
         time.sleep(espera)
     return {"ok": False, "error_code": 0, "description": "Tentativas esgotadas"}
 
 def confirmacao_mensagem(resposta):
     mensagem = resposta.get("result") if isinstance(resposta, dict) else None
-    return bool(resposta.get("ok")) and isinstance(mensagem, dict) and isinstance(mensagem.get("message_id"), int)
+    return isinstance(resposta, dict) and resposta.get("ok") is True and isinstance(mensagem, dict) and type(mensagem.get("message_id")) is int and mensagem["message_id"] > 0
 
 
 def postar(chat_id, texto, formatado, teclado=None):
@@ -1146,8 +1152,7 @@ async def coletar_historico_canal_pessoal(cliente, dados, entidade):
 
 
 async def coletar_bot_api(dados, entidade, info):
-    usa_username = isinstance(entidade, (Channel, Chat, BotAPIEntity))
-    chat_id = "@" + info["username"] if usa_username and info.get("username") else info.get("id")
+    chat_id = info.get("id")
     if not chat_id:
         return
     respostas_chat = dados.get("respostas_bot_api", {}).get("getChat", [])
@@ -1473,15 +1478,18 @@ def entidade_de(resultado):
     peer = resultado.peer
     if isinstance(peer, PeerUser):
         return next((u for u in resultado.users if u.id == peer.user_id), None)
-    alvo_id = peer.channel_id if isinstance(peer, PeerChannel) else getattr(peer, "chat_id", None)
-    return next((c for c in resultado.chats if getattr(c, "id", None) == alvo_id), None)
+    if isinstance(peer, PeerChannel):
+        return next((c for c in resultado.chats if isinstance(c, Channel) and c.id == peer.channel_id), None)
+    if isinstance(peer, PeerChat):
+        return next((c for c in resultado.chats if isinstance(c, Chat) and c.id == peer.chat_id), None)
+    return None
 
 
 async def completo(cliente, entidade):
     if isinstance(entidade, User):
-        return await cliente(GetFullUserRequest(entidade))
+        return await cliente(GetFullUserRequest(input_usuario_bot(entidade)))
     if isinstance(entidade, Channel):
-        return await cliente(GetFullChannelRequest(entidade))
+        return await cliente(GetFullChannelRequest(input_canal_bot(entidade)))
     if isinstance(entidade, Chat):
         return await cliente(GetFullChatRequest(entidade.id))
     if isinstance(entidade, BotAPIEntity):
@@ -1667,9 +1675,11 @@ async def resolver_id(cliente, id_marcado):
             entidade = next((c for c in candidatos.chats if isinstance(c, Channel) and c.id == id_real), None)
         elif tipo is PeerChat:
             candidatos = await com_espera(lambda: cliente(GetChatsRequest([id_real])))
-            entidade = next((c for c in candidatos.chats if getattr(c, "id", None) == id_real), None)
+            entidade = next((c for c in candidatos.chats if isinstance(c, Chat) and c.id == id_real), None)
         else:
             entidade = None
+    except (errors.FloodWaitError, errors.UnauthorizedError):
+        raise
     except errors.RPCError as erro:
         raise LookupError(
             "O Telegram não permitiu resolver este ID sem contexto suficiente "
@@ -1686,6 +1696,8 @@ async def resolver_id(cliente, id_marcado):
 
 async def resolver_alvo(cliente, alvo):
     if re.fullmatch(r"-?\d{1,16}", alvo):
+        if int(alvo) == 0 or abs(int(alvo)) > 4503599627370495:
+            raise ValueError("ID fora do intervalo aceito pelo Telegram.")
         if EXPECTED_ID:
             raise ValueError("ID esperado exige um username público para a verificação.")
         try:
@@ -1699,8 +1711,13 @@ async def resolver_alvo(cliente, alvo):
                 {"Content-Type": "application/json"},
                 True,
             )
-            chat = resposta_bot.get("result") or {}
-            if resposta_bot.get("ok") and chat.get("type") in (
+            chat = resposta_bot.get("result")
+            chat = chat if isinstance(chat, dict) else {}
+            if resposta_bot.get("ok") and (type(chat.get("id")) is not int or chat["id"] != int(alvo)
+                                            or chat.get("type") not in ("private", "group", "supergroup", "channel")):
+                resposta_bot = {"ok": False, "error_code": 0, "description": "getChat retornou uma entidade inválida ou divergente do ID solicitado."}
+                chat = {}
+            if resposta_bot.get("ok") and chat.get("id") == int(alvo) and chat.get("type") in (
                 "private", "group", "supergroup", "channel"
             ):
                 username = chat.get("username")
@@ -1720,7 +1737,7 @@ async def resolver_alvo(cliente, alvo):
                 return BotAPIEntity(chat), (
                     "ID confirmado pela Bot API após MTProto não resolver; leituras MTProto compatíveis serão tentadas com access_hash zero: "
                     + str(erro_mtproto)
-                ), {"bot_api_getChat": resposta_bot, "mtproto_error": str(erro_mtproto)}
+                ), {"bot_api_getChat": resposta_bot, "bot_api_getChat_attempted": True, "mtproto_error": str(erro_mtproto)}
             id_marcado = int(alvo)
             id_real, tipo_peer = utils.resolve_id(id_marcado)
             tipo_inferido = {
@@ -1755,9 +1772,22 @@ async def resolver_alvo(cliente, alvo):
     return entidade, "Referência obtida por contacts.resolveUsername", resultado
 
 async def coletar(alvo):
-    cliente = TelegramClient(StringSession(), int(os.environ["API_ID"]), os.environ["API_HASH"])
+    api_id = os.environ.get("API_ID", "").strip()
+    api_hash = os.environ.get("API_HASH", "").strip()
+    bot_token = os.environ.get("BOT_TOKEN", "")
+    if not re.fullmatch(r"[0-9]+", api_id) or not 0 < int(api_id) < 2 ** 31:
+        raise ValueError("API_ID inválido.")
+    if not re.fullmatch(r"[A-Fa-f0-9]{32}", api_hash):
+        raise ValueError("API_HASH inválido.")
+    if not re.fullmatch(r"[0-9]+:[A-Za-z0-9_-]+", bot_token):
+        raise ValueError("BOT_TOKEN inválido.")
+    cliente = TelegramClient(StringSession(), int(api_id), api_hash,
+                             receive_updates=False, flood_sleep_threshold=0)
     try:
-        await com_espera(lambda: cliente.start(bot_token=os.environ["BOT_TOKEN"]))
+        await com_espera(lambda: cliente.start(bot_token=bot_token))
+        identidade = await com_espera(lambda: cliente.get_me())
+        if not identidade or not identidade.bot or identidade.id != int(bot_token.split(":", 1)[0]):
+            raise RuntimeError("A sessão MTProto não corresponde ao bot configurado.")
         entidade, origem, resposta_resolucao = await resolver_alvo(cliente, alvo)
         dados = {"entidade": entidade, "completo": None, "resposta_completa": None, "resposta_resolucao": resposta_resolucao, "foto": None, "notas": [origem], "fotos_info": None, "musicas_info": None, "fotos_mtproto": [], "musicas_mtproto": [], "participantes_mtproto": [], "participantes_filtrados_mtproto": {}, "midias": [], "pacotes_midias": [], "falhas_coleta": [], "coletas_incompletas": [], "respostas_bot_api": {}, "falhas_bot_api": [], "mensagens_fixadas_mtproto": [], "midias_dir": tempfile.mkdtemp(prefix="infocard_telegram_") if MODO == "completo" and (CHAT_DESTINO or os.environ.get("COLETAR_MIDIA") == "true") else None}
         if isinstance(entidade, BotAPIEntity) and resposta_resolucao.get("mtproto_error"):
@@ -2353,12 +2383,12 @@ async def principal():
             print("LookupError", erro)
             codigo = 1
         except errors.RPCError as erro:
-            texto = falha(alvo, f"O Telegram respondeu {type(erro).__name__}: {erro}")
-            print("RPCError", type(erro).__name__, erro)
+            texto = falha(alvo, f"O Telegram respondeu {type(erro).__name__}.")
+            print("RPCError", type(erro).__name__)
             codigo = 1
         except Exception as erro:
-            traceback.print_exc()
-            texto = falha(alvo, f"Erro inesperado: {type(erro).__name__}: {erro}")
+            print("Falha na consulta:", type(erro).__name__)
+            texto = falha(alvo, f"Falha na consulta: {type(erro).__name__}. Verifique a configuração e tente novamente.")
             codigo = 1
     if chat:
         if codigo == 0:

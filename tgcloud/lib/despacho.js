@@ -36,8 +36,7 @@ export async function dispararBusca(entrada, chatId, mensagemId, modo = "complet
       body: fetch.body.json({ ref: 'main', inputs: { alvo: String(entrada.username || entrada.id), expected_id: entrada.tipo === "referencia" ? entrada.id : "", chat: String(chatId), message_id: String(mensagemId || ""), modo: modo === "resumo" ? "resumo" : "completo", origem_id: String(origemId || "") } }),
   });
   if (res.status !== 200 && res.status !== 204) {
-    const corpo = await res.text();
-    const erro = new Error(`${EXPLICACOES[res.status] ?? 'O GitHub recusou o disparo.'} (GitHub respondeu ${res.status}: ${corpo.slice(0, 200)})`);
+    const erro = new Error(`${EXPLICACOES[res.status] ?? 'O GitHub recusou o disparo.'} (HTTP ${res.status})`);
     erro.status = res.status;
     throw erro;
   }

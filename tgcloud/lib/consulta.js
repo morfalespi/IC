@@ -15,7 +15,7 @@ export async function consultar(texto, contexto) {
   try {
     reserva = await reservarDisparo(contexto.chatId);
   } catch (erroLimite) {
-    console.error('controle de limite indisponível:', erroLimite);
+    console.error('controle de limite indisponível:', erroLimite?.name ?? "Error");
     return relatorioFalha(entrada, 'O controle de limite das buscas está indisponível. Tente novamente em instantes.');
   }
   if (!reserva.permitido) return relatorioFalha(entrada, reserva.motivo);
@@ -37,21 +37,24 @@ export async function consultar(texto, contexto) {
     await dispararBusca(entrada, contexto.chatId, mensagemId, modo, contexto.origemMensagemId);
     return { enviado: true, mensagemId };
   } catch (erroDespacho) {
-    console.error('pesquisa ou despacho falhou:', erroDespacho);
-    await liberarDisparo(reserva.id).catch(erro => console.error('falha ao liberar reserva:', erro));
+    console.error('pesquisa ou despacho falhou:', erroDespacho?.name ?? "Error");
+    const motivo = Number.isInteger(erroDespacho?.status)
+      ? erroDespacho.message
+      : 'A comunicação com o serviço de pesquisa falhou. Tente novamente em instantes.';
+    await liberarDisparo(reserva.id).catch(erro => console.error('falha ao liberar reserva:', erro?.name ?? "Error"));
     if (mensagemId) {
       try {
         await editarCartao(
           contexto.chatId,
           mensagemId,
-          cartaoErro(entrada, erroDespacho.message),
-          relatorioFalha(entrada, erroDespacho.message).html
+          cartaoErro(entrada, motivo),
+          relatorioFalha(entrada, motivo).html
         );
         return { enviado: true, mensagemId };
       } catch (erroEdicao) {
-        console.error('falha ao editar erro da ficha:', erroEdicao);
+        console.error('falha ao editar erro da ficha:', erroEdicao?.name ?? "Error");
       }
     }
-    return relatorioFalha(entrada, 'Não foi possível iniciar a busca MTProto: ' + erroDespacho.message);
+    return relatorioFalha(entrada, 'Não foi possível iniciar a busca MTProto: ' + motivo);
   }
 }
