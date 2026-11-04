@@ -112,7 +112,8 @@ def chamar(metodo, corpo, cabecalhos, repetir_5xx=False):
             retorno = json.loads(bruto)
         except ValueError:
             retorno = {"ok": False, "error_code": codigo, "description": "Resposta inválida da Bot API"}
-        if not isinstance(retorno, dict) or not isinstance(retorno.get("ok"), bool):
+        if (not isinstance(retorno, dict) or not isinstance(retorno.get("ok"), bool)
+                or (retorno.get("ok") is True and "result" not in retorno)):
             retorno = {"ok": False, "error_code": codigo, "description": "Resposta inválida da Bot API"}
         if retorno.get("ok") and 200 <= codigo < 300:
             return retorno

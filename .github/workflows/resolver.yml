@@ -11,6 +11,11 @@ on:
         type: boolean
         required: false
         default: false
+      validar_apis:
+        description: "Verificar getMe/getChat e o mesmo canal público no MTProto, sem enviar mensagens"
+        type: boolean
+        required: false
+        default: false
       expected_id:
         description: "ID do peer esperado, validado após contacts.resolveUsername"
         required: false
@@ -82,10 +87,18 @@ jobs:
           cache-dependency-path: scripts/resolver-requirements.txt
       - if: ${{ !inputs.healthcheck }}
         run: pip install -r scripts/resolver-requirements.txt
-      - if: ${{ !inputs.healthcheck }}
+      - name: Validar Bot API e MTProto sem entrega
+        if: ${{ !inputs.healthcheck && inputs.validar_apis }}
+        timeout-minutes: 5
+        env:
+          MODO: resumo
+          CHAT_ID: ""
+          MESSAGE_ID: ""
+        run: python scripts/validar_apis.py
+      - if: ${{ !inputs.healthcheck && !inputs.validar_apis }}
         run: python scripts/resolver.py
       - name: Avisar o chat se a busca falhou sem resposta
-        if: ${{ !inputs.healthcheck && (failure() || cancelled()) }}
+        if: ${{ !inputs.healthcheck && !inputs.validar_apis && (failure() || cancelled()) }}
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |

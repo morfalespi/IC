@@ -65,3 +65,11 @@ Antes de afirmar funcionamento em produção, executar uma consulta autorizada, 
 ## DECISÃO
 
 Entregar as mudanças por PR para main, mantendo as regras ativas de assinaturas obrigatórias, proteção contra exclusão de branches e contra force-push. Não executar merge nem deploy como parte desta revisão.
+
+## Complemento: Bot API e confronto entre APIs
+
+Nova pesquisa nas fontes oficiais de [Bot API](https://core.telegram.org/bots/api), [peers MTProto](https://core.telegram.org/api/peers) e [erros do Telethon](https://docs.telethon.dev/en/stable/concepts/errors.html). A Bot API documenta o campo result no envelope de sucesso; o cliente agora rejeita ok=true sem esse campo. Booleanos e listas continuam aceitos como resultados válidos.
+
+Adicionado scripts/validar_apis.py, acionado pelo input validar_apis do workflow do resolver: consulta getMe e getChat para o canal público telegram, autentica pelo Telethon e confere a igualdade do ID e a leitura do perfil completo MTProto. Executa em resumo, sem chat/mensagem de destino e com limite de cinco minutos na etapa. Essa rota não envia mensagens nem aciona a notificação de falha ao chat.
+
+Verificação local do complemento: sintaxe, 58 importações/52 assinaturas, actionlint e diff --check passaram. Quatro sondagens do envelope Bot API e quatro do validador passaram, cobrindo sucesso, divergência de ID, perfil completo ausente e bloqueio de destino de mensagens. A execução real dessa nova rota será registrada na descrição do PR, sem presumir sucesso.
