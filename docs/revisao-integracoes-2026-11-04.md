@@ -5,7 +5,7 @@ Base: `main`, commit `1d3433a5c2cc7eb73fd6d9294b08eced23cb2fab`.
 ## IMPLEMENTADO
 
 - Remoção de README.md, AGENTS.md e SECURITY.md, conforme pedido do proprietário.
-- Autenticação de bot com validação da configuração antes de conectar, sessão somente em memória e conferência do ID e do tipo da conta autenticada. O cliente não recebe updates e a espera por FloodWait fica sob controle explícito do worker.
+- Autenticação de bot com validação da configuração antes de conectar, sessão somente em memória e conferência do ID e do tipo da conta autenticada. Cada tentativa de start tem limite de 90 segundos, e a conferência da identidade tem limite de 30 segundos; FloodWait é tratado separadamente. O cliente não recebe updates e a espera por FloodWait fica sob controle explícito do worker. O workflow usa saída Python sem buffer para registrar o início e a confirmação da autenticação sem identificadores ou credenciais.
 - IDs fora do intervalo são rejeitados antes do fallback. Erros de autenticação e FloodWait esgotado não viram falha de resolução por falta de contexto.
 - Resolução de username distingue canais de grupos mesmo quando o ID interno coincide. ChatEmpty não confirma uma entidade acessível.
 - getChat no fallback exige resultado com ID e tipo válidos. A coleta subsequente usa o ID estável, evitando consultar outro peer se o username mudar. A resposta já obtida no fallback é reutilizada.
@@ -42,6 +42,7 @@ A compatibilidade executável foi conferida contra Telethon 1.45.0, layer 229. A
 | Python 3.13.5: compileall e compatibility.py | Passou |
 | Python 3.12.14: compatibility.py | Passou: 58 importações, 52 assinaturas e importação do resolver sem rede |
 | Sondagens Python com respostas simuladas | 33 verificações passaram: envelope inválido, confirmação de mensagem, falha de transporte, 429/espera, escrita sem repetição de 503, hashes min/completos, tipo de peer, IDs inválidos, getChat divergente, erro de autenticação, ChatEmpty e configuração ausente |
+| Sondagens adicionais de autenticação | 4 verificações passaram: conta ausente, conta sem flag de bot, ID divergente e timeout simulado; resolução não iniciou e disconnect foi chamado |
 | Sondagens JavaScript | 17 verificações passaram: entrada, roundtrip dos callbacks r/f, rejeição de dados inválidos e mensagem de erro sem conteúdo sensível |
 | actionlint 1.7.12 | Todos os workflows passaram |
 | tgcloud --version | CLI 0.2.0 executada |
@@ -51,7 +52,9 @@ As sondagens exploratórias foram executadas com dados sintéticos e não consti
 
 ## Limites e próximos critérios de aceitação
 
-Não há credenciais Telegram ou TGCloud configuradas neste ambiente. Não foram executados login real, consultas autorizadas, envio de mensagens, download real de mídia, migração ou deploy. A CI remota e a verificação de assinatura são conferidas separadamente na entrega do PR; não são presumidas pelos resultados locais acima.
+Não há credenciais Telegram ou TGCloud configuradas no executor local. A [CI remota do primeiro commit](https://github.com/morfalespi/IC/actions/runs/41905727234) passou nas duas combinações da matriz. O commit `b905e033d943e0556476bdfc46549d9431aad99f` foi confirmado pelo GitHub com `verification.verified=true` e motivo `valid`, usando a [mutation createCommitOnBranch](https://docs.github.com/en/graphql/reference/commits#createcommitonbranch). As APIs REST tentadas não assinaram o commit; a regra impediu a atualização da branch pela API de conteúdo. Nenhuma proteção foi alterada.
+
+Uma [sondagem real pelo workflow](https://github.com/morfalespi/IC/actions/runs/41905850398), no modo resumo, alvo público `telegram` e sem chat de destino, encontrou os secrets no GitHub Actions e iniciou o script. Foi cancelada após alguns minutos sem resultado observável. A saída em buffer não permitiu determinar a etapa de espera; não há comprovação de autenticação ou consulta nessa execução. Esse resultado motivou o limite explícito da autenticação e a saída sem buffer. Nenhuma mensagem foi solicitada ao Telegram. Não foram executados download real de mídia, migração ou deploy. Uma nova sondagem e a CI do commit seguinte devem ser avaliadas separadamente.
 
 Antes de afirmar funcionamento em produção, executar uma consulta autorizada, conferir a entidade e o conteúdo entregue no Telegram e observar as recusas/parcialidades registradas. Não publicar tokens, sessões nem credenciais para realizar essa validação. O transporte atual por workflow_dispatch em repositório público continua expondo metadados das entradas; esta revisão não altera essa arquitetura.
 

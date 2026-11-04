@@ -1784,10 +1784,12 @@ async def coletar(alvo):
     cliente = TelegramClient(StringSession(), int(api_id), api_hash,
                              receive_updates=False, flood_sleep_threshold=0)
     try:
-        await com_espera(lambda: cliente.start(bot_token=bot_token))
-        identidade = await com_espera(lambda: cliente.get_me())
+        print("Autenticação MTProto iniciada")
+        await com_espera(lambda: asyncio.wait_for(cliente.start(bot_token=bot_token), timeout=90))
+        identidade = await com_espera(lambda: asyncio.wait_for(cliente.get_me(), timeout=30))
         if not identidade or not identidade.bot or identidade.id != int(bot_token.split(":", 1)[0]):
             raise RuntimeError("A sessão MTProto não corresponde ao bot configurado.")
+        print("Autenticação MTProto confirmada")
         entidade, origem, resposta_resolucao = await resolver_alvo(cliente, alvo)
         dados = {"entidade": entidade, "completo": None, "resposta_completa": None, "resposta_resolucao": resposta_resolucao, "foto": None, "notas": [origem], "fotos_info": None, "musicas_info": None, "fotos_mtproto": [], "musicas_mtproto": [], "participantes_mtproto": [], "participantes_filtrados_mtproto": {}, "midias": [], "pacotes_midias": [], "falhas_coleta": [], "coletas_incompletas": [], "respostas_bot_api": {}, "falhas_bot_api": [], "mensagens_fixadas_mtproto": [], "midias_dir": tempfile.mkdtemp(prefix="infocard_telegram_") if MODO == "completo" and (CHAT_DESTINO or os.environ.get("COLETAR_MIDIA") == "true") else None}
         if isinstance(entidade, BotAPIEntity) and resposta_resolucao.get("mtproto_error"):
