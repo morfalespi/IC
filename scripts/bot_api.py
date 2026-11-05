@@ -146,7 +146,7 @@ def estado_mensagem(resposta, chat_id=None):
     if (not isinstance(resposta, dict) or resposta.get("ok") is not True
             or type(identificador) is not int or identificador < 0
             or type(destino) is not int or tipo not in tipos.get(tipo_dialogo(destino), ())
-            or type(data) is not int or data <= 0):
+            or type(data) is not int):
         raise APIProtocolError("Message", {"error_code": 0, "origin": "protocol",
                                           "description": "Resposta sem Message com identificador e chat válidos"})
     if chat_id is not None:
@@ -159,7 +159,7 @@ def estado_mensagem(resposta, chat_id=None):
         if destino != esperado:
             raise APIProtocolError("Message", {"error_code": 0, "origin": "protocol",
                                                "description": "Message retornou chat diferente do destino solicitado"})
-    return "pending" if identificador == 0 else "confirmed"
+    return "pending" if identificador == 0 or data == 0 else "confirmed"
 
 
 def registrar_notificacao(resposta, chat_id):
