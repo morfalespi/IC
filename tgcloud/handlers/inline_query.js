@@ -1,3 +1,4 @@
+import { diagnosticoErro } from '../lib/erros.js';
 import { api } from 'sdk';
 import { consultar } from '../lib/consulta.js';
 import { responderInline } from '../lib/envio.js';
@@ -13,7 +14,7 @@ export default async function (query) {
   try {
     resposta = await consultar(texto, { canal: 'inline' });
   } catch (e) {
-    console.error('falha ao montar a resposta inline:', e);
+    console.error('falha ao montar a resposta inline:', diagnosticoErro(e));
     resposta = relatorioErro(e);
   }
   await responderInline(query.id, resposta.titulo, resposta.html, resposta.botaoPrivado);

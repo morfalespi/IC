@@ -1,5 +1,6 @@
 import { fetch } from 'sdk';
 import { GH_DISPATCH_TOKEN, GH_REPOSITORY } from './segredos.js';
+import { textoSeguro } from './erros.js';
 
 const EXPLICACOES = {
   401: 'O token do GitHub é inválido ou expirou. Gere outro e atualize o secret GH_DISPATCH_TOKEN.',
@@ -14,6 +15,8 @@ function urlDisparo() {
   if (!REPOSITORIO_VALIDO.test(GH_REPOSITORY)) {
     const erro = new Error('GH_REPOSITORY não foi injetado no deploy');
     erro.status = 0;
+    erro.origin = 'github';
+    erro.publicMessage = erro.message;
     throw erro;
   }
   return `https://api.github.com/repos/${GH_REPOSITORY}/actions/workflows/resolver.yml/dispatches`;
@@ -23,6 +26,8 @@ export async function dispararBusca(entrada, chatId, mensagemId, modo = "complet
   if (!GH_DISPATCH_TOKEN) {
     const erro = new Error('GH_DISPATCH_TOKEN não foi injetado no deploy');
     erro.status = 0;
+    erro.origin = 'github';
+    erro.publicMessage = erro.message;
     throw erro;
   }
   const res = await fetch(urlDisparo(), {
@@ -36,9 +41,19 @@ export async function dispararBusca(entrada, chatId, mensagemId, modo = "complet
       body: fetch.body.json({ ref: 'main', inputs: { alvo: String(entrada.username || entrada.id), expected_id: entrada.tipo === "referencia" ? entrada.id : "", chat: String(chatId), message_id: String(mensagemId || ""), modo: modo === "resumo" ? "resumo" : "completo", origem_id: String(origemId || "") } }),
   });
   if (res.status !== 200 && res.status !== 204) {
-    const corpo = await res.text();
-    const erro = new Error(`${EXPLICACOES[res.status] ?? 'O GitHub recusou o disparo.'} (GitHub respondeu ${res.status}: ${corpo.slice(0, 200)})`);
+    let detalhes;
+    try {
+      detalhes = await res.json();
+    } catch (erroResposta) {
+      if (!(erroResposta instanceof SyntaxError)) throw erroResposta;
+      console.error('Resposta de erro GitHub não JSON:', { origin: 'github', status: res.status, error_type: 'invalid_json' });
+      detalhes = { message: 'O servidor retornou um corpo de erro não JSON.' };
+    }
+    const erro = new Error(`${EXPLICACOES[res.status] ?? 'O GitHub recusou o disparo.'} (HTTP ${res.status})`);
     erro.status = res.status;
+    erro.origin = 'github';
+    erro.publicMessage = erro.message;
+    erro.githubMessage = typeof detalhes?.message === 'string' ? textoSeguro(detalhes.message) : '';
     throw erro;
   }
 }

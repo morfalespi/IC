@@ -1,3 +1,4 @@
+import { diagnosticoErro } from '../lib/erros.js';
 import { api } from 'sdk';
 import { lerCallback } from '../lib/entrada.js';
 import { consultar } from '../lib/consulta.js';
@@ -28,7 +29,7 @@ export default async function (callback) {
     const resposta = await consultar(pedido.entrada, contexto);
     if (!resposta?.enviado) await enviarMensagem(chat.id, resposta.html, resposta.teclado);
   } catch (erro) {
-    console.error('falha ao processar callback:', erro);
+    console.error('falha ao processar callback:', diagnosticoErro(erro));
     await enviarMensagem(chat.id, '<b>Não foi possível processar a ação.</b>\nEnvie uma nova pesquisa.');
   }
 }

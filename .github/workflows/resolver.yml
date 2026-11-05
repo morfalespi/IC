@@ -11,12 +11,17 @@ on:
         type: boolean
         required: false
         default: false
+      validar_apis:
+        description: "Verificar getMe/getChat e o mesmo canal público no MTProto, sem enviar mensagens"
+        type: boolean
+        required: false
+        default: false
       expected_id:
         description: "ID do peer esperado, validado após contacts.resolveUsername"
         required: false
         default: ""
       chat:
-        description: "ID do chat que recebe a resposta (vazio: só mostra no log)"
+        description: "ID do chat que recebe a resposta (vazio: coleta sem entrega; logs apenas operacionais)"
         required: false
         default: ""
       message_id:
@@ -24,9 +29,16 @@ on:
         required: false
         default: ""
       modo:
-        description: "Coleta completa com páginas legíveis, Markdown, JSONL e mídia acessível; use resumo só para uma consulta compacta explícita"
+        description: "completo/resumo consultam; validar_entrega envia uma mensagem e três arquivos sintéticos ao chat indicado e confere os bytes"
         required: false
         default: "completo"
+        type: choice
+        options: [completo, resumo, validar_entrega]
+      formato:
+        description: "Formato explícito do relatório; falhas não alternam o formato automaticamente"
+        type: choice
+        options: [rich, html]
+        default: rich
       origem_id:
         description: "ID da mensagem original que solicitou o relatório completo"
         required: false
@@ -45,16 +57,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 360
     env:
+      PYTHONUNBUFFERED: "1"
       API_ID: ${{ secrets.API_ID }}
       API_HASH: ${{ secrets.API_HASH }}
       BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-      ALVO: ${{ inputs.alvo }}
-      EXPECTED_ID: ${{ inputs.expected_id }}
-      CHAT_ID: ${{ inputs.chat }}
-      MESSAGE_ID: ${{ inputs.message_id }}
-      MODO: ${{ inputs.modo }}
-      ORIGEM_ID: ${{ inputs.origem_id }}
-      COLETAR_MIDIA: ${{ inputs.coletar_midia }}
     steps:
       - name: Healthcheck do dispatch
         if: ${{ inputs.healthcheck }}
@@ -62,6 +68,9 @@ jobs:
 
       - uses: actions/checkout@v4
         if: ${{ !inputs.healthcheck }}
+      - name: Mascarar dados da consulta antes de carregar variáveis
+        if: ${{ !inputs.healthcheck }}
+        run: python3 scripts/mascarar_inputs.py
       - name: Verificar secrets
         if: ${{ !inputs.healthcheck }}
         run: |
@@ -81,16 +90,33 @@ jobs:
           cache-dependency-path: scripts/resolver-requirements.txt
       - if: ${{ !inputs.healthcheck }}
         run: pip install -r scripts/resolver-requirements.txt
-      - if: ${{ !inputs.healthcheck }}
+      - name: Validar Bot API e MTProto sem entrega
+        if: ${{ !inputs.healthcheck && inputs.validar_apis }}
+        env:
+          MODO: resumo
+          CHAT_ID: ""
+          MESSAGE_ID: ""
+        run: python scripts/validar_apis.py
+      - name: Validar entrega sintética ao chat escolhido
+        if: ${{ !inputs.healthcheck && !inputs.validar_apis && inputs.modo == 'validar_entrega' }}
+        env:
+          MODO: validar_entrega
+          CHAT_ID: ${{ inputs.chat }}
+        run: python scripts/validar_entrega.py
+      - if: ${{ !inputs.healthcheck && !inputs.validar_apis && inputs.modo != 'validar_entrega' }}
+        env:
+          ALVO: ${{ inputs.alvo }}
+          EXPECTED_ID: ${{ inputs.expected_id }}
+          CHAT_ID: ${{ inputs.chat }}
+          MESSAGE_ID: ${{ inputs.message_id }}
+          MODO: ${{ inputs.modo }}
+          FORMATO_MENSAGEM: ${{ inputs.formato || 'rich' }}
+          ORIGEM_ID: ${{ inputs.origem_id }}
+          COLETAR_MIDIA: ${{ inputs.coletar_midia }}
         run: python scripts/resolver.py
       - name: Avisar o chat se a busca falhou sem resposta
-        if: ${{ !inputs.healthcheck && (failure() || cancelled()) }}
+        if: ${{ !inputs.healthcheck && !inputs.validar_apis && inputs.modo != 'validar_entrega' && (failure() || cancelled()) }}
         env:
+          CHAT_ID: ${{ inputs.chat }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          if [ -f "$RUNNER_TEMP/notificado" ]; then exit 0; fi
-          if [ -z "$BOT_TOKEN" ] || [ -z "$CHAT_ID" ]; then exit 0; fi
-          curl -sS -m 20 --fail-with-body \
-            --data-urlencode "chat_id=$CHAT_ID" \
-            --data-urlencode "text=A busca por @${ALVO} falhou antes de dar resultado. Log: $RUN_URL" \
-            "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage"
+        run: python scripts/notificar_falha.py
