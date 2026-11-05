@@ -24,6 +24,9 @@ Formato rich ou HTML é escolhido antes de enviar. Não há fallback automático
 6. No JavaScript, mensagens pendentes/inacessíveis ou incompatíveis com o destino não iniciam o worker. Falhas de envio/edição atravessam consultar e os handlers sem nova edição ou mensagem HTML alternativa. Uma recusa explícita de edição inalterada permanece uma operação sem mudança, sem fabricar Message/data/chat de sucesso.
 7. A rota validar_apis passa a executar também fontes locais no runtime Serverless por /run, sem publicar. Ela exige o mesmo bot/canal confirmado pelo Python, carrega os handlers reais, lê as colunas do schema sem alterá-lo, verifica uma recusa real de getChat(0) e lê o estado público do workflow pelo fetch do SDK. Não usa SDK substituído ou banco falso. As referências ao CLI interno estão vinculadas à versão do package-lock; mudança da interface deve falhar na validação.
 
+8. Modo desconhecido, MESSAGE_ID inválido/sem chat e ORIGEM_ID inválido/sem chat falham antes de qualquer autenticação. Não são convertidos silenciosamente em consulta completa, novo envio ou ausência de referência.
+9. O deploy deixa de confiar somente no código de saída de tgcloud webhook: o CLI pode imprimir OUT OF SYNC e terminar com zero. O novo verificador exige in_sync=true, URL e tipos de update correspondentes e contagem válida; não sincroniza o webhook automaticamente nem imprime sua URL.
+
 A conferência do runtime não exercita entregas, callbacks reais ou disparo de pesquisa pelo bot. Esses cenários não serão apresentados como validados por uma leitura.
 
 ## Evidência observada antes desta retomada
@@ -32,7 +35,7 @@ A [execução real 42023095036](https://github.com/morfalespi/IC/actions/runs/42
 
 A [CI 42023853598](https://github.com/morfalespi/IC/actions/runs/42023853598), no commit cb7c480, verificou sintaxe e compatibilidade em Node 22/Python 3.12 e Node 24/Python 3.13. Inspeção de importações e assinaturas não comprova comportamento remoto.
 
-As execuções do novo commit serão vinculadas no PR com seus resultados efetivos. Não foram criados testes com API substituída nesta retomada.
+A execução [42077826191](https://github.com/morfalespi/IC/actions/runs/42077826191), no commit fd0b167, confirmou a leitura Bot API/MTProto e a correspondência da conta autenticada. A etapa Serverless falhou antes da chamada remota porque o verificador tentou abrir schema.js fora de tgcloud/. O caminho foi corrigido usando readWd do próprio CLI; essa falha não é apresentada como validação Serverless. As execuções seguintes serão vinculadas no PR com seus resultados efetivos. Não foram criados testes com API substituída nesta retomada.
 
 ## Limites e decisões operacionais
 

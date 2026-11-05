@@ -2,8 +2,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { scanFiles } from '../node_modules/@tgcloud/cli/src/core/scanner.js';
 import { pathToModule } from '../node_modules/@tgcloud/cli/src/core/snapshot.js';
+import { readWd } from '../node_modules/@tgcloud/cli/src/core/workdir.js';
 import { resolveToken } from '../node_modules/@tgcloud/cli/src/core/credentials.js';
 import { runFunction } from '../node_modules/@tgcloud/cli/src/api/endpoints.js';
+import { conferirWebhook } from './validar_webhook.mjs';
+import { diagnosticoNode } from './diagnostico_node.mjs';
 
 const fonte = `
 import { api, db, fetch, BotApiError } from 'sdk';
@@ -57,20 +60,16 @@ try {
       !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(esperado.repository)) {
     throw new Error('Evidência anterior ou repositório inválidos.');
   }
-  const fontes = Object.fromEntries(scanFiles().map(arquivo => [pathToModule(arquivo), fs.readFileSync(arquivo, 'utf8')]));
+  const fontes = Object.fromEntries(scanFiles().map(arquivo => [pathToModule(arquivo), readWd(arquivo)]));
   fontes['endpoints/validar_integracoes'] = fonte;
-  const resposta = await runFunction(await resolveToken(), 'endpoints/validar_integracoes', fontes, esperado, {});
+  const token = await resolveToken();
+  await conferirWebhook(token);
+  const resposta = await runFunction(token, 'endpoints/validar_integracoes', fontes, esperado, {});
   if (!['bot', 'channel', 'schema', 'github', 'modules', 'rejection'].every(chave => resposta?.result?.[chave] === true)) {
     throw new Error('O runtime não confirmou todas as leituras.');
   }
   console.log('Serverless real: módulos carregados, mesmo bot/canal, schema legível, erro 400 diagnosticado e workflow GitHub ativo; sem escrita, deploy ou envio.');
 } catch (erro) {
-  const segredos = ['BOT_TOKEN', 'API_HASH', 'TGCLOUD_TOKEN', 'GH_DISPATCH_TOKEN']
-    .map(nome => process.env[nome]).filter(Boolean);
-  let descricao = String(erro?.description ?? erro?.message ?? erro?.name ?? 'Erro');
-  for (const segredo of segredos) descricao = descricao.split(segredo).join('[redigido]');
-  descricao = descricao.replace(/(?:app|bot)?\d+:[A-Za-z0-9_-]+/g, '[redigido]')
-    .replace(/(?:gh[pousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+)/g, '[redigido]');
-  console.error(JSON.stringify({ origin: 'serverless_validation', type: erro?.name, status: erro?.status, description: descricao }));
+  console.error(JSON.stringify(diagnosticoNode(erro, 'serverless_validation')));
   process.exitCode = 1;
 }

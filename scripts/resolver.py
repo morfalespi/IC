@@ -35,7 +35,7 @@ CHAT_VALIDO = re.compile(r"-?[0-9]{1,16}")
 MENSAGEM_ID = os.environ.get("MESSAGE_ID", "").strip()
 CHAT_DESTINO = os.environ.get("CHAT_ID", "").strip()
 ID_MENSAGEM = int(MENSAGEM_ID) if MENSAGEM_ID.isdigit() and int(MENSAGEM_ID) > 0 else None
-MODO = "resumo" if os.environ.get("MODO") == "resumo" else "completo"
+MODO = os.environ.get("MODO", "completo")
 FORMATO_MENSAGEM = os.environ.get("FORMATO_MENSAGEM", "rich")
 EXPECTED_ID = os.environ.get("EXPECTED_ID", "").strip()
 REFERENCIA = os.environ.get("ORIGEM_ID", "")
@@ -2314,10 +2314,16 @@ def falha(alvo, motivo):
 
 async def principal():
     print("telethon", telethon.__version__)
+    if MODO not in ("resumo", "completo"):
+        raise ValueError("MODO deve ser resumo ou completo no worker de consulta.")
     if FORMATO_MENSAGEM not in ("rich", "html"):
         raise ValueError("FORMATO_MENSAGEM deve ser rich ou html.")
     alvo = os.environ.get("ALVO", "").strip().lstrip("@")
     chat = os.environ.get("CHAT_ID", "").strip()
+    if MENSAGEM_ID and (ID_MENSAGEM is None or not chat):
+        raise ValueError("MESSAGE_ID exige um inteiro positivo e CHAT_ID; não será criado outro envio.")
+    if REFERENCIA and (ORIGEM_ID is None or not chat):
+        raise ValueError("ORIGEM_ID exige um inteiro positivo e CHAT_ID.")
     if chat and (not CHAT_VALIDO.fullmatch(chat) or tipo_dialogo(str(int(chat))) is None):
         print("CHAT_ID inválido")
         return 1
