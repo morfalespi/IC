@@ -20,6 +20,11 @@ Formato rich ou HTML é escolhido antes de enviar. Não há fallback automático
 2. Rejeitar envelope de erro sem os campos documentados antes de interpretar instruções de repetição.
 3. Na leitura real entre APIs, consultar MTProto pelo ID estável já confirmado por getChat, em vez de resolver novamente o username.
 4. Substituir o relatório de sondagens por contratos e evidências com escopo explícito.
+5. Antes da coleta, confirmar o bot por getMe e confrontá-lo com get_me do Telethon. start pode reutilizar uma sessão autorizada e apenas emitir aviso quando o token aponta para outra conta; o worker agora interrompe uma divergência antes de resolver o alvo. Não usa regex de credenciais, prazo de autenticação inventado nem identidade inferida de cache.
+6. No JavaScript, mensagens pendentes/inacessíveis ou incompatíveis com o destino não iniciam o worker. Falhas de envio/edição atravessam consultar e os handlers sem nova edição ou mensagem HTML alternativa. Uma recusa explícita de edição inalterada permanece uma operação sem mudança, sem fabricar Message/data/chat de sucesso.
+7. A rota validar_apis passa a executar também fontes locais no runtime Serverless por /run, sem publicar. Ela exige o mesmo bot/canal confirmado pelo Python, carrega os handlers reais, lê as colunas do schema sem alterá-lo, verifica uma recusa real de getChat(0) e lê o estado público do workflow pelo fetch do SDK. Não usa SDK substituído ou banco falso. As referências ao CLI interno estão vinculadas à versão do package-lock; mudança da interface deve falhar na validação.
+
+A conferência do runtime não exercita entregas, callbacks reais ou disparo de pesquisa pelo bot. Esses cenários não serão apresentados como validados por uma leitura.
 
 ## Evidência observada antes desta retomada
 

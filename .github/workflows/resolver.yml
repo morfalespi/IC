@@ -103,6 +103,18 @@ jobs:
           MODO: validar_entrega
           CHAT_ID: ${{ inputs.chat }}
         run: python scripts/validar_entrega.py
+      - uses: actions/setup-node@v4
+        if: ${{ !inputs.healthcheck && inputs.validar_apis }}
+        with:
+          node-version: 22
+          cache: npm
+      - if: ${{ !inputs.healthcheck && inputs.validar_apis }}
+        run: npm ci
+      - name: Validar leituras no runtime Serverless real sem publicar
+        if: ${{ !inputs.healthcheck && inputs.validar_apis }}
+        env:
+          TGCLOUD_TOKEN: ${{ secrets.TGCLOUD_TOKEN }}
+        run: node scripts/validar_serverless.mjs
       - if: ${{ !inputs.healthcheck && !inputs.validar_apis && inputs.modo != 'validar_entrega' }}
         env:
           ALVO: ${{ inputs.alvo }}

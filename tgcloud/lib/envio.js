@@ -1,5 +1,24 @@
 import { api, BotApiError } from 'sdk';
-import { diagnosticoErro } from './erros.js';
+import { diagnosticoErro, FalhaEntrega } from './erros.js';
+
+async function mensagemConfirmada(pedido, chatId, messageId) {
+  try {
+    const mensagem = await pedido();
+    if (!Number.isSafeInteger(mensagem?.message_id) || mensagem.message_id < 0 ||
+        !Number.isSafeInteger(mensagem?.date) || mensagem.date < 0 ||
+        !Number.isSafeInteger(mensagem?.chat?.id) || mensagem.chat.id !== Number(chatId) ||
+        !['private', 'group', 'supergroup', 'channel'].includes(mensagem.chat.type) ||
+        (messageId !== undefined && mensagem.message_id !== 0 && mensagem.message_id !== messageId)) {
+      throw new FalhaEntrega(new Error('Message incompatível com a operação solicitada.'), 'protocol_error');
+    }
+    if (mensagem.message_id === 0 || mensagem.date === 0) {
+      throw new FalhaEntrega(new Error('Message pendente ou inacessível; operação interrompida.'), 'pending');
+    }
+    return mensagem;
+  } catch (erro) {
+    throw erro instanceof FalhaEntrega ? erro : new FalhaEntrega(erro);
+  }
+}
 
 const TECLADO_REFERENCIA = {
   keyboard: [
@@ -12,12 +31,12 @@ const TECLADO_REFERENCIA = {
 };
 
 export function enviarMensagem(chatId, html, teclado = false) {
-  return api.sendMessage({
+  return mensagemConfirmada(() => api.sendMessage({
     chat_id: chatId,
     text: html,
     parse_mode: 'HTML',
     ...(teclado ? { reply_markup: TECLADO_REFERENCIA } : {}),
-  });
+  }), chatId);
 }
 
 export function responderInline(queryId, titulo, html, botaoPrivado) {
@@ -31,17 +50,19 @@ export function responderInline(queryId, titulo, html, botaoPrivado) {
 }
 
 export function enviarCartao(chatId, richHtml) {
-  return api.sendRichMessage({ chat_id: chatId, rich_message: { html: richHtml } });
+  return mensagemConfirmada(() => api.sendRichMessage({ chat_id: chatId, rich_message: { html: richHtml } }), chatId);
 }
 
 export async function editarCartao(chatId, messageId, richHtml) {
   try {
-    return await api.editMessageText({ chat_id: chatId, message_id: messageId, rich_message: { html: richHtml } });
+    const mensagem = await api.editMessageText({ chat_id: chatId, message_id: messageId, rich_message: { html: richHtml } });
+    return await mensagemConfirmada(() => mensagem, chatId, messageId);
   } catch (erro) {
-    console.error('editMessageText:', diagnosticoErro(erro));
     if (erro instanceof BotApiError && erro.code === 400 && /message is not modified/i.test(erro.description)) {
       return { message_id: messageId, unchanged: true };
     }
-    throw erro;
+    const falha = erro instanceof FalhaEntrega ? erro : new FalhaEntrega(erro);
+    console.error('editMessageText:', diagnosticoErro(falha));
+    throw falha;
   }
 }

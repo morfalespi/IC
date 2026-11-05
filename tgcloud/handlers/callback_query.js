@@ -1,4 +1,4 @@
-import { diagnosticoErro } from '../lib/erros.js';
+import { diagnosticoErro, FalhaEntrega } from '../lib/erros.js';
 import { api } from 'sdk';
 import { lerCallback } from '../lib/entrada.js';
 import { consultar } from '../lib/consulta.js';
@@ -9,7 +9,7 @@ export default async function (callback) {
   const messageId = callback.message?.message_id;
   const pedido = lerCallback(callback.data);
   if (chat?.type !== 'private' || Number(chat.id) !== Number(callback.from?.id) ||
-      !Number.isSafeInteger(messageId) || !pedido) {
+      !Number.isSafeInteger(messageId) || messageId <= 0 || callback.message?.date === 0 || !pedido) {
     await api.answerCallbackQuery({
       callback_query_id: callback.id,
       text: 'Referência inválida ou botão antigo. Envie uma nova pesquisa.',
@@ -30,6 +30,7 @@ export default async function (callback) {
     if (!resposta?.enviado) await enviarMensagem(chat.id, resposta.html, resposta.teclado);
   } catch (erro) {
     console.error('falha ao processar callback:', diagnosticoErro(erro));
+    if (erro instanceof FalhaEntrega) throw erro;
     await enviarMensagem(chat.id, '<b>Não foi possível processar a ação.</b>\nEnvie uma nova pesquisa.');
   }
 }

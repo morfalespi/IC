@@ -1,6 +1,14 @@
 import { BotApiError } from 'sdk';
 import { GH_DISPATCH_TOKEN } from './segredos.js';
 
+export class FalhaEntrega extends Error {
+  constructor(causa, estado = 'unconfirmed') {
+    super('Resposta não confirmada; envio alternativo bloqueado.', { cause: causa });
+    this.name = 'FalhaEntrega';
+    this.estado = estado;
+  }
+}
+
 export function textoSeguro(valor) {
   let texto = String(valor ?? '');
   if (GH_DISPATCH_TOKEN) texto = texto.split(GH_DISPATCH_TOKEN).join('[redigido]');
@@ -9,6 +17,9 @@ export function textoSeguro(valor) {
 }
 
 export function diagnosticoErro(erro) {
+  if (erro instanceof FalhaEntrega) {
+    return { ...diagnosticoErro(erro.cause), delivery_state: erro.estado };
+  }
   if (erro instanceof BotApiError) {
     const parametros = erro.parameters ?? {};
     return {

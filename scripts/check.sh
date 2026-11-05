@@ -3,7 +3,7 @@ set -euo pipefail
 
 while IFS= read -r -d '' arquivo; do
   node --check "$arquivo"
-done < <(find tgcloud -type f -name '*.js' -print0 | sort -z)
+done < <(find tgcloud scripts -type f \( -name '*.js' -o -name '*.mjs' \) -print0 | sort -z)
 
 python -m compileall -q scripts
 

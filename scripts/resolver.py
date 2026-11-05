@@ -1773,10 +1773,26 @@ async def coletar(alvo):
     sessao = SQLiteSession(os.path.join(pasta_sessao, nome_sessao))
     cliente = None
     try:
+        identidade = await asyncio.to_thread(chamar, "getMe", b"{}", {"Content-Type": "application/json"})
+        if not identidade.get("ok"):
+            raise BotAPIRequestError("getMe", identidade)
+        bot = identidade.get("result")
+        if (not isinstance(bot, dict) or bot.get("is_bot") is not True
+                or type(bot.get("id")) is not int or tipo_dialogo(bot["id"]) != "user"):
+            raise APIProtocolError("getMe", {
+                "origin": "protocol", "error_code": 0,
+                "description": "getMe não retornou uma identidade válida de bot",
+            })
         cliente = TelegramClient(sessao, int(os.environ["API_ID"]), os.environ["API_HASH"],
                                  raise_last_call_error=True)
         await com_espera(lambda: cliente.start(bot_token=bot_token))
-        print("Autenticação concluída pelo Telethon")
+        autenticado = await com_espera(lambda: cliente.get_me())
+        if not isinstance(autenticado, User) or autenticado.bot is not True or autenticado.id != bot["id"]:
+            raise BotAPIAuthenticationError("MTProto get_me", {
+                "origin": "authentication", "error_code": 401,
+                "description": "A sessão MTProto não corresponde ao bot confirmado pela Bot API",
+            })
+        print("Autenticação concluída pelo Telethon e identidade confirmada pela Bot API")
         entidade, origem, resposta_resolucao = await resolver_alvo(cliente, alvo)
         dados = {"entidade": entidade, "completo": None, "resposta_completa": None, "resposta_resolucao": resposta_resolucao, "foto": None, "notas": [origem], "fotos_info": None, "musicas_info": None, "fotos_mtproto": [], "musicas_mtproto": [], "participantes_mtproto": [], "participantes_filtrados_mtproto": {}, "midias": [], "pacotes_midias": [], "falhas_coleta": [], "coletas_incompletas": [], "respostas_bot_api": {}, "falhas_bot_api": [], "mensagens_fixadas_mtproto": [], "midias_dir": tempfile.mkdtemp(prefix="infocard_telegram_") if MODO == "completo" and (CHAT_DESTINO or os.environ.get("COLETAR_MIDIA") == "true") else None}
         if isinstance(entidade, BotAPIEntity) and resposta_resolucao.get("mtproto_error"):
