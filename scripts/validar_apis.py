@@ -30,7 +30,7 @@ async def principal():
             or type(chat.get("id")) is not int or chat.get("type") != "channel"):
         raise RuntimeError("getChat não confirmou o canal público de validação.")
     print("Bot API getChat: canal público lido", flush=True)
-    dados = await coletar("telegram")
+    dados = await coletar(str(chat["id"]))
     if id_peer(dados["entidade"]) != chat["id"]:
         raise RuntimeError("Bot API e MTProto retornaram entidades diferentes.")
     if dados["completo"] is None or dados["falhas_coleta"]:

@@ -1773,7 +1773,8 @@ async def coletar(alvo):
     sessao = SQLiteSession(os.path.join(pasta_sessao, nome_sessao))
     cliente = None
     try:
-        cliente = TelegramClient(sessao, int(os.environ["API_ID"]), os.environ["API_HASH"])
+        cliente = TelegramClient(sessao, int(os.environ["API_ID"]), os.environ["API_HASH"],
+                                 raise_last_call_error=True)
         await com_espera(lambda: cliente.start(bot_token=bot_token))
         print("Autenticação concluída pelo Telethon")
         entidade, origem, resposta_resolucao = await resolver_alvo(cliente, alvo)
