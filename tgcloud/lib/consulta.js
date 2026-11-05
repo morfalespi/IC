@@ -4,7 +4,7 @@ import { reservarDisparo, liberarDisparo } from './limite.js';
 import { relatorioInvalido, relatorioFalha, relatorioInline } from './relatorio.js';
 import { enviarCartao, editarCartao } from './envio.js';
 import { cartaoPesquisa, cartaoErro } from './cartao.js';
-import { diagnosticoErro, mensagemErro } from './erros.js';
+import { diagnosticoErro, mensagemErro, FalhaEntrega } from './erros.js';
 
 export async function consultar(texto, contexto) {
   const entrada = typeof texto === 'string' ? lerEntrada(texto) : texto;
@@ -28,7 +28,6 @@ export async function consultar(texto, contexto) {
     } else {
       const mensagem = await enviarCartao(contexto.chatId, cartaoPesquisa(entrada, contexto.dadosCompartilhados, modo));
       mensagemId = mensagem?.message_id;
-      if (!Number.isSafeInteger(mensagemId)) throw new Error('O Telegram não retornou message_id para acompanhar a consulta.');
     }
     await dispararBusca(entrada, contexto.chatId, mensagemId, modo, contexto.origemMensagemId);
     return { enviado: true, mensagemId };
@@ -36,6 +35,7 @@ export async function consultar(texto, contexto) {
     console.error('pesquisa ou despacho falhou:', diagnosticoErro(erroDespacho));
     const motivo = mensagemErro(erroDespacho);
     await liberarDisparo(reserva.id).catch(erro => console.error('falha ao liberar reserva:', diagnosticoErro(erro)));
+    if (erroDespacho instanceof FalhaEntrega) throw erroDespacho;
     if (mensagemId) {
       try {
         await editarCartao(
@@ -43,11 +43,11 @@ export async function consultar(texto, contexto) {
           mensagemId,
           cartaoErro(entrada, motivo)
         );
-        return { enviado: true, mensagemId };
       } catch (erroEdicao) {
         console.error('falha ao editar erro da ficha:', diagnosticoErro(erroEdicao));
+        throw erroEdicao;
       }
     }
-    return relatorioFalha(entrada, 'Não foi possível iniciar a busca MTProto: ' + motivo);
+    throw new FalhaEntrega(erroDespacho, 'dispatch_unconfirmed');
   }
 }

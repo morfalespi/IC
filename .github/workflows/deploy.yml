@@ -116,7 +116,7 @@ jobs:
 
       - name: Estado do webhook
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.migrate_mode != 'dry-run' }}
-        run: npx --no-install tgcloud webhook
+        run: node scripts/validar_webhook.mjs
 
       - name: Confirmar prévia sem publicação
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.migrate_mode == 'dry-run' }}

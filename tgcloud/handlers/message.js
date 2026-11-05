@@ -1,4 +1,4 @@
-import { diagnosticoErro } from '../lib/erros.js';
+import { diagnosticoErro, FalhaEntrega } from '../lib/erros.js';
 import { consultar } from '../lib/consulta.js';
 import { enviarMensagem } from '../lib/envio.js';
 import { relatorioErro, relatorioAjuda, relatorioInvalido } from '../lib/relatorio.js';
@@ -88,6 +88,7 @@ export default async function (message) {
     }
   } catch (erro) {
     console.error('falha ao montar a resposta:', diagnosticoErro(erro));
+    if (erro instanceof FalhaEntrega) throw erro;
     resposta = relatorioErro(erro);
   }
   if (!resposta?.enviado) await enviarMensagem(message.chat.id, resposta.html, resposta.teclado);

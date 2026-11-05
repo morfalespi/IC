@@ -73,6 +73,12 @@ def chamar(metodo, corpo, cabecalhos):
             retorno["migrations"] = list(migracoes)
         if retorno["ok"]:
             return retorno
+        if (type(retorno.get("error_code")) is not int
+                or not isinstance(retorno.get("description"), str)):
+            raise APIProtocolError(metodo, {
+                "error_code": codigo, "origin": "protocol",
+                "description": "Envelope de erro sem error_code inteiro e description textual",
+            })
         if codigo == 401 or retorno.get("error_code") == 401:
             recusar_autenticacao(metodo, retorno)
         parametros = retorno.get("parameters")

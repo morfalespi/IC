@@ -35,7 +35,7 @@ CHAT_VALIDO = re.compile(r"-?[0-9]{1,16}")
 MENSAGEM_ID = os.environ.get("MESSAGE_ID", "").strip()
 CHAT_DESTINO = os.environ.get("CHAT_ID", "").strip()
 ID_MENSAGEM = int(MENSAGEM_ID) if MENSAGEM_ID.isdigit() and int(MENSAGEM_ID) > 0 else None
-MODO = "resumo" if os.environ.get("MODO") == "resumo" else "completo"
+MODO = os.environ.get("MODO", "completo")
 FORMATO_MENSAGEM = os.environ.get("FORMATO_MENSAGEM", "rich")
 EXPECTED_ID = os.environ.get("EXPECTED_ID", "").strip()
 REFERENCIA = os.environ.get("ORIGEM_ID", "")
@@ -1773,9 +1773,26 @@ async def coletar(alvo):
     sessao = SQLiteSession(os.path.join(pasta_sessao, nome_sessao))
     cliente = None
     try:
-        cliente = TelegramClient(sessao, int(os.environ["API_ID"]), os.environ["API_HASH"])
+        identidade = await asyncio.to_thread(chamar, "getMe", b"{}", {"Content-Type": "application/json"})
+        if not identidade.get("ok"):
+            raise BotAPIRequestError("getMe", identidade)
+        bot = identidade.get("result")
+        if (not isinstance(bot, dict) or bot.get("is_bot") is not True
+                or type(bot.get("id")) is not int or tipo_dialogo(bot["id"]) != "user"):
+            raise APIProtocolError("getMe", {
+                "origin": "protocol", "error_code": 0,
+                "description": "getMe não retornou uma identidade válida de bot",
+            })
+        cliente = TelegramClient(sessao, int(os.environ["API_ID"]), os.environ["API_HASH"],
+                                 raise_last_call_error=True)
         await com_espera(lambda: cliente.start(bot_token=bot_token))
-        print("Autenticação concluída pelo Telethon")
+        autenticado = await com_espera(lambda: cliente.get_me())
+        if not isinstance(autenticado, User) or autenticado.bot is not True or autenticado.id != bot["id"]:
+            raise BotAPIAuthenticationError("MTProto get_me", {
+                "origin": "authentication", "error_code": 401,
+                "description": "A sessão MTProto não corresponde ao bot confirmado pela Bot API",
+            })
+        print("Autenticação concluída pelo Telethon e identidade confirmada pela Bot API")
         entidade, origem, resposta_resolucao = await resolver_alvo(cliente, alvo)
         dados = {"entidade": entidade, "completo": None, "resposta_completa": None, "resposta_resolucao": resposta_resolucao, "foto": None, "notas": [origem], "fotos_info": None, "musicas_info": None, "fotos_mtproto": [], "musicas_mtproto": [], "participantes_mtproto": [], "participantes_filtrados_mtproto": {}, "midias": [], "pacotes_midias": [], "falhas_coleta": [], "coletas_incompletas": [], "respostas_bot_api": {}, "falhas_bot_api": [], "mensagens_fixadas_mtproto": [], "midias_dir": tempfile.mkdtemp(prefix="infocard_telegram_") if MODO == "completo" and (CHAT_DESTINO or os.environ.get("COLETAR_MIDIA") == "true") else None}
         if isinstance(entidade, BotAPIEntity) and resposta_resolucao.get("mtproto_error"):
@@ -2297,10 +2314,16 @@ def falha(alvo, motivo):
 
 async def principal():
     print("telethon", telethon.__version__)
+    if MODO not in ("resumo", "completo"):
+        raise ValueError("MODO deve ser resumo ou completo no worker de consulta.")
     if FORMATO_MENSAGEM not in ("rich", "html"):
         raise ValueError("FORMATO_MENSAGEM deve ser rich ou html.")
     alvo = os.environ.get("ALVO", "").strip().lstrip("@")
     chat = os.environ.get("CHAT_ID", "").strip()
+    if MENSAGEM_ID and (ID_MENSAGEM is None or not chat):
+        raise ValueError("MESSAGE_ID exige um inteiro positivo e CHAT_ID; não será criado outro envio.")
+    if REFERENCIA and (ORIGEM_ID is None or not chat):
+        raise ValueError("ORIGEM_ID exige um inteiro positivo e CHAT_ID.")
     if chat and (not CHAT_VALIDO.fullmatch(chat) or tipo_dialogo(str(int(chat))) is None):
         print("CHAT_ID inválido")
         return 1

@@ -4,7 +4,7 @@
 
 - Confirmar a main e o diff previsto, sem segredos no Git.
 - Consultar documentação oficial do método alterado e o SDK instalado.
-- Preservar a regra de não adicionar comentários/docstrings ao código e de não escrever testes autorais.
+- Validar contratos documentados e registrar o escopo efetivamente observado; SDK substituído não comprova integração real.
 - Conferir que npm run check executa sintaxe JS/Python e verifica o placeholder de tgcloud/lib/segredos.js.
 - Verificar configurações de deploy, migração e healthcheck separadamente.
 
@@ -28,7 +28,7 @@
 | Escolher usuário, grupo e canal | Mostrar referência recebida e iniciar automaticamente a coleta completa | Mensagem inicial e workflow `MODO=completo` |
 | Atualizar | Callback validado e nova coleta completa editando o cartão | Callback, workflow e mesmo message_id |
 | Consulta privada normal | Páginas ricas, Markdown, JSONL e ZIP com mídia acessível | Logs de envio, hashes e anexos recebidos/abertos no Telegram |
-| Rich Message recusada | Fallback HTML e foto quando possível | Log do erro e mensagem de fallback |
+| Rich Message recusada ou pendente | Falha ou pendência explícita, sem HTML/foto alternativos nem início do worker com message_id=0 | Resposta oficial e interrupção do fluxo |
 | Limite excedido | Explicação ao usuário | Mensagem e bloqueio de dispatch |
 
 ## Limites e riscos
@@ -44,6 +44,6 @@
 
 - Conferir que uma consulta normal inicia a coleta completa e entrega todos os campos das respostas efetivamente coletadas, não apenas os campos mapeados do cartão resumido.
 - Para grupos básicos acessíveis, verificar se `messages.getFullChat` responde e fornece informações complementares.
-- Observar logs de tentativas por `retry_after` em HTTP 429 e uso de fallback HTML para página rica recusada.
-- Simular indisponibilidade parcial apenas em ambiente de validação apropriado: a execução deve tentar as demais partes e enviar o Markdown independentemente da falha visual.
+- Observar retry_after/FLOOD_WAIT recebidos do servidor; não antecipar a repetição nem alternar o formato após recusa.
+- Coleta ou entrega parcial deve impedir conclusão integral. O formato rich ou HTML deve ser escolhido antes da execução.
 - Comprovar `RELATÓRIO ENTREGUE` somente quando as confirmações de todos os componentes obrigatórios estiverem presentes; não confundir com a aceitação do dispatch.

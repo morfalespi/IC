@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+from pathlib import Path
 import sys
 
 from resolver import chamar, coletar, id_peer, registros_telegram
@@ -30,7 +31,7 @@ async def principal():
             or type(chat.get("id")) is not int or chat.get("type") != "channel"):
         raise RuntimeError("getChat não confirmou o canal público de validação.")
     print("Bot API getChat: canal público lido", flush=True)
-    dados = await coletar("telegram")
+    dados = await coletar(str(chat["id"]))
     if id_peer(dados["entidade"]) != chat["id"]:
         raise RuntimeError("Bot API e MTProto retornaram entidades diferentes.")
     if dados["completo"] is None or dados["falhas_coleta"]:
@@ -46,6 +47,10 @@ async def principal():
     if protegidos == 0:
         raise RuntimeError("A consulta não forneceu campos para validar a redação na exportação real")
     print("Exportação das respostas reais: campos de autenticação redigidos", flush=True)
+    if os.environ.get("RUNNER_TEMP"):
+        caminho = Path(os.environ["RUNNER_TEMP"]) / "telegram_validation.json"
+        caminho.write_text(json.dumps({"bot_id": bot["id"], "chat_id": chat["id"]}))
+        caminho.chmod(0o600)
     return 0
 
 
