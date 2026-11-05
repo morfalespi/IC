@@ -240,7 +240,8 @@ def enviar_documento_md(chat, conteudo, id_entidade, indice, total):
                      {"Content-Type": f"multipart/form-data; boundary={limite}"})
     if not aceitacao_mensagem(resposta):
         raise BotAPIRequestError("sendDocument", resposta)
-    print(f"documento Markdown {indice}/{total} confirmado: {len(conteudo)} bytes")
+    print(f"documento Markdown {indice}/{total} aceito: {len(conteudo)} bytes")
+    return resposta
 
 
 
@@ -1349,7 +1350,8 @@ def enviar_documento_arquivo(chat, caminho, id_entidade, indice, total):
                      {"Content-Type": f"multipart/form-data; boundary={limite}"})
     if not aceitacao_mensagem(resposta):
         raise BotAPIRequestError("sendDocument", resposta)
-    print(f"pacote de mídia {indice}/{total} confirmado: {len(conteudo)} bytes")
+    print(f"pacote de mídia {indice}/{total} aceito: {len(conteudo)} bytes")
+    return resposta
 
 def enviar_documento_jsonl(chat, conteudo, id_entidade, indice, total):
     limite = uuid.uuid4().hex
@@ -1378,7 +1380,8 @@ def enviar_documento_jsonl(chat, conteudo, id_entidade, indice, total):
                      {"Content-Type": f"multipart/form-data; boundary={limite}"})
     if not aceitacao_mensagem(resposta):
         raise BotAPIRequestError("sendDocument", resposta)
-    print(f"documento JSONL {indice}/{total} confirmado: {len(conteudo)} bytes")
+    print(f"documento JSONL {indice}/{total} aceito: {len(conteudo)} bytes")
+    return resposta
 
 def botao_atualizar(alvo):
     dados = callback_data("r", alvo)

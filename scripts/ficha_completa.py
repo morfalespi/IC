@@ -164,8 +164,8 @@ def markdown_document(identity, sections, observations):
 
     linhas = [
         "# Infocard — dados coletados nesta consulta", "",
-        "Fonte: campos mapeados a partir das respostas MTProto e Bot API coletadas; respostas brutas no JSONL.",
-        "Campos ausentes não foram retornados; não implicam inexistência.", "",
+        "Fonte: campos mapeados das respostas MTProto e Bot API; campos de autenticação são redigidos também no JSONL.",
+        "Campos ausentes podem não ter sido consultados ou retornados; ausência não comprova inexistência.", "",
     ]
     for titulo, campos in [("Identificação confirmada", identity)] + list(sections):
         if not campos:
@@ -214,7 +214,7 @@ def markdown_files(identity, sections, observations, max_bytes=40 * 1024 * 1024)
 
     header = (
         "# Infocard — dados coletados nesta consulta (continuação)\n\n"
-        "Fonte: campos mapeados nesta exportação; respostas brutas no JSONL.\n\n"
+        "Fonte: campos mapeados nesta exportação; autenticação redigida também no JSONL.\n\n"
     )
     groups = [("Identificação confirmada", identity)] + list(sections)
     if observations:

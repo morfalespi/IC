@@ -29,11 +29,11 @@ on:
         required: false
         default: ""
       modo:
-        description: "Coleta completa com páginas legíveis, Markdown, JSONL e mídia acessível; use resumo só para uma consulta compacta explícita"
+        description: "completo/resumo consultam; validar_entrega envia uma mensagem e três arquivos sintéticos ao chat indicado e confere os bytes"
         required: false
         default: "completo"
         type: choice
-        options: [completo, resumo]
+        options: [completo, resumo, validar_entrega]
       formato:
         description: "Formato explícito do relatório; falhas não alternam o formato automaticamente"
         type: choice
@@ -97,7 +97,13 @@ jobs:
           CHAT_ID: ""
           MESSAGE_ID: ""
         run: python scripts/validar_apis.py
-      - if: ${{ !inputs.healthcheck && !inputs.validar_apis }}
+      - name: Validar entrega sintética ao chat escolhido
+        if: ${{ !inputs.healthcheck && !inputs.validar_apis && inputs.modo == 'validar_entrega' }}
+        env:
+          MODO: validar_entrega
+          CHAT_ID: ${{ inputs.chat }}
+        run: python scripts/validar_entrega.py
+      - if: ${{ !inputs.healthcheck && !inputs.validar_apis && inputs.modo != 'validar_entrega' }}
         env:
           ALVO: ${{ inputs.alvo }}
           EXPECTED_ID: ${{ inputs.expected_id }}
@@ -109,7 +115,7 @@ jobs:
           COLETAR_MIDIA: ${{ inputs.coletar_midia }}
         run: python scripts/resolver.py
       - name: Avisar o chat se a busca falhou sem resposta
-        if: ${{ !inputs.healthcheck && !inputs.validar_apis && (failure() || cancelled()) }}
+        if: ${{ !inputs.healthcheck && !inputs.validar_apis && inputs.modo != 'validar_entrega' && (failure() || cancelled()) }}
         env:
           CHAT_ID: ${{ inputs.chat }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

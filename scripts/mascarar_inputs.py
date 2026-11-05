@@ -12,6 +12,8 @@ def principal():
             escapado = valor.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
             print("::add-mask::" + escapado, flush=True)
     print("Máscaras dos dados de consulta registradas antes de executar o resolver")
+    if entradas.get("modo") == "validar_entrega" and str(entradas.get("validar_apis", "")).lower() == "true":
+        raise ValueError("Escolha validação de leitura ou de entrega; as rotas não podem ser combinadas")
     return 0
 
 

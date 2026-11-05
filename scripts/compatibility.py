@@ -25,7 +25,7 @@ def main():
             )
             calls += 1
     importlib.import_module("resolver")
-    for module in ("bot_api", "telegram_ids", "validar_apis", "notificar_falha", "exportacao", "mascarar_inputs"):
+    for module in ("bot_api", "telegram_ids", "validar_apis", "notificar_falha", "exportacao", "mascarar_inputs", "validar_entrega"):
         importlib.import_module(module)
     print(f"Telethon {telethon.__version__}, layer {LAYER}: {len(imported)} imports e {calls} assinaturas compatíveis; resolver importado sem rede.")
 
