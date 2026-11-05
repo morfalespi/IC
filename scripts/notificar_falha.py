@@ -2,7 +2,7 @@ import json
 import os
 from pathlib import Path
 
-from bot_api import chamar, diagnostico_api, diagnostico_excecao
+from bot_api import chamar, diagnostico_api, diagnostico_excecao, registrar_notificacao
 from telegram_ids import tipo_dialogo
 
 
@@ -12,6 +12,9 @@ def principal():
     if marcador.exists():
         print("Notificação já confirmada nesta execução; nenhum reenvio solicitado")
         return 0
+    if (marcador.parent / "notificacao_pendente").exists():
+        print("Notificação já aceita e ainda pendente; não confirmada e sem reenvio automático")
+        return 1
     if not chat:
         print("Notificação não solicitada: execução sem chat de destino")
         return 0
@@ -29,12 +32,9 @@ def principal():
     if not resposta.get("ok"):
         print(json.dumps(diagnostico_api(resposta, "sendMessage"), ensure_ascii=False))
         return 1
-    mensagem = resposta.get("result")
-    identificador = mensagem.get("message_id") if isinstance(mensagem, dict) else None
-    if type(identificador) is not int or identificador <= 0:
+    if registrar_notificacao(resposta, chat) == "pending":
         print("Notificação aceita sem mensagem editável; entrega pendente")
         return 1
-    marcador.touch()
     print("Notificação de falha confirmada pelo Telegram")
     return 0
 

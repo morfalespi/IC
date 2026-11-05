@@ -131,3 +131,45 @@ def diagnostico_excecao(erro):
     dados["stack"] = [{"file": os.path.basename(frame.filename), "line": frame.lineno,
                        "function": frame.name} for frame in traceback.extract_tb(erro.__traceback__)]
     return dados
+
+
+def estado_mensagem(resposta, chat_id=None):
+    if isinstance(resposta, dict) and resposta.get("ok") is False:
+        return "rejected"
+    mensagem = resposta.get("result") if isinstance(resposta, dict) else None
+    identificador = mensagem.get("message_id") if isinstance(mensagem, dict) else None
+    chat = mensagem.get("chat") if isinstance(mensagem, dict) else None
+    destino = chat.get("id") if isinstance(chat, dict) else None
+    data = mensagem.get("date") if isinstance(mensagem, dict) else None
+    tipo = chat.get("type") if isinstance(chat, dict) else None
+    tipos = {"user": ("private",), "chat": ("group",), "channel": ("supergroup", "channel")}
+    if (not isinstance(resposta, dict) or resposta.get("ok") is not True
+            or type(identificador) is not int or identificador < 0
+            or type(destino) is not int or tipo not in tipos.get(tipo_dialogo(destino), ())
+            or type(data) is not int or data <= 0):
+        raise APIProtocolError("Message", {"error_code": 0, "origin": "protocol",
+                                          "description": "Resposta sem Message com identificador e chat válidos"})
+    if chat_id is not None:
+        esperado = int(chat_id)
+        for migracao in resposta.get("migrations", []):
+            if str(migracao.get("from")) != str(esperado):
+                raise APIProtocolError("Message", {"error_code": 0, "origin": "protocol",
+                                                   "description": "Cadeia de migração divergente do chat solicitado"})
+            esperado = migracao["to"]
+        if destino != esperado:
+            raise APIProtocolError("Message", {"error_code": 0, "origin": "protocol",
+                                               "description": "Message retornou chat diferente do destino solicitado"})
+    return "pending" if identificador == 0 else "confirmed"
+
+
+def registrar_notificacao(resposta, chat_id):
+    estado = estado_mensagem(resposta, chat_id)
+    if estado == "rejected":
+        raise BotAPIRequestError("sendMessage", resposta)
+    pasta = Path(os.environ.get("RUNNER_TEMP", "/tmp"))
+    if estado == "confirmed":
+        (pasta / "notificado").touch()
+        (pasta / "notificacao_pendente").unlink(missing_ok=True)
+    else:
+        (pasta / "notificacao_pendente").touch()
+    return estado

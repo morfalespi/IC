@@ -32,6 +32,8 @@ on:
         description: "Coleta completa com páginas legíveis, Markdown, JSONL e mídia acessível; use resumo só para uma consulta compacta explícita"
         required: false
         default: "completo"
+        type: choice
+        options: [completo, resumo]
       formato:
         description: "Formato explícito do relatório; falhas não alternam o formato automaticamente"
         type: choice
@@ -59,14 +61,6 @@ jobs:
       API_ID: ${{ secrets.API_ID }}
       API_HASH: ${{ secrets.API_HASH }}
       BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-      ALVO: ${{ inputs.alvo }}
-      EXPECTED_ID: ${{ inputs.expected_id }}
-      CHAT_ID: ${{ inputs.chat }}
-      MESSAGE_ID: ${{ inputs.message_id }}
-      MODO: ${{ inputs.modo }}
-      FORMATO_MENSAGEM: ${{ inputs.formato || 'rich' }}
-      ORIGEM_ID: ${{ inputs.origem_id }}
-      COLETAR_MIDIA: ${{ inputs.coletar_midia }}
     steps:
       - name: Healthcheck do dispatch
         if: ${{ inputs.healthcheck }}
@@ -74,6 +68,9 @@ jobs:
 
       - uses: actions/checkout@v4
         if: ${{ !inputs.healthcheck }}
+      - name: Mascarar dados da consulta antes de carregar variáveis
+        if: ${{ !inputs.healthcheck }}
+        run: python3 scripts/mascarar_inputs.py
       - name: Verificar secrets
         if: ${{ !inputs.healthcheck }}
         run: |
@@ -101,9 +98,19 @@ jobs:
           MESSAGE_ID: ""
         run: python scripts/validar_apis.py
       - if: ${{ !inputs.healthcheck && !inputs.validar_apis }}
+        env:
+          ALVO: ${{ inputs.alvo }}
+          EXPECTED_ID: ${{ inputs.expected_id }}
+          CHAT_ID: ${{ inputs.chat }}
+          MESSAGE_ID: ${{ inputs.message_id }}
+          MODO: ${{ inputs.modo }}
+          FORMATO_MENSAGEM: ${{ inputs.formato || 'rich' }}
+          ORIGEM_ID: ${{ inputs.origem_id }}
+          COLETAR_MIDIA: ${{ inputs.coletar_midia }}
         run: python scripts/resolver.py
       - name: Avisar o chat se a busca falhou sem resposta
         if: ${{ !inputs.healthcheck && !inputs.validar_apis && (failure() || cancelled()) }}
         env:
+          CHAT_ID: ${{ inputs.chat }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: python scripts/notificar_falha.py

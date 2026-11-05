@@ -1,6 +1,5 @@
 import atexit
 import asyncio
-import base64
 import html
 import hashlib
 import json
@@ -21,7 +20,8 @@ from mtproto_export import build_media_archives
 from telethon import TelegramClient, errors, utils
 from telethon.sessions import SQLiteSession
 from telegram_ids import tipo_dialogo
-from bot_api import chamar, diagnostico_api, diagnostico_excecao, BotAPIRequestError, BotAPIAuthenticationError, APIProtocolError
+from exportacao import valor_exportavel, CAMPOS_SIGILOSOS
+from bot_api import chamar, diagnostico_api, diagnostico_excecao, BotAPIRequestError, BotAPIAuthenticationError, APIProtocolError, estado_mensagem, registrar_notificacao
 from telethon.tl.functions.channels import GetFullChannelRequest, GetChannelsRequest, GetParticipantsRequest, GetMessagesRequest as GetChannelMessagesRequest
 from telethon.tl.functions.contacts import ResolveUsernameRequest
 from telethon.tl.functions.messages import GetChatsRequest, GetFullChatRequest, GetMessagesRequest
@@ -105,14 +105,11 @@ def corte(valor, limite=400):
 
 
 def aceitacao_mensagem(resposta):
-    mensagem = resposta.get("result") if isinstance(resposta, dict) else None
-    if not isinstance(resposta, dict) or resposta.get("ok") is not True or not isinstance(mensagem, dict):
+    estado = estado_mensagem(resposta, CHAT_DESTINO or None)
+    if estado == "rejected":
         return False
-    identificador = mensagem.get("message_id")
-    if type(identificador) is not int or identificador < 0:
-        return False
-    if identificador == 0:
-        MENSAGENS_PENDENTES.append(mensagem.get("ephemeral_message_id"))
+    if estado == "pending":
+        MENSAGENS_PENDENTES.append(resposta["result"].get("ephemeral_message_id"))
         print("Bot API aceitou mensagem sem ID editável; entrega permanece pendente")
     return True
 
@@ -130,7 +127,7 @@ def enviar(chat_id, texto):
     retorno = postar(chat_id, texto, True)
     if not aceitacao_mensagem(retorno):
         raise BotAPIRequestError("sendMessage", retorno)
-    open(os.path.join(os.environ.get("RUNNER_TEMP", "/tmp"), "notificado"), "w").close()
+    registrar_notificacao(retorno, chat_id)
 
 
 def enviar_foto(chat_id, conteudo):
@@ -194,7 +191,7 @@ def editar_ficha_rica(conteudo, foto=None, definitiva=False):
         diagnostico = diagnostico_api(resposta, metodo)
         print(json.dumps(diagnostico, ensure_ascii=False))
         raise BotAPIRequestError(metodo, resposta)
-    if definitiva:
+    if definitiva and estado_mensagem(resposta, CHAT_DESTINO) == "confirmed":
         marcar_notificado()
     return True, incorporar, resposta["result"]["message_id"]
 
@@ -1524,24 +1521,13 @@ def objeto_completo(resposta):
 
 
 def valor_mtproto(valor):
-    if hasattr(valor, "to_dict"):
-        return valor_mtproto(valor.to_dict())
-    if isinstance(valor, dict):
-        return {str(chave): valor_mtproto(item) for chave, item in valor.items()}
-    if isinstance(valor, (list, tuple)):
-        return [valor_mtproto(item) for item in valor]
-    if isinstance(valor, bytes):
-        return {"$bytes_base64": base64.b64encode(valor).decode("ascii")}
-    if isinstance(valor, (str, int, float, bool)) or valor is None:
-        return valor
-    if hasattr(valor, "isoformat"):
-        return valor.isoformat()
-    return str(valor)
+    return valor_exportavel(valor)
 
 
 def registros_telegram(dados, alvo, info):
     metadados = {
-        "formato": "infocard-telegram-jsonl-v2",
+        "formato": "infocard-telegram-jsonl-v3",
+        "redaction": {"marker": "[redigido]", "fields": sorted(CAMPOS_SIGILOSOS)},
         "escopo": "respostas de leitura obtidas pelas APIs do Telegram nesta execução",
         "apis": ["Bot API", "MTProto"],
         "telethon": telethon.__version__,
@@ -2421,8 +2407,8 @@ async def principal():
             codigo = 1
     if chat:
         if codigo == 0:
-            identidade = dados_basicos(info)
-            categorias = agrupar_campos(info)
+            identidade = valor_exportavel(dados_basicos(info))
+            categorias = valor_exportavel(agrupar_campos(info))
             if MODO == "completo":
                 categorias.extend(secoes_completas_telegram(dados, alvo, info))
             alvo_disparo = os.environ.get("ALVO", "").strip().lstrip("@")
@@ -2439,7 +2425,7 @@ async def principal():
             controles += '</tg-button-row>'
             completo = MODO == "completo"
             secoes = categorias
-            notas_publicadas = notas
+            notas_publicadas = valor_exportavel(notas)
             teclado_html = None
             if MODO == "resumo" and callback_data("f", alvo_disparo):
                 teclado_html = {"inline_keyboard": [[{

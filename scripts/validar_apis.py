@@ -3,8 +3,10 @@ import json
 import os
 import sys
 
-from resolver import chamar, coletar, id_peer
+from resolver import chamar, coletar, id_peer, registros_telegram
 from bot_api import BotAPIRequestError, diagnostico_excecao
+from exportacao import CHAVES_NORMALIZADAS
+import re
 
 
 async def principal():
@@ -34,6 +36,16 @@ async def principal():
     if dados["completo"] is None or dados["falhas_coleta"]:
         raise RuntimeError("A leitura do perfil completo MTProto não foi confirmada.")
     print("Bot API e MTProto via Telethon: mesmo canal e perfil completo confirmados", flush=True)
+    protegidos = 0
+    for registro in registros_telegram(dados, "telegram", {"tipo": "canal"}):
+        chave = re.sub(r"[^a-z0-9]", "", registro["path"].rsplit(".", 1)[-1].lower())
+        if chave in CHAVES_NORMALIZADAS:
+            if registro["value"] != "[redigido]":
+                raise RuntimeError("Exportação preservou um campo de autenticação")
+            protegidos += 1
+    if protegidos == 0:
+        raise RuntimeError("A consulta não forneceu campos para validar a redação na exportação real")
+    print("Exportação das respostas reais: campos de autenticação redigidos", flush=True)
     return 0
 
 
