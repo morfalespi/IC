@@ -8,14 +8,13 @@ function esc(valor) {
 }
 
 function reduzir(valor, limite = 160) {
-  return Array.from(String(valor)).slice(0, limite).join('');
+  return String(valor);
 }
 
 function referencia(objeto, origem, tipo = 'usuario') {
   const idBruto = tipo === 'chat' ? objeto?.chat_id ?? objeto?.id : objeto?.user_id ?? objeto?.id;
   const id = Number(idBruto);
-  if (!Number.isSafeInteger(id) || id === 0) return null;
-  const username = typeof objeto?.username === 'string' && /^[A-Za-z0-9_]{1,32}$/.test(objeto.username) ? objeto.username : null;
+  const username = objeto?.username ?? null;
   const nome = tipo === 'chat'
     ? objeto?.title
     : [objeto?.first_name, objeto?.last_name].filter(v => typeof v === 'string' && v.trim()).join(' ');
@@ -66,7 +65,6 @@ function adicionarDadosCompartilhados(resposta, dados) {
 }
 
 export default async function (message) {
-  if (message.chat.type !== 'private') return;
   let resposta;
   try {
     const compartilhamento = referenciaCompartilhada(message);
@@ -92,3 +90,4 @@ export default async function (message) {
   }
   if (!resposta?.enviado) await enviarMensagem(message.chat.id, resposta.html, resposta.teclado);
 }
+
