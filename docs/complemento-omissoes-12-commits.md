@@ -66,3 +66,10 @@ As três falhas de resolver na revisão c9195d12 foram verificadas por jobs: [42
 A lista é um **complemento de conteúdo**, não retificação silenciosa do primeiro relatório. As omissões assumidas foram: detalhes de funções não decisivas à narrativa, documentos históricos longos, strings e objetos retornados com dados potencialmente sensíveis, todas as linhas inalteradas de cada arquivo, parâmetros de métodos Telegram não exercitados e métricas sem observação. **Fatos adversos relevantes não devem ser omitidos do juízo final**: falso sucesso, perda de redação, mudança de identidade, reenvios, ausência de hash, duplicação no ZIP e erros registrados durante execução verde constam no primeiro texto.
 
 Para comprovar quais bytes foram efetivamente recuperados em cada snapshot e para abrir o código completo por SHA, consulte o terceiro arquivo. Nenhuma linha de código foi deliberadamente removida da recuperação; a **síntese textual** é que não transcreve tudo.
+
+## Atribuição desta aplicação
+
+- **Autoria da redação e análise destes relatórios:** ChatGPT (GPT-6), mediante solicitação do usuário.
+- **Aplicação e publicação dos arquivos no repositório:** ChatGPT (GPT-6), utilizando a integração GitHub autorizada.
+- **Author e committer nativos do commit Git:** registrados pela integração sob a identidade da conta autenticada (`morfalespi`). Esta indicação textual não substitui os metadados nativos de autoria ou committer do objeto Git.
+- **Escopo:** a atribuição é apenas desta documentação e da sua publicação, não da autoria do código do repositório nem de obras anteriores.

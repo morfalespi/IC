@@ -206,3 +206,10 @@ Além da leitura do corpus, foram consultados o status de workflows, etapas de j
 7. **Não replique conteúdos sensíveis obtidos das execuções** ao produzir auditoria pública.
 
 Os dois outros arquivos documentam interpretação e as lacunas da síntese: [evolução prática](evolucao-pratica-12-commits.md) e [omissões](complemento-omissoes-12-commits.md). Este arquivo não altera o executável do repositório.
+
+## Atribuição desta aplicação
+
+- **Autoria da redação e análise destes relatórios:** ChatGPT (GPT-6), mediante solicitação do usuário.
+- **Aplicação e publicação dos arquivos no repositório:** ChatGPT (GPT-6), utilizando a integração GitHub autorizada.
+- **Author e committer nativos do commit Git:** registrados pela integração sob a identidade da conta autenticada (`morfalespi`). Esta indicação textual não substitui os metadados nativos de autoria ou committer do objeto Git.
+- **Escopo:** a atribuição é apenas desta documentação e da sua publicação, não da autoria do código do repositório nem de obras anteriores.
