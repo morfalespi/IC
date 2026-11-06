@@ -207,9 +207,9 @@ Além da leitura do corpus, foram consultados o status de workflows, etapas de j
 
 Os dois outros arquivos documentam interpretação e as lacunas da síntese: [evolução prática](evolucao-pratica-12-commits.md) e [omissões](complemento-omissoes-12-commits.md). Este arquivo não altera o executável do repositório.
 
-## Atribuição desta aplicação
+## Autoria e responsabilidade pela aplicação
 
-- **Autoria da redação e análise destes relatórios:** ChatGPT (GPT-6), mediante solicitação do usuário.
-- **Aplicação e publicação dos arquivos no repositório:** ChatGPT (GPT-6), utilizando a integração GitHub autorizada.
-- **Author e committer nativos do commit Git:** registrados pela integração sob a identidade da conta autenticada (`morfalespi`). Esta indicação textual não substitui os metadados nativos de autoria ou committer do objeto Git.
-- **Escopo:** a atribuição é apenas desta documentação e da sua publicação, não da autoria do código do repositório nem de obras anteriores.
+- **Autor da análise, redação, seleção das evidências e conclusões deste relatório:** ChatGPT (GPT-6).
+- **Responsável pelas decisões editoriais e pela execução integral da tarefa:** ChatGPT (GPT-6). A elaboração e aplicação do texto foram executadas sem solicitar decisões editoriais ao usuário.
+- **Responsável pela criação e publicação dos arquivos no repositório:** ChatGPT (GPT-6), por meio da integração GitHub.
+- **Metadados nativos do Git:** os campos `author` e `committer` dos commits feitos pela integração aparecem sob a conta autenticada (`morfalespi`); essa identificação técnica é distinta da atribuição da elaboração e aplicação acima.

@@ -67,9 +67,9 @@ A lista é um **complemento de conteúdo**, não retificação silenciosa do pri
 
 Para comprovar quais bytes foram efetivamente recuperados em cada snapshot e para abrir o código completo por SHA, consulte o terceiro arquivo. Nenhuma linha de código foi deliberadamente removida da recuperação; a **síntese textual** é que não transcreve tudo.
 
-## Atribuição desta aplicação
+## Autoria e responsabilidade pela aplicação
 
-- **Autoria da redação e análise destes relatórios:** ChatGPT (GPT-6), mediante solicitação do usuário.
-- **Aplicação e publicação dos arquivos no repositório:** ChatGPT (GPT-6), utilizando a integração GitHub autorizada.
-- **Author e committer nativos do commit Git:** registrados pela integração sob a identidade da conta autenticada (`morfalespi`). Esta indicação textual não substitui os metadados nativos de autoria ou committer do objeto Git.
-- **Escopo:** a atribuição é apenas desta documentação e da sua publicação, não da autoria do código do repositório nem de obras anteriores.
+- **Autor da análise, redação, seleção das evidências e conclusões deste relatório:** ChatGPT (GPT-6).
+- **Responsável pelas decisões editoriais e pela execução integral da tarefa:** ChatGPT (GPT-6). A elaboração e aplicação do texto foram executadas sem solicitar decisões editoriais ao usuário.
+- **Responsável pela criação e publicação dos arquivos no repositório:** ChatGPT (GPT-6), por meio da integração GitHub.
+- **Metadados nativos do Git:** os campos `author` e `committer` dos commits feitos pela integração aparecem sob a conta autenticada (`morfalespi`); essa identificação técnica é distinta da atribuição da elaboração e aplicação acima.

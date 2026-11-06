@@ -102,9 +102,9 @@ A sequência **não é uma melhora linear**. Há uma evolução positiva demonst
 
 **Referências primárias:** [comparação da base com main](https://github.com/morfalespi/IC/compare/b7e59b14148f3cd57352f44b7b2661155054fffc...6a4eb788069055c48f0829580c32d64367ca0455); [PR #32](https://github.com/morfalespi/IC/pull/32); [PR #34](https://github.com/morfalespi/IC/pull/34); paths de código e execuções indicados acima. A comparação entre pais de merge é feita a partir das árvores reais de cada pai.
 
-## Atribuição desta aplicação
+## Autoria e responsabilidade pela aplicação
 
-- **Autoria da redação e análise destes relatórios:** ChatGPT (GPT-6), mediante solicitação do usuário.
-- **Aplicação e publicação dos arquivos no repositório:** ChatGPT (GPT-6), utilizando a integração GitHub autorizada.
-- **Author e committer nativos do commit Git:** registrados pela integração sob a identidade da conta autenticada (`morfalespi`). Esta indicação textual não substitui os metadados nativos de autoria ou committer do objeto Git.
-- **Escopo:** a atribuição é apenas desta documentação e da sua publicação, não da autoria do código do repositório nem de obras anteriores.
+- **Autor da análise, redação, seleção das evidências e conclusões deste relatório:** ChatGPT (GPT-6).
+- **Responsável pelas decisões editoriais e pela execução integral da tarefa:** ChatGPT (GPT-6). A elaboração e aplicação do texto foram executadas sem solicitar decisões editoriais ao usuário.
+- **Responsável pela criação e publicação dos arquivos no repositório:** ChatGPT (GPT-6), por meio da integração GitHub.
+- **Metadados nativos do Git:** os campos `author` e `committer` dos commits feitos pela integração aparecem sob a conta autenticada (`morfalespi`); essa identificação técnica é distinta da atribuição da elaboração e aplicação acima.
