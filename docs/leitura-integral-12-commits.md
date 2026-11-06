@@ -1,5 +1,8 @@
 # Registro mensurável da leitura total do repositório nos 12 commits
 
+> **Retificação factual posterior:** consulte [proveniência dos commits e limites da evidência](retificacao-proveniencia-dos-commits.md) para os dados efetivamente registrados sobre a publicação pela integração GitHub, a identidade nativa do Git e a ausência de identificação do ambiente Linux executor.
+
+
 **Repositório:** morfalespi/IC. **Head auditado:** 6a4eb788069055c48f0829580c32d64367ca0455. **Data da auditoria:** 2026-11-06. Este arquivo documenta exatamente o corpus lido e o limite das conclusões.
 
 ## 1. Cobertura de conteúdo realmente recuperado

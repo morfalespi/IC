@@ -1,5 +1,8 @@
 # Complemento: conteúdo não exposto em detalhe no primeiro relatório
 
+> **Retificação factual posterior:** consulte [proveniência dos commits e limites da evidência](retificacao-proveniencia-dos-commits.md) para os dados efetivamente registrados sobre a publicação pela integração GitHub, a identidade nativa do Git e a ausência de identificação do ambiente Linux executor.
+
+
 **Documento principal ao qual este complemento se refere:** [evolucao-pratica-12-commits.md](evolucao-pratica-12-commits.md). **Estado examinado:** main em 6a4eb788069055c48f0829580c32d64367ca0455. **Relação de todos os arquivos e versões lidas:** [leitura-integral-12-commits.md](leitura-integral-12-commits.md).
 
 ## 1. O que “omitido” significa neste contexto

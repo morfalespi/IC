@@ -1,5 +1,8 @@
 # Evolução prática de execução — 12 commits (04–06/11/2026)
 
+> **Retificação factual posterior:** consulte [proveniência dos commits e limites da evidência](retificacao-proveniencia-dos-commits.md) para os dados efetivamente registrados sobre a publicação pela integração GitHub, a identidade nativa do Git e a ausência de identificação do ambiente Linux executor.
+
+
 **Repositório:** morfalespi/IC · **referência analisada:** 6a4eb788069055c48f0829580c32d64367ca0455 (main) · **base da sequência:** b7e59b14148f3cd57352f44b7b2661155054fffc. 
 
 ## 1. Escopo e método de verificação
