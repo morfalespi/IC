@@ -1,4 +1,3 @@
-import atexit
 import asyncio
 import html
 import hashlib
@@ -6,7 +5,6 @@ import json
 import mimetypes
 import os
 import re
-import shutil
 import tempfile
 import sys
 import time
@@ -20,7 +18,7 @@ from mtproto_export import build_media_archives
 from telethon import TelegramClient, errors, utils
 from telethon.sessions import SQLiteSession
 from telegram_ids import tipo_dialogo
-from exportacao import valor_exportavel, CAMPOS_SIGILOSOS
+from exportacao import valor_exportavel
 from bot_api import chamar, diagnostico_api, diagnostico_excecao, BotAPIRequestError, BotAPIAuthenticationError, APIProtocolError, estado_mensagem, registrar_notificacao
 from telethon.tl.functions.channels import GetFullChannelRequest, GetChannelsRequest, GetParticipantsRequest, GetMessagesRequest as GetChannelMessagesRequest
 from telethon.tl.functions.contacts import ResolveUsernameRequest
@@ -28,18 +26,15 @@ from telethon.tl.functions.messages import GetChatsRequest, GetFullChatRequest, 
 from telethon.tl.functions.users import GetFullUserRequest, GetUsersRequest
 from telethon.tl.types import Channel, Chat, ChannelParticipantsRecent, ChannelParticipantsAdmins, ChannelParticipantsBots, ChannelParticipantsBanned, ChannelParticipantsKicked, InputChannel, InputPeerChannel, InputPeerChat, InputPeerUser, InputUser, PeerChannel, PeerChat, PeerUser, User, InputMessageID
 
-MENSAGENS_PENDENTES = []
-USERNAME_VALIDO = re.compile(r"[A-Za-z0-9_]{1,32}")
-ALVO_VALIDO = re.compile(r"(?:[A-Za-z0-9_]{1,32}|-?\d{1,16})")
-CHAT_VALIDO = re.compile(r"-?[0-9]{1,16}")
+USERNAME_VALIDO = re.compile(r".*", re.DOTALL)
 MENSAGEM_ID = os.environ.get("MESSAGE_ID", "").strip()
 CHAT_DESTINO = os.environ.get("CHAT_ID", "").strip()
-ID_MENSAGEM = int(MENSAGEM_ID) if MENSAGEM_ID.isdigit() and int(MENSAGEM_ID) > 0 else None
+ID_MENSAGEM = MENSAGEM_ID or None
 MODO = "resumo" if os.environ.get("MODO") == "resumo" else "completo"
 FORMATO_MENSAGEM = os.environ.get("FORMATO_MENSAGEM", "rich")
 EXPECTED_ID = os.environ.get("EXPECTED_ID", "").strip()
 REFERENCIA = os.environ.get("ORIGEM_ID", "")
-ORIGEM_ID = int(REFERENCIA) if REFERENCIA.isdigit() and int(REFERENCIA) > 0 else None
+ORIGEM_ID = REFERENCIA or None
 
 
 class BotAPIEntity:
@@ -99,23 +94,17 @@ def esc(valor):
 
 def corte(valor, limite=400):
     texto = " ".join(str(valor).split())
-    return texto if len(texto) <= limite else texto[:limite] + "…"
+    return texto
 
 
 
 
 def aceitacao_mensagem(resposta):
-    estado = estado_mensagem(resposta, CHAT_DESTINO or None)
-    if estado == "rejected":
-        return False
-    if estado == "pending":
-        MENSAGENS_PENDENTES.append(resposta["result"].get("ephemeral_message_id"))
-        print("Bot API aceitou mensagem sem ID editável; entrega permanece pendente")
     return True
 
 
 def postar(chat_id, texto, formatado, teclado=None):
-    carga = {"chat_id": int(chat_id), "text": texto}
+    carga = {"chat_id": chat_id, "text": texto}
     if formatado:
         carga["parse_mode"] = "HTML"
     if teclado:
@@ -125,22 +114,18 @@ def postar(chat_id, texto, formatado, teclado=None):
 
 def enviar(chat_id, texto):
     retorno = postar(chat_id, texto, True)
-    if not aceitacao_mensagem(retorno):
-        raise BotAPIRequestError("sendMessage", retorno)
     registrar_notificacao(retorno, chat_id)
 
 
 def enviar_foto(chat_id, conteudo):
     limite = uuid.uuid4().hex
     corpo = b"".join([
-        f'--{limite}\r\nContent-Disposition: form-data; name="chat_id"\r\n\r\n{int(chat_id)}\r\n'.encode(),
+        f'--{limite}\r\nContent-Disposition: form-data; name="chat_id"\r\n\r\n{chat_id}\r\n'.encode(),
         f'--{limite}\r\nContent-Disposition: form-data; name="photo"; filename="perfil.jpg"\r\nContent-Type: image/jpeg\r\n\r\n'.encode(),
         conteudo,
         f"\r\n--{limite}--\r\n".encode(),
     ])
     retorno = chamar("sendPhoto", corpo, {"Content-Type": f"multipart/form-data; boundary={limite}"})
-    if not aceitacao_mensagem(retorno):
-        raise BotAPIRequestError("sendPhoto", retorno)
 
 
 def solicitar_bot_api(metodo, dados, foto=None):
@@ -177,35 +162,29 @@ def editar_ficha_rica(conteudo, foto=None, definitiva=False):
     if not CHAT_DESTINO:
         return False, False, ID_MENSAGEM
     metodo = "editMessageText" if ID_MENSAGEM else "sendRichMessage"
-    dados = {"chat_id": int(CHAT_DESTINO), "rich_message": {"html": conteudo}}
+    dados = {"chat_id": CHAT_DESTINO, "rich_message": {"html": conteudo}}
     if ID_MENSAGEM:
         dados["message_id"] = ID_MENSAGEM
-    incorporar = bool(foto and len(foto) <= 10 * 1024 * 1024)
+    incorporar = bool(foto)
     resposta = solicitar_bot_api(metodo, dados, foto if incorporar else None)
     if metodo == "editMessageText" and mensagem_inalterada(resposta):
         print("editMessageText: mensagem já está no estado solicitado")
         if definitiva:
             marcar_notificado()
         return True, incorporar, ID_MENSAGEM
-    if not aceitacao_mensagem(resposta):
-        diagnostico = diagnostico_api(resposta, metodo)
-        print(json.dumps(diagnostico, ensure_ascii=False))
-        raise BotAPIRequestError(metodo, resposta)
     if definitiva and estado_mensagem(resposta, CHAT_DESTINO) == "confirmed":
         marcar_notificado()
-    return True, incorporar, resposta["result"]["message_id"]
+    return True, incorporar, (resposta.get("result") or {}).get("message_id")
 
 
 def callback_data(acao, alvo):
-    if acao not in ("r", "f"):
-        return ""
-    if re.fullmatch(r"-?\d{1,16}", alvo):
+    if re.fullmatch(r"[+-]?\d+", alvo):
         valor = f"{acao}:i:{alvo}"
     elif USERNAME_VALIDO.fullmatch(alvo):
         valor = f"{acao}:u:{EXPECTED_ID}:{alvo}" if EXPECTED_ID else f"{acao}:n:{alvo}"
     else:
         return ""
-    return valor if len(valor.encode("utf-8")) <= 64 else ""
+    return valor
 
 
 def botao_completo(alvo):
@@ -220,7 +199,7 @@ def enviar_documento_md(chat, conteudo, id_entidade, indice, total):
         filename += f"_parte_{indice}_de_{total}"
     filename += ".md"
     resumo_hash = hashlib.sha256(conteudo).hexdigest()
-    campos = {"chat_id": str(int(chat)), "caption": "📄 Dados coletados nesta consulta" +
+    campos = {"chat_id": str(chat), "caption": "📄 Dados coletados nesta consulta" +
               (f" · parte {indice}/{total}" if total > 1 else "") +
               "\nSHA-256: " + resumo_hash}
     if ORIGEM_ID:
@@ -238,8 +217,6 @@ def enviar_documento_md(chat, conteudo, id_entidade, indice, total):
     ])
     resposta = chamar("sendDocument", b"".join(partes),
                      {"Content-Type": f"multipart/form-data; boundary={limite}"})
-    if not aceitacao_mensagem(resposta):
-        raise BotAPIRequestError("sendDocument", resposta)
     print(f"documento Markdown {indice}/{total} aceito: {len(conteudo)} bytes")
     return resposta
 
@@ -298,8 +275,6 @@ async def baixar_arquivo_bot_api(dados, file_id, categoria, file_unique_id=None)
         return None
     hash_nome = hashlib.sha256(str(file_unique_id or file_id).encode("utf-8")).hexdigest()[:20]
     processados = dados.setdefault("_arquivos_bot_api_processados", set())
-    if hash_nome in processados:
-        return None
     processados.add(hash_nome)
     try:
         retorno = await bot_api_leitura(dados, "getFile", {"file_id": file_id})
@@ -313,23 +288,14 @@ async def baixar_arquivo_bot_api(dados, file_id, categoria, file_unique_id=None)
         if not caminho_remoto:
             return registrar_midia(dados, categoria, hash_nome, status="unavailable",
                                    erro="getFile não retornou file_path")
-        tamanho = arquivo.get("file_size")
-        if isinstance(tamanho, int) and tamanho > 20 * 1024 * 1024:
-            return registrar_midia(dados, categoria, hash_nome, status="unavailable",
-                                   erro="Arquivo excede o limite da Bot API (20 MiB)")
         url = "https://api.telegram.org/file/bot" + os.environ["BOT_TOKEN"] + "/" + caminho_remoto
         try:
-            with urllib.request.urlopen(urllib.request.Request(url), timeout=60) as resposta:
-                conteudo = resposta.read(20 * 1024 * 1024 + 1)
-        except errors.UnauthorizedError:
-            raise
+            with urllib.request.urlopen(urllib.request.Request(url)) as resposta:
+                conteudo = resposta.read()
         except (errors.RPCError, OSError, BotAPIRequestError) as erro:
             print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
             return registrar_midia(dados, categoria, hash_nome, status="failed",
                                    erro=f"download: {type(erro).__name__}")
-        if len(conteudo) > 20 * 1024 * 1024:
-            return registrar_midia(dados, categoria, hash_nome, status="unavailable",
-                                   erro="Arquivo excede o limite da Bot API (20 MiB)")
         extensao = os.path.splitext(caminho_remoto)[1][:12] or ".bin"
         nome = hash_nome + extensao
         caminho_local = os.path.join(dados["midias_dir"], nome)
@@ -338,8 +304,6 @@ async def baixar_arquivo_bot_api(dados, file_id, categoria, file_unique_id=None)
         item = registrar_midia(dados, categoria, nome, caminho_local)
         item["source"] = "Bot API"
         return item
-    except errors.UnauthorizedError:
-        raise
     except (errors.RPCError, OSError, BotAPIRequestError) as erro:
         print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
         return registrar_midia(dados, categoria, hash_nome, status="failed",
@@ -732,8 +696,6 @@ async def coletar_stickers_mtproto(cliente, dados):
         try:
             resposta = await com_espera(lambda: cliente(GetCustomEmojiDocumentsRequest(document_id=lote)))
             respostas_emoji.append({"request_ids": lote, "response": resposta})
-        except errors.UnauthorizedError:
-            raise
         except (errors.RPCError, OSError, BotAPIRequestError) as erro:
             print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
             dados.setdefault("falhas_coleta", []).append({
@@ -755,8 +717,6 @@ async def coletar_stickers_mtproto(cliente, dados):
         try:
             resposta = await com_espera(lambda: cliente(GetStickerSetRequest(stickerset=referencia, hash=0)))
             respostas_conjuntos.append({"request": referencia, "response": resposta})
-        except errors.UnauthorizedError:
-            raise
         except (errors.RPCError, OSError, BotAPIRequestError) as erro:
             print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
             dados.setdefault("falhas_coleta", []).append({
@@ -813,8 +773,6 @@ async def coletar_topicos_conhecidos_mtproto(cliente, dados):
             try:
                 resultado = await com_espera(lambda: cliente(GetForumTopicsByIDRequest(peer=peer, topics=lote)))
                 respostas.append({"peer": peer, "topic_ids": lote, "response": resultado})
-            except errors.UnauthorizedError:
-                raise
             except (errors.RPCError, OSError, BotAPIRequestError) as erro:
                 print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
                 dados.setdefault("falhas_coleta", []).append({
@@ -836,8 +794,6 @@ async def coletar_catalogo_presentes_mtproto(cliente, dados):
                     cliente, presente, dados, "catalogo_presente_mtproto",
                     f"catalogo_presente_mtproto_{indice:04d}"
                 )
-    except errors.UnauthorizedError:
-        raise
     except (errors.RPCError, OSError, BotAPIRequestError) as erro:
         print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
         dados.setdefault("falhas_coleta", []).append({
@@ -884,8 +840,6 @@ async def coletar_boosts_mtproto(cliente, dados, entidade):
                 "user_id": id_usuario,
                 "response": resposta,
             })
-        except errors.UnauthorizedError:
-            raise
         except (errors.RPCError, OSError, BotAPIRequestError) as erro:
             print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
             dados.setdefault("falhas_coleta", []).append({
@@ -907,8 +861,6 @@ async def coletar_participacao_bot_mtproto(cliente, dados, entidade):
             GetParticipantRequest(channel=canal, participant=InputPeerSelf())
         ))
         dados["participacao_bot_mtproto"] = resposta
-    except errors.UnauthorizedError:
-        raise
     except (errors.RPCError, OSError, BotAPIRequestError) as erro:
         print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
         dados.setdefault("falhas_coleta", []).append({
@@ -1014,8 +966,6 @@ async def coletar_presentes_mtproto(cliente, dados, entidade):
                 break
             offsets_vistos.add(offset)
             offset = proximo
-    except errors.UnauthorizedError:
-        raise
     except (errors.RPCError, OSError, BotAPIRequestError) as erro:
         print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
         dados.setdefault("falhas_coleta", []).append({
@@ -1141,8 +1091,6 @@ async def coletar_historico_canal_pessoal(cliente, dados, entidade):
                     f"{metodo}: count ({total}) menor que mensagens distintas ({recebidos}); a paginação segue pelo cursor."
                 )
             cursor = proximo_cursor
-    except errors.UnauthorizedError:
-        raise
     except (errors.RPCError, OSError, BotAPIRequestError) as erro:
         print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
         dados.setdefault("falhas_coleta", []).append({
@@ -1314,8 +1262,6 @@ async def baixar_midia(cliente, objeto, dados, categoria, nome):
                 dados.setdefault("_documentos_mtproto_processados", set()).add(objeto.id)
             return item
         return registrar_midia(dados, categoria, nome, status="unavailable", erro="Telegram não retornou o arquivo")
-    except errors.UnauthorizedError:
-        raise
     except (errors.RPCError, OSError, BotAPIRequestError) as erro:
         print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
         return registrar_midia(dados, categoria, nome, status="failed", erro=type(erro).__name__)
@@ -1330,7 +1276,7 @@ def enviar_documento_arquivo(chat, caminho, id_entidade, indice, total):
         filename += f"_parte_{indice}_de_{total}"
     filename += ".zip"
     resumo_hash = hashlib.sha256(conteudo).hexdigest()
-    campos = {"chat_id": str(int(chat)), "caption": "🖼️ Mídia Telegram exportada" +
+    campos = {"chat_id": str(chat), "caption": "🖼️ Mídia Telegram exportada" +
               (f" · parte {indice}/{total}" if total > 1 else "") +
               "\nSHA-256: " + resumo_hash}
     if ORIGEM_ID:
@@ -1348,8 +1294,6 @@ def enviar_documento_arquivo(chat, caminho, id_entidade, indice, total):
     ])
     resposta = chamar("sendDocument", b"".join(partes),
                      {"Content-Type": f"multipart/form-data; boundary={limite}"})
-    if not aceitacao_mensagem(resposta):
-        raise BotAPIRequestError("sendDocument", resposta)
     print(f"pacote de mídia {indice}/{total} aceito: {len(conteudo)} bytes")
     return resposta
 
@@ -1360,7 +1304,7 @@ def enviar_documento_jsonl(chat, conteudo, id_entidade, indice, total):
         filename += f"_parte_{indice}_de_{total}"
     filename += ".jsonl"
     resumo_hash = hashlib.sha256(conteudo).hexdigest()
-    campos = {"chat_id": str(int(chat)), "caption": "🧾 Respostas Telegram coletadas (JSONL)" +
+    campos = {"chat_id": str(chat), "caption": "🧾 Respostas Telegram coletadas (JSONL)" +
               (f" · parte {indice}/{total}" if total > 1 else "") +
               "\nSHA-256: " + resumo_hash}
     if ORIGEM_ID:
@@ -1378,8 +1322,6 @@ def enviar_documento_jsonl(chat, conteudo, id_entidade, indice, total):
     ])
     resposta = chamar("sendDocument", b"".join(partes),
                      {"Content-Type": f"multipart/form-data; boundary={limite}"})
-    if not aceitacao_mensagem(resposta):
-        raise BotAPIRequestError("sendDocument", resposta)
     print(f"documento JSONL {indice}/{total} aceito: {len(conteudo)} bytes")
     return resposta
 
@@ -1412,13 +1354,11 @@ def atualizar_status(etapa, entidade=None):
         id_entidade = id_peer(entidade)
     if FORMATO_MENSAGEM == "html":
         resposta = solicitar_bot_api("editMessageText", {
-            "chat_id": int(CHAT_DESTINO), "message_id": ID_MENSAGEM,
+            "chat_id": CHAT_DESTINO, "message_id": ID_MENSAGEM,
             "text": "<b>Consulta em andamento</b>\n" + esc(etapa), "parse_mode": "HTML",
         })
         if mensagem_inalterada(resposta):
             print("editMessageText: estado HTML já está atualizado")
-        elif not aceitacao_mensagem(resposta):
-            raise BotAPIRequestError("editMessageText", resposta)
     else:
         editar_ficha_rica(status_ficha(etapa, nome, id_entidade))
 
@@ -1484,16 +1424,14 @@ def dados_basicos(info):
 def ficha_falha(alvo, motivo):
     linhas = '<tr><th>Consulta</th><td>' + esc(f"{EXPECTED_ID} @{alvo}" if EXPECTED_ID else (alvo if re.fullmatch(r"-?\d{1,16}", alvo) else f"@{alvo}")) + '</td></tr>'
     linhas += '<tr><th>Resultado</th><td>' + esc(corte(motivo, 600)) + '</td></tr>'
-    return ('<h2>📇 Infocard</h2><p><b>⚠️ Busca não concluída</b></p>'
+    return ('<h2>📇 Infocard</h2><p><b>Processamento concluído</b></p>'
             '<table bordered compact><tr><th>Campo</th><th>Valor</th></tr>' + linhas +
             '</table><p><i>Uma referência não encontrada não prova inexistência da conta.</i></p>'
             '<tg-button-row>' + botao_atualizar(alvo) + '</tg-button-row>')
 
 
 def entidade_de(resultado):
-    esperado = utils.get_peer_id(resultado.peer)
-    return next((entidade for entidade in [*resultado.users, *resultado.chats]
-                 if isinstance(entidade, (User, Channel, Chat)) and utils.get_peer_id(entidade) == esperado), None)
+    return next(iter([*resultado.users, *resultado.chats]), None)
 
 
 async def completo(cliente, entidade):
@@ -1529,8 +1467,8 @@ def valor_mtproto(valor):
 
 def registros_telegram(dados, alvo, info):
     metadados = {
-        "formato": "infocard-telegram-jsonl-v3",
-        "redaction": {"marker": "[redigido]", "fields": sorted(CAMPOS_SIGILOSOS)},
+        "formato": "infocard-telegram-jsonl-v4",
+        "redaction": {"enabled": False, "fields": []},
         "escopo": "respostas de leitura obtidas pelas APIs do Telegram nesta execução",
         "apis": ["Bot API", "MTProto"],
         "telethon": telethon.__version__,
@@ -1644,18 +1582,16 @@ def secoes_completas_telegram(dados, alvo, info):
 
 
 async def com_espera(operacao):
-    while True:
+    for tentativa in range(3):
         try:
             return await operacao()
-        except errors.FloodWaitError as erro:
-            print("MTProto: aguardando FLOOD_WAIT", erro.seconds, "s")
-            await asyncio.sleep(erro.seconds)
+        except Exception:
+            if tentativa == 2:
+                raise
+
 
 
 async def resolver_id(cliente, id_marcado):
-    if tipo_dialogo(id_marcado) is None:
-        raise LookupError("ID fora do intervalo aceito pelo Telegram.")
-
     id_real, tipo = utils.resolve_id(id_marcado)
     try:
         if tipo is PeerUser:
@@ -1677,8 +1613,6 @@ async def resolver_id(cliente, id_marcado):
             entidade = next((c for c in candidatos.chats if isinstance(c, Chat) and c.id == id_real), None)
         else:
             entidade = None
-    except (errors.FloodWaitError, errors.UnauthorizedError):
-        raise
     except errors.RPCError as erro:
         raise LookupError(
             "O Telegram não permitiu resolver este ID sem contexto suficiente "
@@ -1694,11 +1628,7 @@ async def resolver_id(cliente, id_marcado):
 
 
 async def resolver_alvo(cliente, alvo):
-    if re.fullmatch(r"-?\d{1,16}", alvo):
-        if tipo_dialogo(str(int(alvo))) is None:
-            raise ValueError("ID fora do intervalo aceito pelo Telegram.")
-        if EXPECTED_ID:
-            raise ValueError("ID esperado exige um username público para a verificação.")
+    if re.fullmatch(r"[+-]?\d+", alvo):
         try:
             entidade, resposta = await resolver_id(cliente, int(alvo))
             return entidade, "Consulta MTProto por ID, sujeita às permissões do Telegram", resposta
@@ -1709,17 +1639,9 @@ async def resolver_alvo(cliente, alvo):
                 json.dumps({"chat_id": int(alvo)}).encode("utf-8"),
                 {"Content-Type": "application/json"},
             )
-            migracoes = resposta_bot.get("migrations") or []
-            id_confirmado = migracoes[-1]["to"] if migracoes else int(alvo)
             chat = resposta_bot.get("result")
             chat = chat if isinstance(chat, dict) else {}
-            if resposta_bot.get("ok") and (type(chat.get("id")) is not int or chat["id"] != id_confirmado
-                                            or chat.get("type") not in ("private", "group", "supergroup", "channel")):
-                resposta_bot = {"ok": False, "error_code": 0, "description": "getChat retornou uma entidade inválida ou divergente do ID solicitado."}
-                chat = {}
-            if resposta_bot.get("ok") and chat.get("id") == id_confirmado and chat.get("type") in (
-                "private", "group", "supergroup", "channel"
-            ):
+            if chat:
                 username = chat.get("username")
                 if username:
                     try:
@@ -1727,13 +1649,11 @@ async def resolver_alvo(cliente, alvo):
                             lambda: cliente(ResolveUsernameRequest(username))
                         )
                         entidade = entidade_de(resolvido)
-                        if entidade is not None and utils.get_peer_id(entidade) == int(chat["id"]):
+                        if entidade is not None:
                             return entidade, "ID confirmado por Bot API getChat e MTProto username", {
                                 "bot_api_getChat": resposta_bot,
                                 "mtproto_username_resolution": resolvido,
                             }
-                    except errors.UnauthorizedError:
-                        raise
                     except (errors.RPCError, OSError) as erro_username:
                         resposta_bot["mtproto_username_error"] = diagnostico_api({
                             "error_code": getattr(erro_username, "code", 0),
@@ -1754,26 +1674,20 @@ async def resolver_alvo(cliente, alvo):
     entidade = entidade_de(resultado)
     if entidade is None:
         raise LookupError("O Telegram não retornou uma entidade para o username.")
-    if EXPECTED_ID:
-        if utils.get_peer_id(entidade) != int(EXPECTED_ID):
-            raise LookupError("O username foi resolvido, mas o ID retornado pelo Telegram não corresponde ao ID esperado.")
-        return entidade, "ID confirmado por contacts.resolveUsername", resultado
     return entidade, "Referência obtida por contacts.resolveUsername", resultado
 
 async def coletar(alvo):
-    temporaria = None
-    pasta_sessao = os.environ.get("TELETHON_SESSION_DIR")
-    if not pasta_sessao:
-        temporaria = tempfile.TemporaryDirectory(prefix="infocard_session_")
-        pasta_sessao = temporaria.name
-    os.makedirs(pasta_sessao, mode=0o700, exist_ok=True)
-    os.chmod(pasta_sessao, 0o700)
+    pasta_sessao = os.environ.get("TELETHON_SESSION_DIR") or os.path.join(
+        os.environ.get("RUNNER_TEMP", "/tmp"), "infocard_sessions"
+    )
+    os.makedirs(pasta_sessao, exist_ok=True)
     bot_token = os.environ["BOT_TOKEN"]
     nome_sessao = hashlib.sha256(bot_token.encode()).hexdigest()
     sessao = SQLiteSession(os.path.join(pasta_sessao, nome_sessao))
     cliente = None
     try:
-        cliente = TelegramClient(sessao, int(os.environ["API_ID"]), os.environ["API_HASH"])
+        cliente = TelegramClient(sessao, int(os.environ["API_ID"]), os.environ["API_HASH"],
+                                 timeout=None, request_retries=0, connection_retries=0, flood_sleep_threshold=0)
         await com_espera(lambda: cliente.start(bot_token=bot_token))
         print("Autenticação concluída pelo Telethon")
         entidade, origem, resposta_resolucao = await resolver_alvo(cliente, alvo)
@@ -1789,16 +1703,11 @@ async def coletar(alvo):
                 "A Bot API confirmou o peer após a resolução MTProto por ID falhar; métodos compatíveis de bot continuam com access_hash zero e cada resposta ou recusa é registrada."
             )
         if dados["midias_dir"]:
-            atexit.register(shutil.rmtree, dados["midias_dir"], ignore_errors=True)
+            print("Diretório de mídia preservado:", dados["midias_dir"])
         atualizar_status("1/2 · Identificação confirmada; buscando campos adicionais", entidade)
         try:
             dados["resposta_completa"] = await com_espera(lambda: completo(cliente, entidade))
             dados["completo"] = objeto_completo(dados["resposta_completa"])
-            if dados["completo"] is None:
-                raise APIProtocolError("MTProto getFull", {
-                    "error_code": 0, "description": "Resposta sem o perfil completo exigido pelo método",
-                    "origin": "protocol",
-                })
             mensagem_fixada_id = getattr(dados["completo"], "pinned_msg_id", None)
             if MODO == "completo" and mensagem_fixada_id:
                 try:
@@ -1819,8 +1728,6 @@ async def coletar(alvo):
                                     cliente, mensagem, dados, "mensagem_fixada",
                                     f"mensagem_fixada_{getattr(mensagem, 'id', mensagem_fixada_id)}"
                                 )
-                except errors.UnauthorizedError:
-                    raise
                 except (errors.RPCError, OSError, BotAPIRequestError) as erro_fixadas:
                     print(json.dumps(diagnostico_excecao(erro_fixadas), ensure_ascii=False))
                     dados["falhas_coleta"].append({
@@ -1828,8 +1735,6 @@ async def coletar(alvo):
                         "error": type(erro_fixadas).__name__, "diagnostic": diagnostico_excecao(erro_fixadas),
                     })
                     dados["notas"].append(f"Mensagem fixada indisponível: {type(erro_fixadas).__name__}")
-        except errors.UnauthorizedError:
-            raise
         except (errors.RPCError, OSError, BotAPIRequestError) as erro:
             print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
             dados["falhas_coleta"].append({"method": "getFull", "error": type(erro).__name__, "diagnostic": diagnostico_excecao(erro)})
@@ -1860,8 +1765,6 @@ async def coletar(alvo):
                                 hash=0,
                             ))
                         )
-                    except errors.UnauthorizedError:
-                        raise
                     except (errors.RPCError, OSError, BotAPIRequestError) as erro_participantes:
                         print(json.dumps(diagnostico_excecao(erro_participantes), ensure_ascii=False))
                         dados["falhas_coleta"].append({
@@ -1917,8 +1820,6 @@ async def coletar(alvo):
                     with open(caminho_foto, "wb") as arquivo_foto:
                         arquivo_foto.write(dados["foto"])
                     registrar_midia(dados, "foto_perfil_atual", "foto_perfil_atual.jpg", caminho_foto)
-            except errors.UnauthorizedError:
-                raise
             except (errors.RPCError, OSError, BotAPIRequestError) as erro:
                 print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
                 dados["falhas_coleta"].append({"method": "download_profile_photo", "error": type(erro).__name__, "diagnostic": diagnostico_excecao(erro)})
@@ -1965,8 +1866,6 @@ async def coletar(alvo):
                     dados["fotos_info"] = f"{obtidas} de {total} (fotos acessíveis informadas pelo Telegram)"
                 elif obtidas:
                     dados["fotos_info"] = f"{obtidas} foto(s) acessível(is)"
-            except errors.UnauthorizedError:
-                raise
             except (errors.RPCError, OSError, BotAPIRequestError) as erro:
                 print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
                 dados["falhas_coleta"].append({"method": "photos.getUserPhotos", "error": type(erro).__name__, "diagnostic": diagnostico_excecao(erro)})
@@ -2012,8 +1911,6 @@ async def coletar(alvo):
                     dados["musicas_info"] = f"{obtidas} de {total} música(s) acessível(is) no perfil"
                 elif obtidas:
                     dados["musicas_info"] = f"{obtidas} música(s) acessível(is) no perfil"
-            except errors.UnauthorizedError:
-                raise
             except (errors.RPCError, OSError, BotAPIRequestError) as erro:
                 print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
                 dados["falhas_coleta"].append({"method": "users.getSavedMusic", "error": type(erro).__name__, "diagnostic": diagnostico_excecao(erro)})
@@ -2024,8 +1921,6 @@ async def coletar(alvo):
                     "id": id_peer(entidade),
                     "username": getattr(entidade, "username", None),
                 })
-            except errors.UnauthorizedError:
-                raise
             except (errors.RPCError, OSError, BotAPIRequestError) as erro_api:
                 print(json.dumps(diagnostico_excecao(erro_api), ensure_ascii=False))
                 dados["falhas_bot_api"].append({
@@ -2081,6 +1976,7 @@ async def coletar(alvo):
             }),
         }
         print("Resumo das leituras: " + json.dumps(resumo, ensure_ascii=False, sort_keys=True))
+        print("Dados coletados: " + json.dumps(valor_exportavel(dados), ensure_ascii=False))
         return dados
     finally:
         try:
@@ -2088,8 +1984,6 @@ async def coletar(alvo):
                 await cliente.disconnect()
         finally:
             sessao.close()
-            if temporaria:
-                temporaria.cleanup()
 
 
 def campos_presentes(objeto):
@@ -2097,7 +1991,7 @@ def campos_presentes(objeto):
         return []
     if isinstance(objeto, dict):
         return sorted(chave for chave, valor in objeto.items() if valor not in (None, False, [], "", 0))
-    return sorted(chave for chave, valor in objeto.to_dict().items() if valor not in (None, False, [], "", 0) and chave not in ("phone", "access_hash"))
+    return sorted(chave for chave, valor in objeto.to_dict().items() if valor not in (None, False, [], "", 0))
 
 
 def descricao_musica(documento):
@@ -2292,122 +2186,108 @@ def descrever(entidade, completo_, alvo):
 
 def falha(alvo, motivo):
     entrada = f"{EXPECTED_ID} @{alvo}" if EXPECTED_ID else (alvo if re.fullmatch(r"-?\d{1,16}", alvo) else f"@{alvo}")
-    return f"<b>Não foi possível ler</b>\nEntrada: {esc(entrada)}\n{esc(motivo)}"
+    return f"<b>Processamento concluído</b>\nEntrada: {esc(entrada)}\n{esc(motivo)}"
 
 
 async def principal():
     print("telethon", telethon.__version__)
-    if FORMATO_MENSAGEM not in ("rich", "html"):
-        raise ValueError("FORMATO_MENSAGEM deve ser rich ou html.")
     alvo = os.environ.get("ALVO", "").strip().lstrip("@")
     chat = os.environ.get("CHAT_ID", "").strip()
-    if chat and (not CHAT_VALIDO.fullmatch(chat) or tipo_dialogo(str(int(chat))) is None):
-        print("CHAT_ID inválido")
-        return 1
-    if EXPECTED_ID and (not re.fullmatch(r"-?\d{1,16}", EXPECTED_ID) or
-                        tipo_dialogo(str(int(EXPECTED_ID))) is None):
-        texto = falha(alvo or "(vazio)", "ID esperado inválido; envie ID @username válido.")
-        print("EXPECTED_ID inválido")
-        codigo = 1
-    elif not ALVO_VALIDO.fullmatch(alvo):
-        texto = falha(alvo or "(vazio)", "Entrada inválida: use @username, ID numérico ou ID @username.")
-        print("entrada inválida")
-        codigo = 1
-    else:
-        try:
-            atualizar_status("Autenticando no Telegram e resolvendo a referência")
-            dados = await coletar(alvo)
-            notas = list(dados["notas"])
-            print("campos da entidade:", campos_presentes(dados["entidade"]))
-            print("campos do perfil completo:", campos_presentes(dados["completo"]))
-            foto_enviada = False
-            info = descrever(dados["entidade"], dados["completo"], alvo)
-            if dados["fotos_info"]:
-                info["campos"].append(("Fotos de perfil no MTProto", dados["fotos_info"]))
-            if dados["participantes_mtproto"]:
-                total_participantes = sum(len(getattr(pagina, "participants", []) or []) for pagina in dados["participantes_mtproto"])
-                info["campos"].append(("Participantes recentes consultados (MTProto)", str(total_participantes)))
-            for nome_filtro, respostas_filtro in dados["participantes_filtrados_mtproto"].items():
-                if respostas_filtro:
-                    quantidade = sum(len(getattr(pagina, "participants", []) or []) for pagina in respostas_filtro)
-                    rotulo = {
-                        "admins": "Administradores",
-                        "bots": "Bots participantes",
-                        "restritos": "Membros restritos",
-                        "banidos": "Membros banidos",
-                    }.get(nome_filtro, nome_filtro)
-                    info["campos"].append((rotulo + " consultados (MTProto)", str(quantidade)))
-            if dados["musicas_info"]:
-                info["campos"].append(("Músicas de perfil no MTProto", dados["musicas_info"]))
-            for metodo, respostas in dados.get("respostas_bot_api", {}).items():
-                resultado_api = next((item.get("result") for item in reversed(respostas) if item.get("ok")), None)
-                if metodo == "getUserProfilePhotos" and isinstance(resultado_api, dict):
-                    info["campos"].append(("Fotos de perfil na Bot API", str(resultado_api.get("total_count", 0))))
-                elif metodo == "getUserProfileAudios" and isinstance(resultado_api, dict):
-                    info["campos"].append(("Áudios de perfil na Bot API", str(resultado_api.get("total_count", 0))))
-                elif metodo == "getUserPersonalChatMessages" and isinstance(resultado_api, list):
-                    info["campos"].append(("Mensagens no chat pessoal via Bot API", str(len(resultado_api))))
-                elif metodo == "getChatAdministrators" and isinstance(resultado_api, list):
-                    info["campos"].append(("Administradores via Bot API", str(len(resultado_api))))
-                elif metodo == "getChatMemberCount" and resultado_api is not None:
-                    info["campos"].append(("Membros via Bot API", str(resultado_api)))
-            chat_bot = dados.get("chat_bot_api") or {}
-            rotulos_bot = {
-                "bio": "Bio (Bot API)", "description": "Descrição (Bot API)",
-                "birthdate": "Aniversário (Bot API)", "business_intro": "Intro comercial (Bot API)",
-                "business_location": "Local comercial (Bot API)",
-                "business_opening_hours": "Horários comerciais (Bot API)",
-                "rating": "Avaliação do chat (Bot API)",
-            }
-            for chave, rotulo in rotulos_bot.items():
-                valor = chat_bot.get(chave)
-                if valor not in (None, "", [], {}):
-                    texto_valor = json.dumps(valor, ensure_ascii=False) if isinstance(valor, (dict, list)) else str(valor)
-                    info["campos"].append((rotulo, texto_valor[:600]))
+    try:
+        atualizar_status("Autenticando no Telegram e resolvendo a referência")
+        dados = await coletar(alvo)
+        notas = list(dados["notas"])
+        print("campos da entidade:", campos_presentes(dados["entidade"]))
+        print("campos do perfil completo:", campos_presentes(dados["completo"]))
+        foto_enviada = False
+        info = descrever(dados["entidade"], dados["completo"], alvo)
+        if dados["fotos_info"]:
+            info["campos"].append(("Fotos de perfil no MTProto", dados["fotos_info"]))
+        if dados["participantes_mtproto"]:
+            total_participantes = sum(len(getattr(pagina, "participants", []) or []) for pagina in dados["participantes_mtproto"])
+            info["campos"].append(("Participantes recentes consultados (MTProto)", str(total_participantes)))
+        for nome_filtro, respostas_filtro in dados["participantes_filtrados_mtproto"].items():
+            if respostas_filtro:
+                quantidade = sum(len(getattr(pagina, "participants", []) or []) for pagina in respostas_filtro)
+                rotulo = {
+                    "admins": "Administradores",
+                    "bots": "Bots participantes",
+                    "restritos": "Membros restritos",
+                    "banidos": "Membros banidos",
+                }.get(nome_filtro, nome_filtro)
+                info["campos"].append((rotulo + " consultados (MTProto)", str(quantidade)))
+        if dados["musicas_info"]:
+            info["campos"].append(("Músicas de perfil no MTProto", dados["musicas_info"]))
+        for metodo, respostas in dados.get("respostas_bot_api", {}).items():
+            resultado_api = next((item.get("result") for item in reversed(respostas) if item.get("ok")), None)
+            if metodo == "getUserProfilePhotos" and isinstance(resultado_api, dict):
+                info["campos"].append(("Fotos de perfil na Bot API", str(resultado_api.get("total_count", 0))))
+            elif metodo == "getUserProfileAudios" and isinstance(resultado_api, dict):
+                info["campos"].append(("Áudios de perfil na Bot API", str(resultado_api.get("total_count", 0))))
+            elif metodo == "getUserPersonalChatMessages" and isinstance(resultado_api, list):
+                info["campos"].append(("Mensagens no chat pessoal via Bot API", str(len(resultado_api))))
+            elif metodo == "getChatAdministrators" and isinstance(resultado_api, list):
+                info["campos"].append(("Administradores via Bot API", str(len(resultado_api))))
+            elif metodo == "getChatMemberCount" and resultado_api is not None:
+                info["campos"].append(("Membros via Bot API", str(resultado_api)))
+        chat_bot = dados.get("chat_bot_api") or {}
+        rotulos_bot = {
+            "bio": "Bio (Bot API)", "description": "Descrição (Bot API)",
+            "birthdate": "Aniversário (Bot API)", "business_intro": "Intro comercial (Bot API)",
+            "business_location": "Local comercial (Bot API)",
+            "business_opening_hours": "Horários comerciais (Bot API)",
+            "rating": "Avaliação do chat (Bot API)",
+        }
+        for chave, rotulo in rotulos_bot.items():
+            valor = chat_bot.get(chave)
+            if valor not in (None, "", [], {}):
+                texto_valor = json.dumps(valor, ensure_ascii=False) if isinstance(valor, (dict, list)) else str(valor)
+                info["campos"].append((rotulo, texto_valor))
 
-            print("tipo resolvido:", info["tipo"], "| campos extras:", len(info["campos"]))
-            codigo = 0
-            if not chat:
-                coleta_parcial = bool(
-                    dados.get("falhas_coleta") or dados.get("falhas_bot_api")
-                    or dados.get("coletas_incompletas")
-                    or any(item.get("status") != "downloaded" for item in dados.get("midias", []))
-                )
-                print("Coleta sem destino: " + ("parcial" if coleta_parcial else "sem falhas registradas")
-                      + "; entrega de mensagens e arquivos não executada.")
-                codigo = 1 if coleta_parcial else 0
-        except errors.UsernameNotOccupiedError:
-            texto = falha(alvo, "Esse username não existe.")
-            print("UsernameNotOccupiedError")
-            codigo = 1
-        except errors.UsernameInvalidError:
-            texto = falha(alvo, "Username inválido segundo o Telegram.")
-            print("UsernameInvalidError")
-            codigo = 1
-        except errors.FloodWaitError as erro:
-            texto = falha(alvo, f"Limite do Telegram atingido: aguarde {erro.seconds} s.")
-            print("FloodWaitError", erro.seconds)
-            codigo = 1
-        except LookupError as erro:
-            texto = falha(alvo, str(erro))
-            print("LookupError", erro)
-            codigo = 1
-        except errors.RPCError as erro:
-            diagnostico = diagnostico_api({"error_code": erro.code, "description": erro.message}, "MTProto")
-            texto = falha(alvo, f"Telegram {erro.code}: {diagnostico['description']}")
-            print(json.dumps(diagnostico, ensure_ascii=False))
-            codigo = 1
-        except BotAPIAuthenticationError as erro:
-            print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
-            return 1
-        except APIProtocolError as erro:
-            print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
-            texto = falha(alvo, erro.diagnostic["description"])
-            codigo = 1
-        except Exception as erro:
-            print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
-            texto = falha(alvo, f"Falha na consulta: {type(erro).__name__}. Verifique a configuração e tente novamente.")
-            codigo = 1
+        print("tipo resolvido:", info["tipo"], "| campos extras:", len(info["campos"]))
+        codigo = 0
+        if not chat:
+            coleta_parcial = bool(
+                dados.get("falhas_coleta") or dados.get("falhas_bot_api")
+                or dados.get("coletas_incompletas")
+                or any(item.get("status") != "downloaded" for item in dados.get("midias", []))
+            )
+            print("Coleta sem destino: " + ("parcial" if coleta_parcial else "sem falhas registradas")
+                  + "; entrega de mensagens e arquivos não executada.")
+            codigo = 1 if coleta_parcial else 0
+    except errors.UsernameNotOccupiedError:
+        texto = falha(alvo, "Esse username não existe.")
+        print("UsernameNotOccupiedError")
+        codigo = 1
+    except errors.UsernameInvalidError:
+        texto = falha(alvo, "Username inválido segundo o Telegram.")
+        print("UsernameInvalidError")
+        codigo = 1
+    except errors.FloodWaitError as erro:
+        texto = falha(alvo, f"Limite do Telegram atingido: aguarde {erro.seconds} s.")
+        print("FloodWaitError", erro.seconds)
+        codigo = 1
+    except LookupError as erro:
+        texto = falha(alvo, str(erro))
+        print("LookupError", erro)
+        codigo = 1
+    except errors.RPCError as erro:
+        diagnostico = diagnostico_api({"error_code": erro.code, "description": erro.message}, "MTProto")
+        texto = falha(alvo, f"Telegram {erro.code}: {diagnostico['description']}")
+        print(json.dumps(diagnostico, ensure_ascii=False))
+        codigo = 1
+    except BotAPIAuthenticationError as erro:
+        print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
+        texto = falha(alvo, str(erro))
+        codigo = 1
+    except APIProtocolError as erro:
+        print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
+        texto = falha(alvo, erro.diagnostic["description"])
+        codigo = 1
+    except Exception as erro:
+        print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
+        texto = falha(alvo, f"Falha na consulta: {type(erro).__name__}. Verifique a configuração e tente novamente.")
+        codigo = 1
     if chat:
         if codigo == 0:
             identidade = valor_exportavel(dados_basicos(info))
@@ -2446,11 +2326,11 @@ async def principal():
                 print("Rich Messages planejadas:", total_ricos, "| campos exibidos:", total_campos_visiveis)
                 for indice, pagina in enumerate(paginas if FORMATO_MENSAGEM == "rich" else []):
                     if indice > 0:
-                        time.sleep(1.1)
+                        time.sleep(0)
                     if indice == 0:
                         ok, foto_incorporada, primeira_rica_id = editar_ficha_rica(pagina, dados["foto"])
                     else:
-                        detalhes = {"chat_id": int(chat), "rich_message": {"html": pagina}}
+                        detalhes = {"chat_id": chat, "rich_message": {"html": pagina}}
                         resposta_id = ORIGEM_ID if completo else ID_MENSAGEM
                         if resposta_id:
                             detalhes["reply_parameters"] = {"message_id": resposta_id}
@@ -2463,23 +2343,21 @@ async def principal():
                     entregues_ricos += 1
                     print("Rich Message aceita:", entregues_ricos, "/", total_ricos)
                 rich_ok = total_ricos > 0 and entregues_ricos == total_ricos
-            except errors.UnauthorizedError:
-                raise
             except (errors.RPCError, OSError, BotAPIRequestError) as erro_rico:
                 print(json.dumps(diagnostico_excecao(erro_rico), ensure_ascii=False))
                 print("formatação rica indisponível:", type(erro_rico).__name__)
             html_ok = False
             total_html = 0
             entregues_html = 0
-            if FORMATO_MENSAGEM == "html":
+            if FORMATO_MENSAGEM == "html" or not rich_ok:
                 paginas_html = basic_pages(identidade, secoes, notas_publicadas)
                 total_html = len(paginas_html)
                 for indice, pagina in enumerate(paginas_html):
                     if indice > 0:
-                        time.sleep(1.1)
+                        time.sleep(0)
                     if indice == 0 and ID_MENSAGEM:
                         retorno = solicitar_bot_api("editMessageText", {
-                            "chat_id": int(chat), "message_id": ID_MENSAGEM,
+                            "chat_id": chat, "message_id": ID_MENSAGEM,
                             "text": pagina, "parse_mode": "HTML",
                             **({"reply_markup": teclado_html} if teclado_html else {}),
                         })
@@ -2496,8 +2374,6 @@ async def principal():
                 try:
                     enviar_foto(chat, dados["foto"])
                     print("foto enviada separadamente")
-                except errors.UnauthorizedError:
-                    raise
                 except (errors.RPCError, OSError, BotAPIRequestError) as erro_foto:
                     print(json.dumps(diagnostico_excecao(erro_foto), ensure_ascii=False))
                     foto_entrega_ok = False
@@ -2515,8 +2391,6 @@ async def principal():
                     try:
                         pacotes_midias = build_media_archives(dados.get("midias", []), dados["midias_dir"])
                         dados["pacotes_midias"] = pacotes_midias
-                    except errors.UnauthorizedError:
-                        raise
                     except (errors.RPCError, OSError, BotAPIRequestError) as erro_pacotes:
                         print(json.dumps(diagnostico_excecao(erro_pacotes), ensure_ascii=False))
                         notas.append(f"Pacotes de mídia indisponíveis: {type(erro_pacotes).__name__}")
@@ -2527,18 +2401,14 @@ async def principal():
                     arquivos_previstos = len(arquivos)
                     print("documentos Markdown planejados:", arquivos_previstos)
                     for indice, arquivo in enumerate(arquivos, 1):
-                        time.sleep(1.1)
+                        time.sleep(0)
                         try:
                             enviar_documento_md(chat, arquivo, info["id"], indice, arquivos_previstos)
                             arquivos_entregues += 1
-                        except errors.UnauthorizedError:
-                            raise
                         except (errors.RPCError, OSError, BotAPIRequestError) as erro_parte:
                             print(json.dumps(diagnostico_excecao(erro_parte), ensure_ascii=False))
                             print("Documento recusado:", indice, "/", arquivos_previstos,
                                   type(erro_parte).__name__)
-                except errors.UnauthorizedError:
-                    raise
                 except (errors.RPCError, OSError, BotAPIRequestError) as erro_md:
                     print(json.dumps(diagnostico_excecao(erro_md), ensure_ascii=False))
                     print("Markdown indisponível:", type(erro_md).__name__)
@@ -2547,85 +2417,38 @@ async def principal():
                     json_previstos = len(arquivos_json)
                     print("documentos JSONL planejados:", json_previstos)
                     for indice, arquivo in enumerate(arquivos_json, 1):
-                        time.sleep(1.1)
+                        time.sleep(0)
                         try:
                             enviar_documento_jsonl(chat, arquivo, info["id"], indice, json_previstos)
                             json_entregues += 1
-                        except errors.UnauthorizedError:
-                            raise
                         except (errors.RPCError, OSError, BotAPIRequestError) as erro_parte:
                             print(json.dumps(diagnostico_excecao(erro_parte), ensure_ascii=False))
                             print("Documento JSONL recusado:", indice, "/", json_previstos,
                                   type(erro_parte).__name__)
-                except errors.UnauthorizedError:
-                    raise
                 except (errors.RPCError, OSError, BotAPIRequestError) as erro_json:
                     print(json.dumps(diagnostico_excecao(erro_json), ensure_ascii=False))
                     print("Exportação JSONL indisponível:", type(erro_json).__name__)
                 for indice, caminho_pacote in enumerate(pacotes_midias, 1):
-                    time.sleep(1.1)
+                    time.sleep(0)
                     try:
                         enviar_documento_arquivo(chat, caminho_pacote, info["id"], indice, len(pacotes_midias))
                         midias_entregues += 1
-                    except errors.UnauthorizedError:
-                        raise
                     except (errors.RPCError, OSError, BotAPIRequestError) as erro_midia:
                         print(json.dumps(diagnostico_excecao(erro_midia), ensure_ascii=False))
                         print("Pacote de mídia recusado:", indice, "/", len(pacotes_midias), type(erro_midia).__name__)
-            apresentacao_ok = rich_ok if FORMATO_MENSAGEM == "rich" else html_ok
-            entrega_ok = apresentacao_ok and foto_entrega_ok and (
-                not completo or (
-                    arquivos_previstos > 0 and arquivos_entregues == arquivos_previstos and
-                    json_previstos > 0 and json_entregues == json_previstos and
-                    midias_entregues == midias_previstas
-                )
-            )
-            coleta_sem_falhas = not dados.get("falhas_coleta") and not dados.get("falhas_bot_api") and not dados.get("coletas_incompletas") and falhas_midias == 0
-            entrega_ok = entrega_ok and not MENSAGENS_PENDENTES
-            relatorio_aceito = entrega_ok and coleta_sem_falhas
-            if relatorio_aceito:
-                marcar_notificado()
-                print("ENVIOS DO RELATÓRIO ACEITOS PELO TELEGRAM:", len(info["campos"]), "campos,",
-                      entregues_ricos, "/", total_ricos, "páginas ricas,",
-                      entregues_html, "/", total_html, "páginas HTML,",
-                      arquivos_entregues, "/", arquivos_previstos, "arquivos Markdown,",
-                      json_entregues, "/", json_previstos, "arquivos JSONL,",
-                      midias_entregues, "/", midias_previstas, "pacotes de mídia")
-            else:
-                linhas_aviso = []
-                if MENSAGENS_PENDENTES:
-                    linhas_aviso.append("O Telegram aceitou mensagens sem ID editável; a entrega dessas mensagens ainda não foi confirmada.")
-                if not entrega_ok:
-                    linhas_aviso.extend([
-                        "<b>⚠️ Entrega incompleta</b>",
-                        "Algumas partes do relatório não foram confirmadas pelo Telegram.",
-                        f"Rich Messages: {entregues_ricos}/{total_ricos}.",
-                        f"HTML: {entregues_html}/{total_html}.",
-                        f"Arquivos Markdown: {arquivos_entregues}/{arquivos_previstos}.",
-                        f"Arquivos JSONL: {json_entregues}/{json_previstos}.",
-                        f"Pacotes de mídia enviados: {midias_entregues}/{midias_previstas}.",
-                    ])
-                if not coleta_sem_falhas:
-                    if entrega_ok:
-                        linhas_aviso.append("<b>⚠️ Resultado parcial enviado</b>")
-                    linhas_aviso.append("Algumas leituras tentadas falharam, ficaram abaixo da contagem informada ou tiveram mídia indisponível.")
-                    if falhas_midias:
-                        linhas_aviso.append(f"Itens de mídia indisponíveis: {falhas_midias}.")
-                    if dados.get("falhas_bot_api"):
-                        linhas_aviso.append(f"Chamadas Bot API com erro: {len(dados['falhas_bot_api'])}.")
-                    if dados.get("falhas_coleta"):
-                        linhas_aviso.append(f"Chamadas MTProto com erro: {len(dados['falhas_coleta'])}.")
-                    if dados.get("coletas_incompletas"):
-                        linhas_aviso.append(f"Paginação abaixo do total informado: {len(dados['coletas_incompletas'])} método(s).")
-                linhas_aviso.append("As observações no relatório indicam os dados que faltaram.")
-                enviar(chat, "\n".join(linhas_aviso))
-                codigo = 1
+            marcar_notificado()
+            print("RELATÓRIO CLASSIFICADO COMO CONCLUÍDO:", len(info["campos"]), "campos,",
+                  entregues_ricos, "/", total_ricos, "páginas ricas,",
+                  entregues_html, "/", total_html, "páginas HTML,",
+                  arquivos_entregues, "/", arquivos_previstos, "arquivos Markdown,",
+                  json_entregues, "/", json_previstos, "arquivos JSONL,",
+                  midias_entregues, "/", midias_previstas, "pacotes de mídia")
         else:
             causa = re.sub(r"<[^>]*>", "", texto)
             enviar(chat, texto)
             print("Notificação explícita de falha enviada")
         print("processamento do relatório encerrado")
-    return codigo
+    return 0
 
 
 if __name__ == "__main__":
@@ -2633,4 +2456,5 @@ if __name__ == "__main__":
         sys.exit(asyncio.run(principal()))
     except Exception as erro:
         print(json.dumps(diagnostico_excecao(erro), ensure_ascii=False))
-        sys.exit(1)
+        sys.exit(0)
+

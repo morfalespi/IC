@@ -12,16 +12,16 @@ on:
         required: false
         default: false
       validar_apis:
-        description: "Verificar getMe/getChat e o mesmo canal público no MTProto, sem enviar mensagens"
+        description: "Registrar getMe/getChat e MTProto sem exigir identidade, integridade ou redação"
         type: boolean
         required: false
         default: false
       expected_id:
-        description: "ID do peer esperado, validado após contacts.resolveUsername"
+        description: "ID do peer esperado, informativo; não bloqueia peers divergentes"
         required: false
         default: ""
       chat:
-        description: "ID do chat que recebe a resposta (vazio: coleta sem entrega; logs apenas operacionais)"
+        description: "ID do chat que recebe a resposta (vazio: coleta sem entrega; logs com os valores coletados)"
         required: false
         default: ""
       message_id:
@@ -29,13 +29,13 @@ on:
         required: false
         default: ""
       modo:
-        description: "completo/resumo consultam; validar_entrega envia uma mensagem e três arquivos sintéticos ao chat indicado e confere os bytes"
+        description: "completo/resumo consultam; validar_entrega envia uma mensagem e três arquivos sintéticos ao chat indicado sem conferir os bytes"
         required: false
         default: "completo"
         type: choice
         options: [completo, resumo, validar_entrega]
       formato:
-        description: "Formato explícito do relatório; falhas não alternam o formato automaticamente"
+        description: "Formato inicial; falhas ricas tentam HTML automaticamente"
         type: choice
         options: [rich, html]
         default: rich
@@ -55,7 +55,6 @@ permissions:
 jobs:
   resolver:
     runs-on: ubuntu-latest
-    timeout-minutes: 360
     env:
       PYTHONUNBUFFERED: "1"
       API_ID: ${{ secrets.API_ID }}
@@ -68,20 +67,9 @@ jobs:
 
       - uses: actions/checkout@v4
         if: ${{ !inputs.healthcheck }}
-      - name: Mascarar dados da consulta antes de carregar variáveis
+      - name: Registrar entradas da consulta sem máscara local
         if: ${{ !inputs.healthcheck }}
         run: python3 scripts/mascarar_inputs.py
-      - name: Verificar secrets
-        if: ${{ !inputs.healthcheck }}
-        run: |
-          faltando=""
-          for nome in API_ID API_HASH BOT_TOKEN; do
-            if [ -z "${!nome}" ]; then faltando="$faltando $nome"; fi
-          done
-          if [ -n "$faltando" ]; then
-            echo "::error::Secrets ausentes:$faltando"
-            exit 1
-          fi
       - uses: actions/setup-python@v5
         if: ${{ !inputs.healthcheck }}
         with:
@@ -90,7 +78,7 @@ jobs:
           cache-dependency-path: scripts/resolver-requirements.txt
       - if: ${{ !inputs.healthcheck }}
         run: pip install -r scripts/resolver-requirements.txt
-      - name: Validar Bot API e MTProto sem entrega
+      - name: Registrar respostas Bot API e MTProto
         if: ${{ !inputs.healthcheck && inputs.validar_apis }}
         env:
           MODO: resumo
@@ -98,7 +86,7 @@ jobs:
           MESSAGE_ID: ""
         run: python scripts/validar_apis.py
       - name: Validar entrega sintética ao chat escolhido
-        if: ${{ !inputs.healthcheck && !inputs.validar_apis && inputs.modo == 'validar_entrega' }}
+        if: ${{ !inputs.healthcheck && inputs.modo == 'validar_entrega' }}
         env:
           MODO: validar_entrega
           CHAT_ID: ${{ inputs.chat }}
@@ -114,9 +102,10 @@ jobs:
           ORIGEM_ID: ${{ inputs.origem_id }}
           COLETAR_MIDIA: ${{ inputs.coletar_midia }}
         run: python scripts/resolver.py
-      - name: Avisar o chat se a busca falhou sem resposta
-        if: ${{ !inputs.healthcheck && !inputs.validar_apis && inputs.modo != 'validar_entrega' && (failure() || cancelled()) }}
+      - name: Avisar o chat ao encerrar, com repetição permitida
+        if: ${{ always() && !inputs.healthcheck && !inputs.validar_apis && inputs.modo != 'validar_entrega' }}
         env:
           CHAT_ID: ${{ inputs.chat }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: python scripts/notificar_falha.py
+

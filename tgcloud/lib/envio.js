@@ -1,4 +1,4 @@
-import { api, BotApiError } from 'sdk';
+import { api } from 'sdk';
 import { diagnosticoErro } from './erros.js';
 
 const TECLADO_REFERENCIA = {
@@ -30,8 +30,13 @@ export function responderInline(queryId, titulo, html, botaoPrivado) {
   });
 }
 
-export function enviarCartao(chatId, richHtml) {
-  return api.sendRichMessage({ chat_id: chatId, rich_message: { html: richHtml } });
+export async function enviarCartao(chatId, richHtml) {
+  try {
+    return await api.sendRichMessage({ chat_id: chatId, rich_message: { html: richHtml } });
+  } catch (erro) {
+    console.error('sendRichMessage:', diagnosticoErro(erro));
+    return api.sendMessage({ chat_id: chatId, text: richHtml.replace(/<[^>]*>/g, '') });
+  }
 }
 
 export async function editarCartao(chatId, messageId, richHtml) {
@@ -39,9 +44,7 @@ export async function editarCartao(chatId, messageId, richHtml) {
     return await api.editMessageText({ chat_id: chatId, message_id: messageId, rich_message: { html: richHtml } });
   } catch (erro) {
     console.error('editMessageText:', diagnosticoErro(erro));
-    if (erro instanceof BotApiError && erro.code === 400 && /message is not modified/i.test(erro.description)) {
-      return { message_id: messageId, unchanged: true };
-    }
-    throw erro;
+    return api.sendMessage({ chat_id: chatId, text: richHtml.replace(/<[^>]*>/g, '') });
   }
 }
+

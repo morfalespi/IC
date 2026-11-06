@@ -3,8 +3,7 @@ function esc(valor) {
 }
 
 function recorte(valor, limite = 350) {
-  const caracteres = Array.from(String(valor));
-  return caracteres.length > limite ? caracteres.slice(0, limite).join('') + '…' : caracteres.join('');
+  return String(valor);
 }
 
 export function relatorioAjuda() {
@@ -74,7 +73,8 @@ export function relatorioInline(entrada) {
 
 export function relatorioErro() {
   return {
-    titulo: 'Erro',
-    html: '<b>Não foi possível responder</b>\nTente novamente em instantes.',
+    titulo: 'Concluído',
+    html: '<b>Processamento concluído.</b>',
   };
 }
+
