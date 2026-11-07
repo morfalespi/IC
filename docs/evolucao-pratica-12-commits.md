@@ -1,5 +1,8 @@
 # Evolução prática de execução — 12 commits (04–06/11/2026)
 
+> **Conferência complementar concluída:** [cobertura recuperada e fidelidade das conclusões](verificacao-cobertura-fidelidade-12-commits.md), com checagem de 129/129 blobs, comparação dos 12 commits e confronto dos logs de execução.
+
+
 > **Retificação factual posterior:** consulte [proveniência dos commits e limites da evidência](retificacao-proveniencia-dos-commits.md) para os dados efetivamente registrados sobre a publicação pela integração GitHub, a identidade nativa do Git e a ausência de identificação do ambiente Linux executor.
 
 
