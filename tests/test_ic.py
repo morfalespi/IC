@@ -89,7 +89,7 @@ class TelegramFixture:
                         value = int(fields['chat_id'])
                         result = {'id': value, 'type': 'private' if value > 0 else 'supergroup', 'first_name': 'Fixture', 'accent_color_id': 1, 'max_reaction_count': 1, 'accepted_gift_types': {key: False for key in ('unlimited_gifts', 'limited_gifts', 'unique_gifts', 'premium_subscription', 'gifts_from_channels')}}
                     elif method == 'getWebhookInfo':
-                        result = {'url': ''}
+                        result = {'url': '', 'has_custom_certificate': False, 'pending_update_count': 0}
                     elif method == 'getUpdates':
                         result = fixture.updates
                     elif method == 'getUserProfilePhotos':
