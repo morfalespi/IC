@@ -252,6 +252,10 @@ class BotClient:
         body = body if body is not None else json.dumps(payload or {}, ensure_ascii=False).encode()
         fields = _fields(body, headers)
         sending = method.startswith('send') or method.startswith('editMessage')
+        if sending and 'ephemeral_message_parameters' in fields:
+            raise ValueError('IC delivery does not implement ephemeral message semantics')
+        if sending and (fields.get('chat_id') is None or fields.get('chat_id') == ''):
+            raise ValueError('IC delivery requires an explicit destination chat_id')
         journal = None
         key = None
         if sending:
