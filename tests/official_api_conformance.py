@@ -310,7 +310,9 @@ def main():
         kind = RETURNS[method]
         errors = request_violations(method, params, docs[method])
         errors += response_violations(responses[method], kind, docs)
-        if not re.search(r"\b" + kind + r"\b", docs[method].split("Parameter")[0]):
+        published_return = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", docs[method].split("Parameter")[0])
+        published_return = re.sub(r"\s+", " ", published_return)
+        if not re.search(r"\b" + re.escape(kind) + r"\b", published_return, flags=re.IGNORECASE):
             errors.append("Official method does not document this response kind")
         official_params = parse_table(docs[method], ["Parameter", "Type", "Required", "Description"]) or []
         mandatory_params = sorted(row["Parameter"] for row in official_params if row["Required"].lower().startswith("yes"))
