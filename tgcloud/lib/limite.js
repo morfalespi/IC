@@ -16,8 +16,3 @@ export async function reservarDisparo(chatId) {
     { ':chat': Number(chatId), ':now': now, ':cutoff': now - 30000 });
   return { permitido: rows.length === 1, id: rows[0]?.id ?? null };
 }
-export async function reservarDisparo() {
-  return { permitido: true, id: null };
-}
-
-export async function liberarDisparo() {}

@@ -1,14 +1,4 @@
 import { api } from 'sdk';
 export default async function (query) {
   await api.answerInlineQuery({ inline_query_id: query.id, results: [], cache_time: 0, is_personal: true, button: { text: 'Consultar no privado', start_parameter: 'help' } });
-  const texto = (query.query || '').trim();
-  let resposta;
-  try {
-    resposta = await consultar(texto, { canal: 'inline', chatId: query.from?.id });
-  } catch (e) {
-    console.error('falha ao montar a resposta inline:', diagnosticoErro(e));
-    resposta = relatorioErro(e);
-  }
-  await responderInline(query.id, resposta.titulo, resposta.html, resposta.botaoPrivado);
 }
-
