@@ -20,7 +20,9 @@ from test_ic import TelegramFixture
 SOURCE = "https://core.telegram.org/bots/api.md"
 UNKNOWN_TYPES = set()
 RETURNS = {"getMe": "User", "getChat": "ChatFullInfo", "sendMessage": "Message",
-           "sendPhoto": "Message", "sendDocument": "Message", "getFile": "File"}
+           "sendPhoto": "Message", "sendDocument": "Message", "getFile": "File",
+           "getWebhookInfo": "WebhookInfo", "getUpdates": "Array of Update",
+           "getUserProfilePhotos": "UserProfilePhotos", "getChatMemberCount": "Integer"}
 
 
 def parse_sections(document):
@@ -66,7 +68,8 @@ def official():
     type_index = read_page("https://core.telegram.org/bots/api/types.md")
     documents = {"_official_index": root}
     references = active_bot_api_references()
-    required_types = set(RETURNS.values()) | {"Chat", "AcceptedGiftTypes", "Document", "PhotoSize"}
+    required_types = {kind.removeprefix("Array of ") for kind in RETURNS.values()
+                      if kind != "Integer"} | {"Chat", "AcceptedGiftTypes", "Document", "PhotoSize"}
     for name in sorted(set(RETURNS) | required_types | set(references)):
         index = root if name in RETURNS or name in references else type_index
         match = re.search(r"\[" + re.escape(name) + r"\]\((/bots/api/(?:methods|types)/[^)\s]+\.md)\)", index)
@@ -96,10 +99,13 @@ def ok_type(value, typ):
         return type(value) in (float, int)
     if normalized == "InputFile or String":
         return isinstance(value, (bytes, str))
-    if normalized in {"Chat", "ChatFullInfo", "Message", "User", "File", "AcceptedGiftTypes", "Document", "PhotoSize"}:
+    if normalized in {"Chat", "ChatFullInfo", "Message", "User", "File", "AcceptedGiftTypes",
+                      "Document", "PhotoSize", "WebhookInfo", "Update", "UserProfilePhotos"}:
         return isinstance(value, dict)
     if normalized.startswith("Array of "):
-        return isinstance(value, list)
+        return isinstance(value, list) and all(
+            ok_type(item, normalized[len("Array of "):]) for item in value
+        )
     raise ValueError("Tipo oficial ainda sem validador: " + normalized)
 
 
@@ -133,6 +139,14 @@ def request_violations(method, params, doc):
 
 
 def response_violations(obj, kind, docs, stack=()):
+    if kind == "Integer":
+        return [] if type(obj) is int else ["Resposta oficial Integer invalida"]
+    if kind.startswith("Array of "):
+        if not isinstance(obj, list):
+            return ["Resposta oficial nao e array: " + kind]
+        nested = kind[len("Array of "):]
+        return [issue for item in obj
+                for issue in response_violations(item, nested, docs, stack)]
     if kind in stack:
         return ["Referencia circular de tipo: " + kind]
     rows = parse_table(docs[kind], ["Field", "Type", "Description"])
@@ -157,11 +171,10 @@ def response_violations(obj, kind, docs, stack=()):
         if not valid:
             errors.append("Tipo de campo incompativel: " + kind + "." + key)
         normalized = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", row["Type"]).strip()
-        if valid and normalized in {"Chat", "AcceptedGiftTypes", "Document", "PhotoSize"}:
+        if valid and normalized in docs and normalized != "_official_index":
             errors += response_violations(obj[key], normalized, docs, stack + (kind,))
-        if valid and normalized == "Array of PhotoSize":
-            for item in obj[key]:
-                errors += response_violations(item, "PhotoSize", docs, stack + (kind,))
+        if valid and normalized.startswith("Array of "):
+            errors += response_violations(obj[key], normalized, docs, stack + (kind,))
     return errors
 
 
@@ -214,6 +227,27 @@ def exercise():
                 responses["sendPhoto"] = bot.send_photo(42, png, filename="fixture.png", content_type="image/png")
                 responses["sendDocument"] = bot.send_document(42, b"synthetic-document", "fixture.txt")
                 responses["getFile"] = bot.get_file(responses["sendDocument"]["document"]["file_id"])
+                responses["getWebhookInfo"] = bot.call("getWebhookInfo").require()
+                fixture.updates = [{
+                    "update_id": 19, "message": {
+                        "message_id": 4, "date": 123, "chat": {"id": 42, "type": "private"}
+                    }
+                }]
+                responses["getUpdates"] = bot.call("getUpdates", {
+                    "offset": 19, "limit": 10, "timeout": 0, "allowed_updates": ["message"]
+                }).require()
+                fixture.responses.append((200, {"ok": True, "result": {
+                    "total_count": 1, "photos": [[{
+                        "file_id": "synthetic-photo-id", "file_unique_id": "synthetic-unique-id",
+                        "width": 64, "height": 64
+                    }]]
+                }}))
+                responses["getUserProfilePhotos"] = bot.call("getUserProfilePhotos", {
+                    "user_id": 777, "offset": 0, "limit": 1
+                }).require()
+                responses["getChatMemberCount"] = bot.call("getChatMemberCount", {
+                    "chat_id": 42
+                }).require()
             finally:
                 for key, value in saved.items():
                     if value is None:
@@ -280,7 +314,8 @@ def main():
             errors.append("Official method does not document this response kind")
         official_params = parse_table(docs[method], ["Parameter", "Type", "Required", "Description"]) or []
         mandatory_params = sorted(row["Parameter"] for row in official_params if row["Required"].lower().startswith("yes"))
-        official_fields = parse_table(docs[kind], ["Field", "Type", "Description"]) or []
+        official_fields = (parse_table(docs[kind], ["Field", "Type", "Description"]) or []
+                           if kind in docs else [])
         mandatory_fields = sorted(row["Field"] for row in official_fields
                                   if not row["Description"].lstrip(" *_").lower().startswith("optional"))
         print("  REGRA DA API:", method, "parametros obrigatorios=", mandatory_params,
