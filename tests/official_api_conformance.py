@@ -15,7 +15,7 @@ from urllib.request import Request, urlopen
 
 sys.path[:0] = [str(Path(__file__).resolve().parents[1] / "scripts"), str(Path(__file__).resolve().parent)]
 from bot_api import BotClient
-from test_ic import TelegramFixture
+from fixtures import TelegramFixture
 
 SOURCE = "https://core.telegram.org/bots/api.md"
 UNKNOWN_TYPES = set()

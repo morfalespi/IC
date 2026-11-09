@@ -9,7 +9,7 @@ import sys
 from unittest.mock import patch
 import uuid
 
-from test_ic import TelegramFixture, FakeMTProto
+from fixtures import TelegramFixture, FakeMTProto
 import bot_api
 from bot_api import BotClient
 import ic
