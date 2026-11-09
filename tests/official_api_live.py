@@ -61,7 +61,7 @@ def main():
         for method in ("sendMessage", "sendPhoto", "sendDocument"):
             if responses[method]["chat"]["id"] != chat_id:
                 raise ValueError("Retorno do Telegram identifica um destino divergente")
-        if len(calls) != 6 or {m for m, _, _ in calls} != set(responses):
+        if len(calls) != 7 or [m for m, _, _ in calls].count("getFile") != 2 or {m for m, _, _ in calls} != set(responses):
             raise ValueError("Transporte real nao cobriu os seis metodos previstos")
         failures = []
         for method, params, transport in calls:
