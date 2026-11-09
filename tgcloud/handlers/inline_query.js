@@ -1,10 +1,6 @@
-import { diagnosticoErro } from '../lib/erros.js';
 import { api } from 'sdk';
-import { consultar } from '../lib/consulta.js';
-import { responderInline } from '../lib/envio.js';
-import { relatorioErro } from '../lib/relatorio.js';
-
 export default async function (query) {
+  await api.answerInlineQuery({ inline_query_id: query.id, results: [], cache_time: 0, is_personal: true, button: { text: 'Consultar no privado', start_parameter: 'help' } });
   const texto = (query.query || '').trim();
   let resposta;
   try {

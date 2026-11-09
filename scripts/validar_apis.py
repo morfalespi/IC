@@ -1,7 +1,14 @@
+"""Run the normal acquisition/export path without sending report content."""
 import asyncio
+import os
 import json
 import sys
+from resolver import principal
 
+if __name__ == '__main__':
+    os.environ['CHAT_ID'] = ''
+    os.environ.setdefault('MODO', 'resumo')
+    sys.exit(asyncio.run(principal()))
 from resolver import chamar, coletar
 from bot_api import diagnostico_excecao
 from exportacao import valor_exportavel

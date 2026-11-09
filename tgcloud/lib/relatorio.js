@@ -74,6 +74,7 @@ export function relatorioInline(entrada) {
 export function relatorioErro() {
   return {
     titulo: 'Concluído',
+    html: '<b>Falha no processamento.</b>',
     html: '<b>Processamento concluído.</b>',
   };
 }

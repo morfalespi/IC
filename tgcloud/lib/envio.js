@@ -30,6 +30,14 @@ export function responderInline(queryId, titulo, html, botaoPrivado) {
   });
 }
 
+function plainCard(value) {
+  return String(value).replace(/<[^>]*>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&amp;/g, '&').slice(0, 3900);
+}
+export function enviarCartao(chatId, richHtml) {
+  return api.sendMessage({ chat_id: chatId, text: plainCard(richHtml) });
+}
+export function editarCartao(chatId, messageId, richHtml) {
+  return api.editMessageText({ chat_id: chatId, message_id: messageId, text: plainCard(richHtml) });
 export async function enviarCartao(chatId, richHtml) {
   try {
     return await api.sendRichMessage({ chat_id: chatId, rich_message: { html: richHtml } });

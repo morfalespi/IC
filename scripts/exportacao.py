@@ -22,3 +22,18 @@ def valor_exportavel(valor):
         return valor.isoformat()
     return texto_exportavel(valor)
 
+
+
+PRIVATE_FIELDS = {'access_hash', 'auth_key', 'api_hash', 'bot_token', 'token', 'phone', 'file_reference', 'file_id', 'file_unique_id', 'session', 'string_session'}
+
+
+def disclosure(value):
+    """Copy for export; keep the acquired source objects untouched."""
+    if isinstance(value, dict):
+        return {key: '[REDACTED]' if key.lower() in PRIVATE_FIELDS or key.lower().endswith(('file_id', 'file_unique_id')) else disclosure(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [disclosure(item) for item in value]
+    if isinstance(value, str):
+        from bot_api import redact
+        return redact(value)
+    return value

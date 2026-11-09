@@ -3,6 +3,12 @@ name: Resolver entidade (MTProto)
 on:
   workflow_dispatch:
     inputs:
+      payload:
+        description: "Envelope criptografado. Nunca informe IDs, usernames ou dados pessoais em texto aberto."
+        required: false
+        default: ""
+      healthcheck:
+        description: "Somente verificar o dispatch; não acessa dados do Telegram"
       alvo:
         description: "Username público ou ID numérico. Informe expected_id separadamente, quando houver."
         required: true
@@ -55,16 +61,17 @@ permissions:
 jobs:
   resolver:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       PYTHONUNBUFFERED: "1"
       API_ID: ${{ secrets.API_ID }}
       API_HASH: ${{ secrets.API_HASH }}
       BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+      IC_DISPATCH_PRIVATE_KEY: ${{ secrets.IC_DISPATCH_PRIVATE_KEY }}
     steps:
       - name: Healthcheck do dispatch
         if: ${{ inputs.healthcheck }}
         run: echo "workflow_dispatch aceito"
-
       - uses: actions/checkout@v4
         if: ${{ !inputs.healthcheck }}
       - name: Registrar entradas da consulta sem máscara local
@@ -75,9 +82,17 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: scripts/resolver-requirements.txt
+          cache-dependency-path: |
+            scripts/resolver-requirements.txt
+            scripts/requirements-lock.txt
       - if: ${{ !inputs.healthcheck }}
         run: pip install -r scripts/resolver-requirements.txt
+      - name: Executar solicitação privada
+        if: ${{ !inputs.healthcheck }}
+        run: python scripts/workflow.py
+      - name: Remover arquivos da solicitação
+        if: ${{ always() && !inputs.healthcheck }}
+        run: rm -rf .ic
       - name: Registrar respostas Bot API e MTProto
         if: ${{ !inputs.healthcheck && inputs.validar_apis }}
         env:
