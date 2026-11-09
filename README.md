@@ -2,6 +2,16 @@
 
 An authorization-aware Telegram bot and local export runner. IC uses the official HTTPS Bot API and Telethon 1.45.0 (MTProto layer 229). Python 3.12+ is supported; Node is needed only for the optional TgCloud host and JavaScript checks.
 
+## Evidência, alcance e documentação normativa
+
+A fonte de referência para a Bot API é a [documentação oficial atual](https://core.telegram.org/bots/api), lida novamente em cada verificação. O código deste repositório é objeto de auditoria; commits anteriores não são a regra do comportamento esperado.
+
+- **Comparação local:** a [Action de conformidade](.github/workflows/official-api-conformance.yml) lê as regras oficiais, testa requisições locais e identifica explicitamente métodos e condições sem comprovação. A saída `INCOMPLETO` não é sucesso operacional.
+- **Execução real:** a [Action manual](.github/workflows/official-api-live.yml), após estar disponível no GitHub Actions e ter secrets configurados, pode executar um teste sintético autorizado diretamente nos servidores do Telegram. Nenhuma aprovação local substitui o resultado desse teste.
+- **Limites:** nenhuma dessas verificações isoladamente certifica coleta completa por MTProto, acesso a dados restritos ou leitura de relatórios pelo destinatário.
+
+Os critérios, fontes e códigos de saída estão em [verificacao-api-oficial.md](docs/verificacao-api-oficial.md). A documentação do Telegram orienta os protocolos, mas não garante autorização, visibilidade de dados ou resultados para um alvo específico.
+
 ## Proveniência da colaboração
 
 As correções desta recuperação funcional do IC foram desenvolvidas pelo **ChatGPT com Codex, em colaboração com morfalespi**, que definiu os objetivos e orientou as decisões do trabalho. Este registro se refere às alterações desta recuperação, não à autoria exclusiva de todo o histórico do projeto. A implementação técnica e os relatos de validação foram produzidos pelo agente; a solicitação e a autorização de publicação pelo usuário não equivalem à escrita ou à revisão técnica do código. Veja o [registro verificável de autoria operacional](docs/agent-provenance.md), com commits, escopo das alterações e limites das evidências. Os testes e seus limites estão documentados em [recovery-results.md](docs/recovery-results.md).
