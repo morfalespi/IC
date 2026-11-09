@@ -91,6 +91,8 @@ def request_violations(method, params, doc):
     spec = parse_table(doc, ["Parameter", "Type", "Required", "Description"])
     if spec is None:
         return [] if not params and "Requires no parameters" in doc else ["Official method table missing or unexpected arguments"]
+    if method in {"sendMessage", "sendPhoto", "sendDocument"}:
+        print("DEBUG REQUIREMENTS:", method, [(row["Parameter"], row["Required"]) for row in spec if row["Parameter"] in {"chat_id", "text", "photo", "document"}])
     allowed = {row["Parameter"]: row for row in spec}
     errors = ["Unknown argument: " + p for p in sorted(params.keys() - allowed.keys())]
     for name, row in allowed.items():
