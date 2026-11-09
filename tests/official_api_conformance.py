@@ -1,4 +1,5 @@
 """Compare IC's locally executed Bot API HTTP calls with freshly fetched official Telegram tables."""
+import ast
 from email.parser import BytesParser
 from email.policy import default
 import hashlib
@@ -17,6 +18,7 @@ from bot_api import BotClient
 from test_ic import TelegramFixture
 
 SOURCE = "https://core.telegram.org/bots/api.md"
+UNKNOWN_TYPES = set()
 RETURNS = {"getMe": "User", "getChat": "ChatFullInfo", "sendMessage": "Message",
            "sendPhoto": "Message", "sendDocument": "Message", "getFile": "File"}
 
@@ -62,7 +64,7 @@ def official():
     from urllib.parse import urljoin
     root = read_page(SOURCE)
     type_index = read_page("https://core.telegram.org/bots/api/types.md")
-    documents = {}
+    documents = {"_official_index": root}
     for name in set(RETURNS) | set(RETURNS.values()):
         index = root if name in RETURNS else type_index
         match = re.search(r"\[" + re.escape(name) + r"\]\((/bots/api/(?:methods|types)/[^)\s]+\.md)\)", index)
@@ -84,21 +86,20 @@ def ok_type(value, typ):
         return type(value) is str
     if typ.startswith("Boolean"):
         return type(value) is bool
-    return True
+    UNKNOWN_TYPES.add(typ)
+    return None
 
 
 def request_violations(method, params, doc):
     spec = parse_table(doc, ["Parameter", "Type", "Required", "Description"])
     if spec is None:
         return [] if not params and "Requires no parameters" in doc else ["Official method table missing or unexpected arguments"]
-    if method in {"sendMessage", "sendPhoto", "sendDocument"}:
-        print("DEBUG REQUIREMENTS:", method, [(row["Parameter"], row["Required"]) for row in spec if row["Parameter"] in {"chat_id", "text", "photo", "document"}])
     allowed = {row["Parameter"]: row for row in spec}
     errors = ["Unknown argument: " + p for p in sorted(params.keys() - allowed.keys())]
     for name, row in allowed.items():
         if row["Required"].lower().startswith("yes") and name not in params:
             errors.append("Missing required argument: " + name)
-        if name in params and not ok_type(params[name], row["Type"]):
+        if name in params and ok_type(params[name], row["Type"]) is False:
             errors.append("Invalid documented type: " + name + " (" + row["Type"] + ")")
     return errors
 
@@ -115,7 +116,7 @@ def response_violations(obj, kind, docs):
         optional = row["Description"].lstrip(" *_").lower().startswith("optional")
         if key not in obj and not optional:
             errors.append("Missing official " + kind + " field: " + key)
-        if key in obj and not ok_type(obj[key], row["Type"]):
+        if key in obj and ok_type(obj[key], row["Type"]) is False:
             errors.append("Wrong official " + kind + " field type: " + key)
     return errors
 
@@ -180,12 +181,53 @@ def exercise():
     return calls, responses
 
 
+def active_bot_api_references():
+    """Inventory method references in active source; references are not verified calls."""
+    root = Path(__file__).resolve().parents[1]
+    words = set()
+    pattern = re.compile(r"^(?:get|send|edit|answer|set|delete|copy|forward|ban|unban|restrict|pin|unpin|approve|decline|refund|stop)[A-Z][A-Za-z0-9]*$")
+    paths = sorted((root / "scripts").rglob("*.py")) + sorted((root / "tgcloud").rglob("*.js"))
+    for path in paths:
+        text = path.read_text(encoding="utf-8")
+        if path.suffix == ".py":
+            tree = ast.parse(text, filename=str(path))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Constant) and isinstance(node.value, str) and pattern.fullmatch(node.value):
+                    words.add(node.value)
+        else:
+            for match in re.finditer(r"\bapi\.([A-Za-z][A-Za-z0-9]*)\s*\(", text):
+                if pattern.fullmatch(match.group(1)):
+                    words.add(match.group(1))
+    return sorted(words)
+
+
+def coverage_inventory(docs, observed):
+    methods = active_bot_api_references()
+    official_index = docs["_official_index"]
+    uncovered = []
+    print("ESCOPO INVENTARIADO: referencias de metodos no codigo ativo =", len(methods))
+    for method in methods:
+        match = re.search(r"\[" + re.escape(method) + r"\]\(/bots/api/methods/[^\s)]+\.md\)", official_index)
+        if not match:
+            uncovered.append(method + " — nenhuma entrada encontrada no índice atual da Bot API; revisar referência")
+            print("NAO VERIFICADO:", method, "| sem correspondência no índice oficial")
+        elif method not in observed:
+            uncovered.append(method + " — documentado, mas fluxo não executado pelo comparador")
+            print("NAO VERIFICADO:", method, "| documentado, sem execução")
+        else:
+            print("EXECUCAO LOCAL OBSERVADA:", method)
+    if len(observed - set(methods)) > 0:
+        uncovered.append("métodos exercitados não catalogados no código ativo: " + repr(sorted(observed - set(methods))))
+    return uncovered
+
+
 def main():
     docs = official()
     calls, responses = exercise()
     if len(calls) != len(RETURNS) or {c[0] for c in calls} != set(RETURNS):
         raise RuntimeError("Not all intended BotClient operations were observed")
     failures = []
+    unverified = coverage_inventory(docs, {c[0] for c in calls})
     for method, params, transport in calls:
         kind = RETURNS[method]
         errors = request_violations(method, params, docs[method])
@@ -199,17 +241,26 @@ def main():
                                   if not row["Description"].lstrip(" *_").lower().startswith("optional"))
         print("  REGRA DA API:", method, "parametros obrigatorios=", mandatory_params,
               "|", kind, "campos obrigatorios=", mandatory_fields)
-        print(("FALHOU" if errors else "PASSOU") + ":", method, "[" + transport + "]", "campos enviados=", sorted(params))
+        print(("DIVERGENCIA" if errors else "SEM DIVERGENCIA NOS CAMPOS COMPARAVEIS") + ":", method, "[" + transport + "]", "campos enviados=", sorted(params))
         for error in errors:
             print("  DIVERGENCIA:", error)
         failures += errors
+    unverified.extend("tipo oficial nao interpretado: " + typ for typ in sorted(UNKNOWN_TYPES))
+    # Parsing optional fields does not prove all conditional requirements or semantic constraints.
+    unverified.append("condicoes, limites e semantica textual da documentacao nao sao verificados exaustivamente")
+    unverified.append("respostas originadas de fixture local; Telegram real nao executado")
     if not request_violations("getFile", {"invalid_parameter": "x"}, docs["getFile"]):
         failures.append("Negative control did not detect invalid request")
     else:
         print("PASSOU: controle negativo detecta parametro nao documentado")
-    print("LIMITES: nao testa Telegram real, MTProto, permissões, regras condicionais ou leitura pelo destinatário.")
-    print("RESULTADO:", "DIVERGENCIAS" if failures else "CONFORMIDADE PARCIAL (ESCOPO DOCUMENTADO ACIMA)")
-    return 1 if failures else 0
+    if not request_violations("sendMessage", {"chat_id": 42}, docs["sendMessage"]):
+        failures.append("controle negativo nao detectou ausencia de text exigido pelo contrato")
+    for gap in sorted(set(unverified)):
+        print("NAO COMPROVADO:", gap)
+    print("RESUMO:", len(calls), "operacoes exercitadas localmente;", len(failures),
+          "divergencias detectadas;", len(set(unverified)), "lacunas de comprovacao")
+    print("RESULTADO:", "DIVERGENCIA" if failures else "INCOMPLETO — NENHUMA CONFORMIDADE INTEGRAL AFIRMADA")
+    return 1 if failures else 2
 
 
 if __name__ == "__main__":
