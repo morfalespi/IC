@@ -59,7 +59,7 @@ Exit codes: **0** completed within the requested scope; **1** configuration, ide
 
 ## Collection scope and export
 
-`MODO=resumo` requests metadata; `MODO=completo` requests `metadata,messages,participants,photos,media`. `IC_CATEGORIES` replaces that selection explicitly. Additional connected categories are `music,gifts,catalog,boosts,stickers,topics,bot_details`:
+`MODO=resumo` requests metadata; `MODO=completo` requests all connected collection categories, including the metadata categories below. `IC_CATEGORIES` replaces that selection explicitly. Other connected categories are `music,gifts,catalog,boosts,stickers,topics,bot_details`:
 
 - `music`: profile music via `users.getSavedMusic`, offset pagination.
 - `gifts`: saved gifts via `payments.getSavedStarGifts`, cursor pagination.

@@ -1,0 +1,39 @@
+{
+  "source": "https://core.telegram.org/bots/api",
+  "source_sha256": "031a54dd7a2430df1d24b8dd23b0ff380460e18207ac9cb8ed0ef823c2b473d5",
+  "scope": "Required top-level fields only; not the entire Bot API schema",
+  "types": {
+    "user": {
+      "id": "Integer",
+      "is_bot": "Boolean",
+      "first_name": "String"
+    },
+    "chat": {
+      "id": "Integer",
+      "type": "String"
+    },
+    "chatfullinfo": {
+      "id": "Integer",
+      "type": "String",
+      "accent_color_id": "Integer",
+      "max_reaction_count": "Integer",
+      "accepted_gift_types": "AcceptedGiftTypes"
+    },
+    "message": {
+      "message_id": "Integer",
+      "date": "Integer",
+      "chat": "Chat"
+    },
+    "file": {
+      "file_id": "String",
+      "file_unique_id": "String"
+    },
+    "acceptedgifttypes": {
+      "unlimited_gifts": "Boolean",
+      "limited_gifts": "Boolean",
+      "unique_gifts": "Boolean",
+      "premium_subscription": "Boolean",
+      "gifts_from_channels": "Boolean"
+    }
+  }
+}

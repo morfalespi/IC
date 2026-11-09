@@ -172,9 +172,82 @@ async def acquire_bot_details(bot, data, max_pages):
         for method in ('getChatAdministrators', 'getChatMemberCount'):
             state = data.collections[method] = Collection(method)
             try:
-                result = await call(method, {'chat_id': data.canonical_id})
+                result = await call(method, {'chat_id': data.canonical_id, **({'return_bots': True} if method == 'getChatAdministrators' else {})})
                 output[method] = result
                 state.pages, state.records, state.state = 1, len(result) if isinstance(result, list) else 1, 'complete'
             except (BotAPIRequestError, OSError, ValueError) as error:
                 interrupted(state, error)
+    output.update(await acquire_bot_records(bot, data, max_pages))
+    return output
+
+
+async def acquire_bot_records(bot, data, max_pages):
+    from resolver import Collection, interrupted
+    from bot_api import BotAPIRequestError, APIProtocolError, validate_result_object
+    output = {}
+    async def read(method, payload, key=None):
+        state = data.collections[key or method] = Collection(method)
+        try:
+            result = (await asyncio.to_thread(bot.call, method, payload)).require()
+            output[key or method] = result
+            state.pages, state.records, state.state = 1, len(result) if isinstance(result, list) else 1, 'complete'
+            return result
+        except (BotAPIRequestError, OSError, asyncio.TimeoutError) as error:
+            interrupted(state, error)
+            return None
+    if isinstance(data.entity, User):
+        messages = await read('getUserPersonalChatMessages', {'user_id': data.entity.id, 'limit': 20})
+        if messages is not None:
+            if not isinstance(messages, list):
+                raise APIProtocolError('getUserPersonalChatMessages', {'ok': False, 'description': 'Expected Array of Message'})
+            for message in messages:
+                validate_result_object(message, 'Message')
+            data.collections['getUserPersonalChatMessages'].reason = 'Latest 20 messages requested; this API method has no history cursor'
+    else:
+        me = await asyncio.to_thread(bot.get_me)
+        await read('getChatMember', {'chat_id': data.canonical_id, 'user_id': me['id']}, 'bot_chat_membership')
+        known_ids = set()
+        for name, pages in data.metadata.items():
+            if name.startswith('participants_'):
+                for page in pages:
+                    for participant in getattr(page, 'participants', []):
+                        user_id = getattr(participant, 'user_id', None)
+                        if user_id is None:
+                            peer = getattr(participant, 'peer', None)
+                            from telethon.tl.types import PeerUser
+                            if isinstance(peer, PeerUser): user_id = peer.user_id
+                        if user_id is not None:
+                            known_ids.add(user_id)
+        for user_id in sorted(known_ids):
+            await read('getChatMember', {'chat_id': data.canonical_id, 'user_id': user_id}, f'chat_member_{user_id}')
+            if isinstance(data.entity, Channel):
+                await read('getUserChatBoosts', {'chat_id': data.canonical_id, 'user_id': user_id}, f'user_boosts_{user_id}')
+    method = 'getUserGifts' if isinstance(data.entity, User) else 'getChatGifts'
+    identifier = {'user_id': data.entity.id} if isinstance(data.entity, User) else {'chat_id': data.canonical_id}
+    state = data.collections[method] = Collection(method)
+    pages, seen, cursor = [], set(), ''
+    try:
+        for _ in range(max_pages):
+            result = (await asyncio.to_thread(bot.call, method, {**identifier, 'offset': cursor, 'limit': 100})).require()
+            if not isinstance(result, dict) or not isinstance(result.get('gifts'), list) or type(result.get('total_count')) is not int:
+                raise APIProtocolError(method, {'ok': False, 'description': 'Invalid OwnedGifts response'})
+            pages.append(result)
+            state.pages += 1
+            state.records += len(result['gifts'])
+            state.expected = max(state.expected or 0, result['total_count'])
+            next_cursor = result.get('next_offset', '')
+            if not next_cursor:
+                state.state = 'complete' if state.records >= state.expected else 'partial'
+                if state.state == 'partial': state.reason = 'Gift cursor exhausted before total_count'
+                break
+            if not isinstance(next_cursor, str) or next_cursor == cursor or next_cursor in seen:
+                state.state, state.reason = 'partial', 'Invalid or repeated gift cursor'
+                break
+            seen.add(cursor)
+            cursor = next_cursor
+        else:
+            state.state, state.reason = 'partial', 'Configured page limit reached'
+    except (BotAPIRequestError, OSError, asyncio.TimeoutError) as error:
+        interrupted(state, error)
+    output[method] = pages
     return output

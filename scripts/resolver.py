@@ -17,7 +17,7 @@ from telethon.tl.functions.channels import GetFullChannelRequest, GetParticipant
 from telethon.tl.functions.messages import GetFullChatRequest, GetHistoryRequest
 from telethon.tl.functions.users import GetFullUserRequest
 from telethon.tl.functions.photos import GetUserPhotosRequest
-from telethon.tl.types import User, Chat, Channel, ChannelParticipantsRecent, PeerUser, PeerChat, PeerChannel
+from telethon.tl.types import User, Chat, Channel, ChannelParticipantsRecent, ChannelParticipantsAdmins, ChannelParticipantsBots, ChannelParticipantsBanned, ChannelParticipantsKicked, PeerUser, PeerChat, PeerChannel
 
 from bot_api import BotClient, BotAPIRequestError, BotAPIAuthenticationError, diagnostico_excecao, authorized_destination, registrar_notificacao
 from exportacao import valor_exportavel, disclosure
@@ -236,14 +236,62 @@ async def collect_messages(client, peer, data, ids=None, max_pages=1000):
         interrupted(collection, error)
 
 
+def collection_categories(mode, requested=None):
+    from metadata import EXTRA_CATEGORIES
+    if mode not in {'resumo', 'completo'}:
+        raise ValueError('MODO must be resumo or completo')
+    selected = requested or ({'metadata'} if mode == 'resumo' else {'metadata', 'messages', 'participants', 'photos', 'media'} | EXTRA_CATEGORIES)
+    unknown = selected - ({'metadata', 'messages', 'participants', 'photos', 'media'} | EXTRA_CATEGORIES)
+    if unknown:
+        raise ValueError('Unknown collection categories: ' + ','.join(sorted(unknown)))
+    return selected
+
+
+async def collect_bot_media(bot, data, directory):
+    files = {}
+    def visit(value):
+        if isinstance(value, dict):
+            if isinstance(value.get('big_file_id'), str):
+                files.setdefault(value.get('big_file_unique_id') or value['big_file_id'], value['big_file_id'])
+            if isinstance(value.get('file_id'), str):
+                files.setdefault(value.get('file_unique_id') or value['file_id'], value['file_id'])
+            for item in value.values():
+                visit(item)
+        elif isinstance(value, list):
+            if value and all(isinstance(v, dict) and 'file_id' in v and 'width' in v and 'height' in v for v in value):
+                visit(max(value, key=lambda v: v['width'] * v['height']))
+            else:
+                for item in value:
+                    visit(item)
+    visit(data.metadata.get('bot_details', {}))
+    visit(data.metadata.get('bot_catalog', {}))
+    visit(data.metadata.get('chat_bot_api', {}))
+    state = data.collections['bot_media'] = Collection('getFile/downloadFile', expected=len(files))
+    root = directory / 'media'
+    root.mkdir(mode=0o700, exist_ok=True)
+    for unique, file_id in files.items():
+        name = 'bot_' + hashlib.sha256(str(unique).encode()).hexdigest()[:24] + '.bin'
+        try:
+            content, digest = await asyncio.to_thread(bot.download, file_id)
+            path = root / name
+            path.write_bytes(content)
+            data.media.append({'category': 'bot_api', 'name': name, 'path': str(path), 'bytes': len(content), 'sha256': digest, 'status': 'downloaded'})
+            state.pages += 1
+            state.records += 1
+        except (BotAPIRequestError, OSError, asyncio.TimeoutError) as error:
+            interrupted(state, error)
+            data.media.append({'category': 'bot_api', 'name': name, 'status': 'failed', 'error': type(error).__name__})
+    if state.state == 'collecting':
+        state.state = 'complete'
+    elif state.records:
+        state.state = 'partial'
+
+
 async def acquire(client, value, directory, *, expected_id=None, mode='completo', categories=None, message_ids=None):
     entity, peer = await resolver_alvo(client, value, expected_id)
     data = Acquisition(utils.get_peer_id(entity), entity_kind(entity), entity)
-    categories = categories or ({'metadata'} if mode == 'resumo' else {'metadata', 'messages', 'participants', 'photos', 'media'})
-    from metadata import EXTRA_CATEGORIES, acquire_metadata
-    unknown = categories - ({'metadata', 'messages', 'participants', 'photos', 'media'} | EXTRA_CATEGORIES)
-    if unknown:
-        raise ValueError('Unknown collection categories: ' + ','.join(sorted(unknown)))
+    from metadata import acquire_metadata
+    categories = collection_categories(mode, categories)
     max_pages = int(os.environ.get('IC_MAX_PAGES', '1000'))
     if not 1 <= max_pages <= 10000:
         raise ValueError('IC_MAX_PAGES must be between 1 and 10000')
@@ -257,17 +305,41 @@ async def acquire(client, value, directory, *, expected_id=None, mode='completo'
             else:
                 request = GetFullChatRequest(entity.id)
             data.full = await client(request)
+            full_entity = getattr(data.full, 'full_user' if isinstance(entity, User) else 'full_chat', None)
+            if full_entity is None or full_entity.id != entity.id:
+                raise LookupError('Full metadata does not identify the authorized entity')
             state.pages, state.records, state.state = 1, 1, 'complete'
         except (errors.RPCError, OSError, asyncio.TimeoutError) as error:
             interrupted(state, error)
     if 'messages' in categories:
         await collect_messages(client, peer, data, message_ids, max_pages)
+        full_entity = getattr(data.full, 'full_user', None) or getattr(data.full, 'full_chat', None)
+        pinned_id = getattr(full_entity, 'pinned_msg_id', None)
+        if pinned_id and not message_ids and pinned_id not in {m.id for m in data.messages}:
+            pinned = Acquisition(data.canonical_id, data.kind, entity)
+            await collect_messages(client, peer, pinned, [pinned_id], max_pages)
+            data.collections['pinned_message'] = pinned.collections['messages']
+            data.messages.extend(pinned.messages)
     if 'participants' in categories:
         state = data.collections['participants'] = Collection('channels.getParticipants' if isinstance(entity, Channel) else 'messages.getFullChat')
         if isinstance(entity, Channel):
-            async def fetch(offset):
-                return await client(GetParticipantsRequest(utils.get_input_channel(peer), ChannelParticipantsRecent(), offset, 100, 0))
-            data.participants = await paginated(state, fetch, lambda r: r.participants, lambda p: p.user_id, max_pages=max_pages)
+            filters = [('recent', ChannelParticipantsRecent()), ('admins', ChannelParticipantsAdmins()), ('bots', ChannelParticipantsBots()), ('restricted', ChannelParticipantsBanned('')), ('kicked', ChannelParticipantsKicked(''))]
+            for name, participant_filter in filters:
+                filter_state = state if name == 'recent' else Collection('channels.getParticipants[' + name + ']')
+                if name != 'recent':
+                    data.collections['participants_' + name] = filter_state
+                pages = []
+                async def fetch(offset):
+                    response = await client(GetParticipantsRequest(utils.get_input_channel(peer), participant_filter, offset, 100, 0))
+                    pages.append(response)
+                    return response
+                def identity(participant):
+                    user_id = getattr(participant, 'user_id', None)
+                    return ('user', user_id) if user_id is not None else ('peer', utils.get_peer_id(participant.peer))
+                rows = await paginated(filter_state, fetch, lambda r: r.participants, identity, max_pages=max_pages)
+                data.metadata['participants_' + name] = pages
+                if name == 'recent':
+                    data.participants = rows
         elif isinstance(entity, Chat):
             try:
                 response = await client(GetFullChatRequest(entity.id))
@@ -290,7 +362,7 @@ async def acquire(client, value, directory, *, expected_id=None, mode='completo'
             data.photos = await paginated(state, fetch, lambda r: r.photos, lambda p: p.id, max_pages=max_pages)
         else:
             state.state, state.reason = 'not_requested', 'Current chat photo is included in metadata; downloadable with media'
-    data.metadata = await acquire_metadata(client, peer, data, categories, max_pages)
+    data.metadata.update(await acquire_metadata(client, peer, data, categories, max_pages))
     if 'media' in categories:
         media_dir = directory / 'media'
         media_dir.mkdir(mode=0o700, exist_ok=True)
@@ -408,7 +480,8 @@ async def workflow(bot=None, client=None):
         if any(v <= 0 for v in ids):
             raise ValueError('MESSAGE_IDS must contain positive integers')
         data = await acquire(client, value, directory, expected_id=os.environ.get('EXPECTED_ID'), mode=os.environ.get('MODO', 'completo'), categories=categories, message_ids=ids or None)
-        if categories and 'bot_details' in categories:
+        effective_categories = collection_categories(os.environ.get('MODO', 'completo'), categories)
+        if 'bot_details' in effective_categories:
             from metadata import acquire_bot_details
             data.metadata['bot_details'] = await acquire_bot_details(bot, data, int(os.environ.get('IC_MAX_PAGES', '1000')))
         # Bot API visibility is independent of MTProto visibility.
@@ -419,12 +492,25 @@ async def workflow(bot=None, client=None):
                 raise LookupError('Bot API chat differs from resolved MTProto entity')
             state.pages, state.records, state.state = 1, 1, 'complete'
             # Retain the documented ChatFullInfo alongside MTProto metadata.
+            data.metadata['chat_bot_api'] = chat
             data.full = {'mtproto': data.full, 'bot_api': chat}
         except (OSError, RuntimeError) as error:
             interrupted(state, error)
+        if 'catalog' in effective_categories:
+            catalog_state = data.collections['bot_catalog'] = Collection('getAvailableGifts')
+            try:
+                catalog = (await asyncio.to_thread(bot.call, 'getAvailableGifts')).require()
+                if not isinstance(catalog, dict) or not isinstance(catalog.get('gifts'), list):
+                    raise ValueError('Invalid Gifts response')
+                data.metadata['bot_catalog'] = catalog
+                catalog_state.pages, catalog_state.records, catalog_state.state = 1, len(catalog['gifts']), 'complete'
+            except (BotAPIRequestError, OSError, asyncio.TimeoutError) as error:
+                interrupted(catalog_state, error)
+        if 'media' in effective_categories:
+            await collect_bot_media(bot, data, directory)
         archives = build_media_archives(data.media, directory)
         files, report_identity, safe = export(data, directory)
-        print(json.dumps({'state': 'exported', 'directory': str(directory), 'files': len(files) + len(archives), 'collections': safe['collections'], 'completeness': safe['completeness']}), flush=True)
+        print(json.dumps({'state': 'exported', 'directory': str(directory), 'files': len(files) + len(archives), 'completeness': safe['completeness']}), flush=True)
         receipts = []
         persist_state(state='exported', completeness=safe['completeness'])
         def receipt(message):

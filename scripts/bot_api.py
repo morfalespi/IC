@@ -30,7 +30,7 @@ class TelegramChat(TypedDict):
 class TelegramMessage(TypedDict):
     message_id: int
     chat: TelegramChat
-    date: NotRequired[int]
+    date: int
     photo: NotRequired[list[dict]]
     document: NotRequired[dict]
 
@@ -78,6 +78,27 @@ class APIProtocolError(BotAPIRequestError):
     pass
 
 
+def validate_result_object(value, kind):
+    # Required fields from https://core.telegram.org/bots/api#available-types.
+    required = {
+        'User': {'id': int, 'is_bot': bool, 'first_name': str},
+        'Chat': {'id': int, 'type': str},
+        'ChatFullInfo': {'id': int, 'type': str, 'accent_color_id': int, 'max_reaction_count': int, 'accepted_gift_types': dict},
+        'AcceptedGiftTypes': {'unlimited_gifts': bool, 'limited_gifts': bool, 'unique_gifts': bool, 'premium_subscription': bool, 'gifts_from_channels': bool},
+        'Message': {'message_id': int, 'date': int, 'chat': dict},
+        'File': {'file_id': str, 'file_unique_id': str},
+    }
+    if not isinstance(value, dict) or any(type(value.get(key)) is not expected for key, expected in required[kind].items()):
+        raise APIProtocolError(kind, {'ok': False, 'description': f'Invalid required fields in {kind}'})
+    if kind == 'ChatFullInfo':
+        validate_result_object(value, 'Chat')
+        validate_result_object(value['accepted_gift_types'], 'AcceptedGiftTypes')
+    if kind == 'Chat' and value['type'] not in {'private', 'group', 'supergroup', 'channel'}:
+        raise APIProtocolError(kind, {'ok': False, 'description': 'Invalid chat type'})
+    if kind == 'Message':
+        validate_result_object(value['chat'], 'Chat')
+
+
 @dataclass(frozen=True)
 class BotResult:
     method: str
@@ -98,6 +119,11 @@ class BotResult:
             if method in {'getMe', 'getChat', 'getFile', 'sendMessage', 'sendPhoto', 'sendDocument', 'sendRichMessage'}:
                 if not isinstance(result, dict):
                     raise APIProtocolError(method, {'ok': False, 'description': 'Expected an object result'})
+            result_kind = {'getMe': 'User', 'getChat': 'ChatFullInfo', 'getFile': 'File'}.get(method)
+            if method in {'sendMessage', 'sendPhoto', 'sendDocument', 'sendRichMessage', 'editMessageText'}:
+                result_kind = 'Message'
+            if result_kind:
+                validate_result_object(result, result_kind)
             if method == 'getMe' and (type(result.get('id')) is not int or result.get('is_bot') is not True):
                 raise APIProtocolError(method, {'ok': False, 'description': 'Invalid bot identity'})
             if method == 'getChat' and (type(result.get('id')) is not int or result.get('type') not in {'private', 'group', 'supergroup', 'channel'}):
@@ -127,14 +153,18 @@ class BotResult:
 
 
 def diagnostico_api(resposta, metodo):
-    # A response may contain profiles, messages and credentials. Log status only.
-    return redact({'method': metodo, **{k: resposta[k] for k in ('ok', 'error_code', 'description', 'parameters', 'origin') if k in resposta}})
+    diagnostic = {'origin': 'telegram', 'method': metodo}
+    for key in ('ok', 'error_code'):
+        if key in resposta:
+            diagnostic[key] = resposta[key]
+    # Telegram descriptions and parameters may contain personal identifiers.
+    return diagnostic
 
 
 def diagnostico_excecao(erro):
     if isinstance(erro, APIError):
-        return erro.diagnostic
-    return {'origin': 'runtime', 'type': type(erro).__name__, 'description': redact(str(erro))}
+        return {**erro.diagnostic, 'type': type(erro).__name__}
+    return {'origin': 'runtime', 'type': type(erro).__name__}
 
 
 def estado_mensagem(resposta, chat_id=None):

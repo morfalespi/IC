@@ -66,7 +66,14 @@ class TelegramFixture:
             def do_POST(self):
                 body = self.rfile.read(int(self.headers.get('Content-Length', 0)))
                 method = self.path.rsplit('/', 1)[-1]
-                fields = bot_api._fields(body, dict(self.headers))
+                # Decode wire fields without calling IC's request parser.
+                if self.headers.get_content_type() == 'application/json':
+                    fields = json.loads(body)
+                else:
+                    from email.parser import BytesParser
+                    from email.policy import default
+                    multipart = BytesParser(policy=default).parsebytes(b'Content-Type: ' + self.headers['Content-Type'].encode() + b'\r\n\r\n' + body)
+                    fields = {part.get_param('name', header='content-disposition'): part.get_payload(decode=True).decode() for part in multipart.iter_parts() if not part.get_filename()}
                 fixture.requests.append((method, fields))
                 status = 200
                 if fixture.responses:
@@ -80,11 +87,27 @@ class TelegramFixture:
                         result = {'id': 777, 'is_bot': True, 'first_name': 'FixtureBot'}
                     elif method == 'getChat':
                         value = int(fields['chat_id'])
-                        result = {'id': value, 'type': 'private' if value > 0 else 'supergroup', 'first_name': 'Fixture'}
+                        result = {'id': value, 'type': 'private' if value > 0 else 'supergroup', 'first_name': 'Fixture', 'accent_color_id': 1, 'max_reaction_count': 1, 'accepted_gift_types': {key: False for key in ('unlimited_gifts', 'limited_gifts', 'unique_gifts', 'premium_subscription', 'gifts_from_channels')}}
                     elif method == 'getWebhookInfo':
                         result = {'url': ''}
                     elif method == 'getUpdates':
                         result = fixture.updates
+                    elif method == 'getUserProfilePhotos':
+                        result = {'total_count': 0, 'photos': []}
+                    elif method == 'getUserProfileAudios':
+                        result = {'total_count': 0, 'audios': []}
+                    elif method == 'getUserPersonalChatMessages' or method == 'getChatAdministrators':
+                        result = []
+                    elif method in {'getUserGifts', 'getChatGifts'}:
+                        result = {'total_count': 0, 'gifts': []}
+                    elif method == 'getChatMemberCount':
+                        result = 0
+                    elif method == 'getChatMember':
+                        result = {'status': 'member', 'user': {'id': fields['user_id'], 'is_bot': False, 'first_name': 'Example'}}
+                    elif method == 'getUserChatBoosts':
+                        result = {'boosts': []}
+                    elif method == 'getAvailableGifts':
+                        result = {'gifts': []}
                     elif method == 'getFile':
                         file_id = fields['file_id']
                         result = {'file_id': file_id, 'file_unique_id': file_id, 'file_size': len(fixture.files[file_id]), 'file_path': 'files/' + file_id}
@@ -152,7 +175,15 @@ class FakeMTProto:
     async def __call__(self, request):
         self.calls.append(request)
         if isinstance(request, (GetFullUserRequest, GetFullChannelRequest, GetFullChatRequest)):
-            return SimpleTL({'about': 'Source <&>\n``` unsafe fence', 'access_hash': 987654, 'phone': '5551234'})
+            from telethon.tl import types
+            if isinstance(request, GetFullUserRequest):
+                full = types.UserFull(id=self.entity.id, settings=types.PeerSettings(), notify_settings=types.PeerNotifySettings(), common_chats_count=0, about='Source <&>\n``` unsafe fence')
+                return types.users.UserFull(full_user=full, chats=[], users=[self.entity])
+            if isinstance(request, GetFullChannelRequest):
+                full = types.ChannelFull(id=self.entity.id, about='', read_inbox_max_id=0, read_outbox_max_id=0, unread_count=0, chat_photo=types.PhotoEmpty(id=1), notify_settings=types.PeerNotifySettings(), bot_info=[], pts=0)
+                return types.messages.ChatFull(full_chat=full, chats=[self.entity], users=[])
+            full = types.ChatFull(id=self.entity.id, about='', participants=types.ChatParticipants(chat_id=self.entity.id, participants=[], version=1), notify_settings=types.PeerNotifySettings())
+            return types.messages.ChatFull(full_chat=full, chats=[self.entity], users=[])
         if isinstance(request, GetHistoryRequest):
             self.history_offsets.append(request.offset_id)
             if self.fail_history:
@@ -164,6 +195,20 @@ class FakeMTProto:
         if isinstance(request, GetParticipantsRequest):
             participants = [ChannelParticipant(user_id=1, date=None), ChannelParticipant(user_id=2, date=None)] if request.offset == 0 else []
             return SimpleNamespace(participants=participants, count=2)
+        from telethon.tl import types
+        from telethon.tl.functions import users, payments, premium, channels
+        if isinstance(request, users.GetSavedMusicRequest):
+            return types.users.SavedMusic(count=0, documents=[])
+        if isinstance(request, payments.GetSavedStarGiftsRequest):
+            return types.payments.SavedStarGifts(count=0, gifts=[], chats=[], users=[])
+        if isinstance(request, payments.GetStarGiftsRequest):
+            return types.payments.StarGifts(hash=0, gifts=[], chats=[], users=[])
+        if isinstance(request, premium.GetBoostsStatusRequest):
+            return types.premium.BoostsStatus(level=0, current_level_boosts=0, boosts=0, boost_url='https://t.me/boost/fixture')
+        if isinstance(request, premium.GetBoostsListRequest):
+            return types.premium.BoostsList(count=0, boosts=[], users=[])
+        if isinstance(request, channels.GetParticipantRequest):
+            return types.channels.ChannelParticipant(participant=types.ChannelParticipantSelf(user_id=777, inviter_id=42, date=None), chats=[], users=[])
         raise AssertionError(type(request))
 
     async def get_messages(self, peer, ids):
@@ -240,7 +285,7 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(report['completeness'], 'complete_available')
         self.assertIn('api_accepted', output.getvalue())
         self.assertNotIn('Alice', output.getvalue())
-        print('CONTROLLED E2E: authentication, resolution, 2 history pages, JSONL/Markdown export, API-accepted delivery')
+        print('LOCAL FLOW: synthetic identity, controlled MTProto replies, 2 pages, exports and loopback HTTP receipts')
 
     def test_partial_restriction_exit_and_export(self):
         fake = FakeMTProto(fail_history=True)
@@ -304,7 +349,7 @@ class IntegrationTests(unittest.TestCase):
         data = asyncio.run(resolver.acquire(fake, '-1000000000008', self.root, categories={'participants'}))
         self.assertEqual(data.collections['participants'].state, 'complete')
         requests = [c for c in fake.calls if isinstance(c, GetParticipantsRequest)]
-        self.assertEqual([r.offset for r in requests], [0, 2])
+        self.assertEqual([r.offset for r in requests], [0, 2] * 5)
         self.assertEqual(requests[0].channel.access_hash, 19)
 
     def test_invalid_envelopes_and_non_json_never_succeed(self):
@@ -370,8 +415,9 @@ class IntegrationTests(unittest.TestCase):
         with patch('validar_entrega.BotClient', return_value=self.bot), contextlib.redirect_stdout(io.StringIO()) as output:
             self.assertEqual(asyncio.run(validar_entrega.principal()), 0, output.getvalue())
         result = json.loads(output.getvalue())
-        self.assertEqual(len(result['receipts']), 5)
-        self.assertTrue(all(r['source_bytes_equal'] for r in result['receipts'] if r['method'] == 'sendDocument'))
+        self.assertEqual(result['accepted_messages'], 5)
+        self.assertEqual(result['retrieved_uploads'], 4)
+        self.assertEqual(result['verified_documents'], 3)
         self.assertEqual(sum(m == 'getFile' for m, _ in self.telegram.requests), 4)
         print('CONTROLLED DELIVERY: text, PNG, Markdown, JSONL, ZIP; all 4 uploads retrieved and hashed')
 
@@ -394,7 +440,7 @@ class IntegrationTests(unittest.TestCase):
         store = ic.UpdateStore()
         self.assertEqual(store.offset(), 3)
         store.db.close()
-        print('CONTROLLED STARTUP: ic.py bot --once reached operational; authorization and replay protection verified')
+        print('LOCAL STARTUP: ic.py bot --once with injected clients; authorization and replay cases passed')
 
     def test_archive_integrity_and_split(self):
         items = []
@@ -572,7 +618,7 @@ class IntegrationTests(unittest.TestCase):
         store.db.close()
         self.telegram.updates = [{'update_id': 1, 'message': {'from': {'id': 42}, 'chat': {'id': 42}, 'text': 'invalid'}}]
         with contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(asyncio.run(ic.polling(self.bot, FakeMTProto(), once=True)), 0)
+            self.assertEqual(asyncio.run(ic.polling(self.bot, FakeMTProto(), once=True)), 1)
         sent = [fields for method, fields in self.telegram.requests if method == 'sendMessage']
         self.assertEqual(len(sent), 1)
         self.assertIn('/info', sent[0]['text'])
@@ -587,8 +633,45 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(edits[0]['message_id'], 123)
         self.assertFalse(any(method == 'sendMessage' for method, _ in self.telegram.requests))
 
+    def test_polling_failed_operation_returns_failure_and_notifies(self):
+        self.telegram.updates = [{'update_id': 10, 'message': {'from': {'id': 42}, 'chat': {'id': 42}, 'text': '/export alice'}}]
+        fake = FakeMTProto()
+        async def unavailable(peer):
+            raise ValueError('Unknown entity')
+        fake.get_input_entity = unavailable
+        with contextlib.redirect_stdout(io.StringIO()):
+            code = asyncio.run(ic.polling(self.bot, fake, once=True))
+        self.assertEqual(code, 1)
+        sent = [fields for method, fields in self.telegram.requests if method == 'sendMessage']
+        self.assertEqual(len(sent), 1)
+        self.assertIn('não concluiu', sent[0]['text'])
+
+    def test_bot_metadata_media_is_downloaded_and_packaged_in_normal_path(self):
+        self.telegram.files['from_profile'] = b'profile audio bytes'
+        data = resolver.Acquisition(42, 'user', FakeMTProto().entity)
+        data.metadata = {'bot_details': {'getUserProfileAudios': [{'audios': [{'file_id': 'from_profile', 'file_unique_id': 'audio_unique'}]}]}}
+        asyncio.run(resolver.collect_bot_media(self.bot, data, self.root))
+        self.assertEqual(data.collections['bot_media'].state, 'complete')
+        self.assertEqual(Path(data.media[0]['path']).read_bytes(), b'profile audio bytes')
+        self.assertEqual(data.media[0]['sha256'], hashlib.sha256(b'profile audio bytes').hexdigest())
+        archives = build_media_archives(data.media, self.root)
+        self.assertEqual(len(archives), 1)
+        self.assertIn('getFile', [m for m, _ in self.telegram.requests])
+
+    def test_full_metadata_wrong_identity_is_fatal(self):
+        fake = FakeMTProto()
+        original = fake.__class__.__call__
+        async def wrong(client, request):
+            value = await original(client, request)
+            if isinstance(request, GetFullUserRequest):
+                value.full_user.id = 43
+            return value
+        with patch.object(FakeMTProto, '__call__', wrong):
+            with self.assertRaises(LookupError):
+                asyncio.run(resolver.acquire(fake, 'alice', self.root, categories={'metadata'}))
+
     def test_bad_getfile_path_and_size(self):
-        for file in [dict(file_id='x', file_path='../secret'), dict(file_id='x', file_path='files/x', file_size=8)]:
+        for file in [dict(file_id='x', file_unique_id='unique', file_path='../secret'), dict(file_id='x', file_unique_id='unique', file_path='files/x', file_size=8)]:
             self.telegram.responses.append((200, {'ok': True, 'result': file}))
             self.telegram.files['x'] = b'bad'
             with self.assertRaises(APIProtocolError):

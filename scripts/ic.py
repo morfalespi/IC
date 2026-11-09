@@ -83,6 +83,8 @@ async def polling(bot=None, client=None, *, once=False):
     store = UpdateStore()
     emit(state='operational', entrypoint='polling', authenticated=True)
     failures = 0
+    operation_failures = 0
+    partial_operations = 0
     try:
         while True:
             try:
@@ -117,6 +119,7 @@ async def polling(bot=None, client=None, *, once=False):
                         requested = command(message)
                     except ValueError as error:
                         await asyncio.to_thread(bot.send_message, chat, str(error))
+                        operation_failures += 1
                         store.finish(update_id, 'invalid_request')
                         continue
                     if requested is not None and not store.reserve_command(chat):
@@ -130,11 +133,19 @@ async def polling(bot=None, client=None, *, once=False):
                         value, expected, mode = requested
                         os.environ.update(ALVO=value, EXPECTED_ID=expected, MODO=mode, CHAT_ID=chat)
                         code = await resolver.workflow(bot=bot, client=client)
-                    store.finish(update_id, 'completed' if code == 0 else 'partial')
+                    if code == 2:
+                        partial_operations += 1
+                    elif code:
+                        operation_failures += 1
+                    store.finish(update_id, 'completed' if code == 0 else 'partial' if code == 2 else 'failed')
                 except Exception as error:
                     emit(state='operation_failed', **diagnostico_excecao(error))
-                    # Do not append automatic messages after uncertain report submissions.
+                    operation_failures += 1
                     store.finish(update_id, 'failed')
+                    try:
+                        await asyncio.to_thread(bot.send_message, chat, 'IC não concluiu esta solicitação. Nenhum resultado completo foi confirmado.')
+                    except Exception as notification_error:
+                        emit(state='failure_notification_failed', **diagnostico_excecao(notification_error))
                 finally:
                     for key, value in previous_env.items():
                         if value is None:
@@ -142,7 +153,7 @@ async def polling(bot=None, client=None, *, once=False):
                         else:
                             os.environ[key] = value
             if once:
-                return 0
+                return 1 if operation_failures else 2 if partial_operations else 0
     finally:
         store.db.close()
         if own_client:

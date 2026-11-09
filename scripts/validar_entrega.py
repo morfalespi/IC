@@ -48,7 +48,7 @@ async def validate(bot=None):
         await send_and_verify('sendDocument', md, 'synthetic.md', 'text/markdown')
         await send_and_verify('sendDocument', jl, 'synthetic.jsonl', 'application/x-ndjson')
         await send_and_verify('sendDocument', Path(archives[0]).read_bytes(), 'synthetic.zip', 'application/zip')
-    print(json.dumps({'state': 'validated', 'receipts': receipts}))
+    print(json.dumps({'state': 'validated', 'accepted_messages': len(receipts), 'retrieved_uploads': sum(r.get('retrieved') is True for r in receipts), 'verified_documents': sum(r['method'] == 'sendDocument' and r.get('source_bytes_equal') is True for r in receipts)}))
     return 0
 
 
