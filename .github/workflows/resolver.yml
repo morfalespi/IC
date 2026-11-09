@@ -9,6 +9,48 @@ on:
         default: ""
       healthcheck:
         description: "Somente verificar o dispatch; não acessa dados do Telegram"
+      alvo:
+        description: "Username público ou ID numérico. Informe expected_id separadamente, quando houver."
+        required: true
+      healthcheck:
+        description: "Somente validar o dispatch; não acessa Telegram"
+        type: boolean
+        required: false
+        default: false
+      validar_apis:
+        description: "Registrar getMe/getChat e MTProto sem exigir identidade, integridade ou redação"
+        type: boolean
+        required: false
+        default: false
+      expected_id:
+        description: "ID do peer esperado, informativo; não bloqueia peers divergentes"
+        required: false
+        default: ""
+      chat:
+        description: "ID do chat que recebe a resposta (vazio: coleta sem entrega; logs com os valores coletados)"
+        required: false
+        default: ""
+      message_id:
+        description: "ID da ficha rica já enviada ao chat para edição progressiva"
+        required: false
+        default: ""
+      modo:
+        description: "completo/resumo consultam; validar_entrega envia uma mensagem e três arquivos sintéticos ao chat indicado sem conferir os bytes"
+        required: false
+        default: "completo"
+        type: choice
+        options: [completo, resumo, validar_entrega]
+      formato:
+        description: "Formato inicial; falhas ricas tentam HTML automaticamente"
+        type: choice
+        options: [rich, html]
+        default: rich
+      origem_id:
+        description: "ID da mensagem original que solicitou o relatório completo"
+        required: false
+        default: ""
+      coletar_midia:
+        description: "Baixar mídia mesmo sem chat de destino para validar a coleta; não envia arquivos nem mensagens sem chat"
         type: boolean
         required: false
         default: false
@@ -32,6 +74,9 @@ jobs:
         run: echo "workflow_dispatch aceito"
       - uses: actions/checkout@v4
         if: ${{ !inputs.healthcheck }}
+      - name: Registrar entradas da consulta sem máscara local
+        if: ${{ !inputs.healthcheck }}
+        run: python3 scripts/mascarar_inputs.py
       - uses: actions/setup-python@v5
         if: ${{ !inputs.healthcheck }}
         with:
@@ -48,3 +93,34 @@ jobs:
       - name: Remover arquivos da solicitação
         if: ${{ always() && !inputs.healthcheck }}
         run: rm -rf .ic
+      - name: Registrar respostas Bot API e MTProto
+        if: ${{ !inputs.healthcheck && inputs.validar_apis }}
+        env:
+          MODO: resumo
+          CHAT_ID: ""
+          MESSAGE_ID: ""
+        run: python scripts/validar_apis.py
+      - name: Validar entrega sintética ao chat escolhido
+        if: ${{ !inputs.healthcheck && inputs.modo == 'validar_entrega' }}
+        env:
+          MODO: validar_entrega
+          CHAT_ID: ${{ inputs.chat }}
+        run: python scripts/validar_entrega.py
+      - if: ${{ !inputs.healthcheck && !inputs.validar_apis && inputs.modo != 'validar_entrega' }}
+        env:
+          ALVO: ${{ inputs.alvo }}
+          EXPECTED_ID: ${{ inputs.expected_id }}
+          CHAT_ID: ${{ inputs.chat }}
+          MESSAGE_ID: ${{ inputs.message_id }}
+          MODO: ${{ inputs.modo }}
+          FORMATO_MENSAGEM: ${{ inputs.formato || 'rich' }}
+          ORIGEM_ID: ${{ inputs.origem_id }}
+          COLETAR_MIDIA: ${{ inputs.coletar_midia }}
+        run: python scripts/resolver.py
+      - name: Avisar o chat ao encerrar, com repetição permitida
+        if: ${{ always() && !inputs.healthcheck && !inputs.validar_apis && inputs.modo != 'validar_entrega' }}
+        env:
+          CHAT_ID: ${{ inputs.chat }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: python scripts/notificar_falha.py
+

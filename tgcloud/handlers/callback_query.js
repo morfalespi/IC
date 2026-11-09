@@ -13,6 +13,8 @@ export default async function (callback, ctx) {
     return;
   }
   if (!await reservarAtualizacao(ctx?.update?.update_id)) return;
+export default async function (callback) {
+  const chat = callback.message?.chat ?? callback.from;
   const messageId = callback.message?.message_id;
   const pedido = lerCallback(callback.data);
   const completo = pedido.acao === 'f';
@@ -29,6 +31,7 @@ export default async function (callback, ctx) {
   } catch (erro) {
     console.error('falha ao processar callback:', diagnosticoErro(erro));
     await enviarMensagem(chat.id, '<b>Falha no processamento.</b>');
+    await enviarMensagem(chat.id, '<b>Processamento concluído.</b>');
   }
 }
 

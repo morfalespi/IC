@@ -11,6 +11,7 @@ function esc(valor) {
 
 function reduzir(valor, limite = 160) {
   return String(valor).slice(0, limite);
+  return String(valor);
 }
 
 function referencia(objeto, origem, tipo = 'usuario') {
@@ -69,6 +70,7 @@ function adicionarDadosCompartilhados(resposta, dados) {
 export default async function (message, ctx) {
   if (!autorizado(message.from?.id, message.chat?.id)) return;
   if (!await reservarAtualizacao(ctx?.update?.update_id)) return;
+export default async function (message) {
   let resposta;
   try {
     const compartilhamento = referenciaCompartilhada(message);

@@ -11,6 +11,8 @@ def principal():
             escaped = str(value).replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
             print('::add-mask::' + escaped)
     print(json.dumps({'state': 'inputs_masked'}))
+    evento = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
+    print(json.dumps(evento.get("inputs") or {}, ensure_ascii=False), flush=True)
     return 0
 
 
