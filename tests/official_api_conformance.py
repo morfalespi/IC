@@ -65,12 +65,18 @@ def official():
     root = read_page(SOURCE)
     type_index = read_page("https://core.telegram.org/bots/api/types.md")
     documents = {"_official_index": root}
-    for name in set(RETURNS) | set(RETURNS.values()) | {"Chat", "AcceptedGiftTypes"}:
-        index = root if name in RETURNS else type_index
+    references = active_bot_api_references()
+    required_types = set(RETURNS.values()) | {"Chat", "AcceptedGiftTypes"}
+    for name in sorted(set(RETURNS) | required_types | set(references)):
+        index = root if name in RETURNS or name in references else type_index
         match = re.search(r"\[" + re.escape(name) + r"\]\((/bots/api/(?:methods|types)/[^)\s]+\.md)\)", index)
         if not match:
-            raise RuntimeError("No official indexed page for " + name)
+            if name in RETURNS or name in required_types:
+                raise RuntimeError("Official document not indexed for required method/type: " + name)
+            continue
         documents[name] = read_page(urljoin(SOURCE, match.group(1)))
+    print("DOCUMENTOS ATUAIS LIDOS:", len(documents) - 1,
+          "| REFERENCIAS DE METODOS NO CODIGO:", len(references))
     return documents
 
 
