@@ -1,10 +1,10 @@
-name: IC - Execucao real da Bot API oficial
+name: IC - Validacao REAL autorizada da Bot API
 
 on:
   workflow_dispatch:
     inputs:
-      confirmar_envio:
-        description: "Confirmo o envio de mensagens e arquivos sinteticos ao chat de teste autorizado"
+      autorizo_envios_sinteticos:
+        description: "Confirmo a entrega de texto, foto PNG e documento sintéticos no chat de teste configurado como secret"
         type: boolean
         required: true
         default: false
@@ -13,29 +13,28 @@ permissions:
   contents: read
 
 jobs:
-  observacao-real:
+  api-real:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 10
+    env:
+      BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+      IC_TEST_CHAT_ID: ${{ secrets.IC_TEST_CHAT_ID }}
+      IC_ALLOW_SYNTHETIC_DELIVERY: "yes"
     steps:
-      - name: Exigir autorizacao explicita
+      - uses: actions/checkout@v4
+      - name: Exigir autorizacao e configuracao real
         env:
-          CONFIRMO: ${{ inputs.confirmar_envio }}
+          CONFIRMACAO: ${{ inputs.autorizo_envios_sinteticos }}
         run: |
-          if [ "$CONFIRMO" != "true" ]; then
-            echo "::error::Envio real nao autorizado. Nenhum teste foi executado."
+          if [ "$CONFIRMACAO" != "true" ] || [ -z "$BOT_TOKEN" ] || [ -z "$IC_TEST_CHAT_ID" ]; then
+            echo "::error::NAO EXECUTADO: autorizacao, BOT_TOKEN e IC_TEST_CHAT_ID sao obrigatorios."
             exit 2
           fi
-      - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: scripts/requirements-lock.txt
-      - name: Instalar dependencias
-        run: python -m pip install -r scripts/requirements-lock.txt
-      - name: Observar chamadas reais e confrontar com referencia oficial
-        env:
-          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          IC_TEST_CHAT_ID: ${{ secrets.IC_TEST_CHAT_ID }}
-          IC_ALLOW_SYNTHETIC_DELIVERY: "yes"
+      - run: python -m pip install -r scripts/requirements-lock.txt
+      - name: Executar chamadas reais, conferir identidade e comparar bytes
         run: python tests/official_api_live.py
