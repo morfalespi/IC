@@ -65,7 +65,7 @@ def official():
     root = read_page(SOURCE)
     type_index = read_page("https://core.telegram.org/bots/api/types.md")
     documents = {"_official_index": root}
-    for name in set(RETURNS) | set(RETURNS.values()):
+    for name in set(RETURNS) | set(RETURNS.values()) | {"Chat", "AcceptedGiftTypes"}:
         index = root if name in RETURNS else type_index
         match = re.search(r"\[" + re.escape(name) + r"\]\((/bots/api/(?:methods|types)/[^)\s]+\.md)\)", index)
         if not match:
@@ -75,49 +75,84 @@ def official():
 
 
 def ok_type(value, typ):
-    typ = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", typ)
-    if isinstance(value, bytes):
-        return "InputFile" in typ
-    if typ.startswith("Integer or String"):
+    normalized = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", typ).strip().strip("*")
+    if normalized == "Integer or String":
         return type(value) in (int, str)
-    if typ.startswith("Integer"):
-        return type(value) is int or (isinstance(value, str) and value.lstrip("-").isdigit())
-    if typ.startswith("String"):
-        return type(value) is str
-    if typ.startswith("Boolean"):
+    if normalized == "Integer":
+        return type(value) is int or (type(value) is str and value.lstrip("-").isdigit())
+    if normalized == "String":
+        return isinstance(value, str)
+    if normalized == "Boolean":
         return type(value) is bool
-    UNKNOWN_TYPES.add(typ)
-    return None
+    if normalized == "True":
+        return value is True
+    if normalized == "Float":
+        return type(value) in (float, int)
+    if normalized == "InputFile or String":
+        return isinstance(value, (bytes, str))
+    if normalized in {"Chat", "ChatFullInfo", "Message", "User", "File", "AcceptedGiftTypes"}:
+        return isinstance(value, dict)
+    if normalized.startswith("Array of "):
+        return isinstance(value, list)
+    raise ValueError("Tipo oficial ainda sem validador: " + normalized)
 
 
 def request_violations(method, params, doc):
     spec = parse_table(doc, ["Parameter", "Type", "Required", "Description"])
     if spec is None:
-        return [] if not params and "Requires no parameters" in doc else ["Official method table missing or unexpected arguments"]
+        return [] if not params and "Requires no parameters" in doc else ["Tabela oficial indisponivel ou argumentos inesperados"]
     allowed = {row["Parameter"]: row for row in spec}
-    errors = ["Unknown argument: " + p for p in sorted(params.keys() - allowed.keys())]
+    errors = ["Parametro nao encontrado na API: " + name for name in sorted(params.keys() - allowed.keys())]
     for name, row in allowed.items():
-        if row["Required"].lower().startswith("yes") and name not in params:
-            errors.append("Missing required argument: " + name)
-        if name in params and ok_type(params[name], row["Type"]) is False:
-            errors.append("Invalid documented type: " + name + " (" + row["Type"] + ")")
+        required = row["Required"].strip().lower()
+        description = row["Description"].lower()
+        if required not in {"yes", "optional"}:
+            errors.append("Marcador oficial nao interpretado: " + name + "=" + row["Required"])
+        if required == "yes" and name not in params:
+            errors.append("Falta parametro obrigatorio: " + name)
+        if name == "chat_id" and "required unless" in description and "ephemeral reply" in description:
+            if name not in params and "ephemeral_message_parameters" not in params:
+                errors.append("chat_id necessario para envio comum segundo API")
+            if "ephemeral_message_parameters" in params:
+                errors.append("Modo efemero ainda nao verificado no IC")
+        if name in params:
+            try:
+                valid = ok_type(params[name], row["Type"])
+            except ValueError as exc:
+                errors.append(str(exc) + " [" + name + "]")
+            else:
+                if not valid:
+                    errors.append("Tipo de parametro incompativel: " + name + " (" + row["Type"] + ")")
     return errors
 
 
-def response_violations(obj, kind, docs):
+def response_violations(obj, kind, docs, stack=()):
+    if kind in stack:
+        return ["Referencia circular de tipo: " + kind]
     rows = parse_table(docs[kind], ["Field", "Type", "Description"])
     if rows is None or not isinstance(obj, dict):
-        return ["Official response schema unavailable: " + kind]
+        return ["Tabela oficial nao interpretada ou resposta nao estruturada: " + kind]
     errors = []
     for row in rows:
         key = row["Field"]
         if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+            errors.append("Nome de campo nao interpretado: " + kind)
             continue
         optional = row["Description"].lstrip(" *_").lower().startswith("optional")
-        if key not in obj and not optional:
-            errors.append("Missing official " + kind + " field: " + key)
-        if key in obj and ok_type(obj[key], row["Type"]) is False:
-            errors.append("Wrong official " + kind + " field type: " + key)
+        if key not in obj:
+            if not optional:
+                errors.append("Falta campo obrigatorio da API em " + kind + ": " + key)
+            continue
+        try:
+            valid = ok_type(obj[key], row["Type"])
+        except ValueError as exc:
+            errors.append(str(exc) + " [" + kind + "." + key + "]")
+            continue
+        if not valid:
+            errors.append("Tipo de campo incompativel: " + kind + "." + key)
+        normalized = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", row["Type"]).strip()
+        if valid and normalized in {"Chat", "AcceptedGiftTypes"}:
+            errors += response_violations(obj[key], normalized, docs, stack + (kind,))
     return errors
 
 
