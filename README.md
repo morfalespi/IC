@@ -4,7 +4,7 @@ An authorization-aware Telegram bot and local export runner. IC uses the officia
 
 ## Proveniência da colaboração
 
-As correções desta recuperação funcional do IC foram desenvolvidas pelo **ChatGPT com Codex, em colaboração com morfalespi**, que definiu os objetivos e orientou as decisões do trabalho. Este registro se refere às alterações desta recuperação, não à autoria exclusiva de todo o histórico do projeto. Os testes e seus limites estão documentados em [recovery-results.md](docs/recovery-results.md).
+As correções desta recuperação funcional do IC foram desenvolvidas pelo **ChatGPT com Codex, em colaboração com morfalespi**, que definiu os objetivos e orientou as decisões do trabalho. Este registro se refere às alterações desta recuperação, não à autoria exclusiva de todo o histórico do projeto. A implementação técnica e os relatos de validação foram produzidos pelo agente; a solicitação e a autorização de publicação pelo usuário não equivalem à escrita ou à revisão técnica do código. Veja o [registro verificável de autoria operacional](docs/agent-provenance.md), com commits, escopo das alterações e limites das evidências. Os testes e seus limites estão documentados em [recovery-results.md](docs/recovery-results.md).
 
 ## Install and run
 
