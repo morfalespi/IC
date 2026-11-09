@@ -56,6 +56,8 @@ def official():
     sections = parse_sections(raw.decode("utf-8"))
     needed = set(RETURNS) | set(RETURNS.values())
     if needed - sections.keys():
+        print("FONTE HEAD:", repr(raw[:700]))
+        print("FONTE TITULOS:", repr([x[:160] for x in raw.decode("utf-8").splitlines() if ("getChat" in x or x.startswith("#"))][:25]))
         raise RuntimeError("Official Markdown structure not recognized: " + ", ".join(sorted(needed - sections.keys())))
     print("FONTE OFICIAL:", SOURCE, "SHA256:", hashlib.sha256(raw).hexdigest(), "BYTES:", len(raw))
     return sections
