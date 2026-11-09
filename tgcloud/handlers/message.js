@@ -1,3 +1,5 @@
+import { reservarAtualizacao } from '../lib/limite.js';
+import { autorizado } from '../lib/autorizacao.js';
 import { diagnosticoErro } from '../lib/erros.js';
 import { consultar } from '../lib/consulta.js';
 import { enviarMensagem } from '../lib/envio.js';
@@ -8,14 +10,13 @@ function esc(valor) {
 }
 
 function reduzir(valor, limite = 160) {
-  return Array.from(String(valor)).slice(0, limite).join('');
+  return String(valor).slice(0, limite);
 }
 
 function referencia(objeto, origem, tipo = 'usuario') {
   const idBruto = tipo === 'chat' ? objeto?.chat_id ?? objeto?.id : objeto?.user_id ?? objeto?.id;
   const id = Number(idBruto);
-  if (!Number.isSafeInteger(id) || id === 0) return null;
-  const username = typeof objeto?.username === 'string' && /^[A-Za-z0-9_]{1,32}$/.test(objeto.username) ? objeto.username : null;
+  const username = objeto?.username ?? null;
   const nome = tipo === 'chat'
     ? objeto?.title
     : [objeto?.first_name, objeto?.last_name].filter(v => typeof v === 'string' && v.trim()).join(' ');
@@ -65,8 +66,9 @@ function adicionarDadosCompartilhados(resposta, dados) {
   return { ...resposta, html: linhas.join('\n') };
 }
 
-export default async function (message) {
-  if (message.chat.type !== 'private') return;
+export default async function (message, ctx) {
+  if (!autorizado(message.from?.id, message.chat?.id)) return;
+  if (!await reservarAtualizacao(ctx?.update?.update_id)) return;
   let resposta;
   try {
     const compartilhamento = referenciaCompartilhada(message);
@@ -76,7 +78,7 @@ export default async function (message) {
         erro: 'O Telegram não forneceu um ID acessível nessa referência. Compartilhe um usuário ou chat com remetente identificado.',
       });
     } else if (compartilhamento) {
-      const consulta = await consultar(compartilhamento.entrada, { canal: 'privado', chatId: message.chat.id, dadosCompartilhados: compartilhamento });
+      const consulta = await consultar(compartilhamento.entrada, { canal: 'privado', userId: message.from?.id, chatId: message.chat.id, dadosCompartilhados: compartilhamento });
       resposta = consulta.enviado ? consulta : adicionarDadosCompartilhados(consulta, compartilhamento);
     } else {
       const texto = message.text || '';
@@ -84,7 +86,7 @@ export default async function (message) {
       const ajuda = /^\/help(?:@\w+)?\s*$/.test(texto);
       resposta = ((inicio && !inicio[1]) || ajuda)
         ? relatorioAjuda()
-        : await consultar(inicio?.[1] ?? texto, { canal: 'privado', chatId: message.chat.id });
+        : await consultar(inicio?.[1] ?? texto, { canal: 'privado', userId: message.from?.id, chatId: message.chat.id });
     }
   } catch (erro) {
     console.error('falha ao montar a resposta:', diagnosticoErro(erro));
@@ -92,3 +94,4 @@ export default async function (message) {
   }
   if (!resposta?.enviado) await enviarMensagem(message.chat.id, resposta.html, resposta.teclado);
 }
+

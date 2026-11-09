@@ -12,16 +12,16 @@ on:
         required: false
         default: false
       validar_apis:
-        description: "Verificar getMe/getChat e o mesmo canal público no MTProto, sem enviar mensagens"
+        description: "Validar autenticação, identidade e coleta sem entrega"
         type: boolean
         required: false
         default: false
       expected_id:
-        description: "ID do peer esperado, validado após contacts.resolveUsername"
+        description: "ID canônico esperado; divergência interrompe a operação"
         required: false
         default: ""
       chat:
-        description: "ID do chat que recebe a resposta (vazio: coleta sem entrega; logs apenas operacionais)"
+        description: "Destino numérico explicitamente autorizado (vazio: exportação local)"
         required: false
         default: ""
       message_id:
@@ -29,16 +29,16 @@ on:
         required: false
         default: ""
       modo:
-        description: "completo/resumo consultam; validar_entrega envia uma mensagem e três arquivos sintéticos ao chat indicado e confere os bytes"
+        description: "completo/resumo consultam; validar_entrega envia dados sintéticos e verifica arquivos por SHA-256"
         required: false
         default: "completo"
         type: choice
         options: [completo, resumo, validar_entrega]
       formato:
-        description: "Formato explícito do relatório; falhas não alternam o formato automaticamente"
+        description: "Formato inicial; falhas ricas tentam HTML automaticamente"
         type: choice
         options: [rich, html]
-        default: rich
+        default: html
       origem_id:
         description: "ID da mensagem original que solicitou o relatório completo"
         required: false
@@ -55,7 +55,6 @@ permissions:
 jobs:
   resolver:
     runs-on: ubuntu-latest
-    timeout-minutes: 360
     env:
       PYTHONUNBUFFERED: "1"
       API_ID: ${{ secrets.API_ID }}
@@ -68,37 +67,30 @@ jobs:
 
       - uses: actions/checkout@v4
         if: ${{ !inputs.healthcheck }}
-      - name: Mascarar dados da consulta antes de carregar variáveis
+      - name: Mascarar entradas da consulta
         if: ${{ !inputs.healthcheck }}
         run: python3 scripts/mascarar_inputs.py
-      - name: Verificar secrets
-        if: ${{ !inputs.healthcheck }}
-        run: |
-          faltando=""
-          for nome in API_ID API_HASH BOT_TOKEN; do
-            if [ -z "${!nome}" ]; then faltando="$faltando $nome"; fi
-          done
-          if [ -n "$faltando" ]; then
-            echo "::error::Secrets ausentes:$faltando"
-            exit 1
-          fi
       - uses: actions/setup-python@v5
         if: ${{ !inputs.healthcheck }}
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: scripts/resolver-requirements.txt
+          cache-dependency-path: |
+            scripts/resolver-requirements.txt
+            scripts/requirements-lock.txt
       - if: ${{ !inputs.healthcheck }}
         run: pip install -r scripts/resolver-requirements.txt
-      - name: Validar Bot API e MTProto sem entrega
+      - name: Validar Bot API e MTProto
         if: ${{ !inputs.healthcheck && inputs.validar_apis }}
         env:
           MODO: resumo
           CHAT_ID: ""
+          ALVO: ${{ inputs.alvo }}
+          EXPECTED_ID: ${{ inputs.expected_id }}
           MESSAGE_ID: ""
         run: python scripts/validar_apis.py
       - name: Validar entrega sintética ao chat escolhido
-        if: ${{ !inputs.healthcheck && !inputs.validar_apis && inputs.modo == 'validar_entrega' }}
+        if: ${{ !inputs.healthcheck && inputs.modo == 'validar_entrega' }}
         env:
           MODO: validar_entrega
           CHAT_ID: ${{ inputs.chat }}
@@ -114,8 +106,8 @@ jobs:
           ORIGEM_ID: ${{ inputs.origem_id }}
           COLETAR_MIDIA: ${{ inputs.coletar_midia }}
         run: python scripts/resolver.py
-      - name: Avisar o chat se a busca falhou sem resposta
-        if: ${{ !inputs.healthcheck && !inputs.validar_apis && inputs.modo != 'validar_entrega' && (failure() || cancelled()) }}
+      - name: Avisar falha uma vez ao destino autorizado
+        if: ${{ failure() && !inputs.healthcheck && !inputs.validar_apis && inputs.modo != 'validar_entrega' }}
         env:
           CHAT_ID: ${{ inputs.chat }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

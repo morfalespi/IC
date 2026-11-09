@@ -8,6 +8,10 @@
     "deploy": "tgcloud push",
     "status": "tgcloud status",
     "run": "tgcloud run",
-    "check": "bash scripts/check.sh"
+    "check": "bash scripts/check.sh",
+    "start": ".venv/bin/python scripts/ic.py bot",
+    "local:run": ".venv/bin/python scripts/ic.py run",
+    "test": ".venv/bin/python -m unittest discover -s tests -v && node --experimental-vm-modules tests/tgcloud.test.cjs",
+    "demo": ".venv/bin/python tests/run_controlled.py"
   }
 }

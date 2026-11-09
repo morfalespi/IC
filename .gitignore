@@ -22,3 +22,6 @@ __pycache__/
 *.session
 *.session-journal
 *.session-*
+
+.ic/
+coverage/

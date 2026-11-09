@@ -58,7 +58,7 @@ jobs:
           status=$(curl -sS -m 20 -o "$RUNNER_TEMP/validacao.json" -w "%{http_code}" -X POST \
             -H "Authorization: Bearer $GH_DISPATCH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2026-03-10" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
             -d '{"ref":"main","inputs":{"alvo":"healthcheck","healthcheck":true,"chat":""}}' \
             "https://api.github.com/repos/${{ github.repository }}/actions/workflows/resolver.yml/dispatches")
           case "$status" in
@@ -95,6 +95,8 @@ jobs:
         env:
           GH_DISPATCH_TOKEN: ${{ secrets.GH_DISPATCH_TOKEN }}
           GH_REPOSITORY: ${{ github.repository }}
+          ALLOWED_USER_IDS: ${{ vars.ALLOWED_USER_IDS }}
+          ALLOWED_CHAT_IDS: ${{ vars.ALLOWED_CHAT_IDS }}
         run: |
           if [ -z "$GH_DISPATCH_TOKEN" ]; then
             echo "::error::Defina o secret GH_DISPATCH_TOKEN (Settings → Secrets and variables → Actions)."
@@ -107,7 +109,16 @@ jobs:
             `export const GH_REPOSITORY = ${JSON.stringify(process.env.GH_REPOSITORY)};`,
             '',
           ].join('\n');
+          const ids = key => (process.env[key] || '').split(',').map(v => v.trim()).filter(Boolean);
+          const users = ids('ALLOWED_USER_IDS'), chats = ids('ALLOWED_CHAT_IDS');
+          if (!users.length || !chats.length || [...users, ...chats].some(v => !/^-?[1-9]\d{0,15}$/.test(v))) {
+            throw new Error('Configure ALLOWED_USER_IDS e ALLOWED_CHAT_IDS nas variáveis do repositório.');
+          }
           fs.writeFileSync('tgcloud/lib/segredos.js', conteudo);
+          const auth = fs.readFileSync('tgcloud/lib/autorizacao.js', 'utf8')
+            .replace('ALLOWED_USER_IDS = []', 'ALLOWED_USER_IDS = ' + JSON.stringify(users))
+            .replace('ALLOWED_CHAT_IDS = []', 'ALLOWED_CHAT_IDS = ' + JSON.stringify(chats));
+          fs.writeFileSync('tgcloud/lib/autorizacao.js', auth);
           NODE
 
       - name: Publicar módulos

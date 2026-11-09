@@ -1,24 +1,6 @@
 import base64
-import os
-import re
-
-
-CAMPOS_SIGILOSOS = frozenset({
-    "access_hash", "auth_key", "api_hash", "bot_token", "bot_auth_token",
-    "authorization", "session", "session_string", "string_session", "password",
-    "phone_code", "phone_code_hash", "secret", "credentials", "token",
-})
-CHAVES_NORMALIZADAS = frozenset(re.sub(r"[^a-z0-9]", "", campo) for campo in CAMPOS_SIGILOSOS)
-
-
 def texto_exportavel(valor):
-    texto = str(valor)
-    for nome in ("BOT_TOKEN", "API_HASH", "GH_DISPATCH_TOKEN", "TGCLOUD_TOKEN"):
-        segredo = os.environ.get(nome)
-        if segredo:
-            texto = texto.replace(segredo, "[redigido]")
-    texto = re.sub(r"(?:bot)?[0-9]{5,}:[A-Za-z0-9_-]{20,}", "[redigido]", texto)
-    return re.sub(r"(?:gh[pousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+)", "[redigido]", texto)
+    return str(valor)
 
 
 def valor_exportavel(valor):
@@ -26,8 +8,7 @@ def valor_exportavel(valor):
         return valor_exportavel(valor.to_dict())
     if isinstance(valor, dict):
         return {
-            texto_exportavel(chave): "[redigido]" if re.sub(r"[^a-z0-9]", "", str(chave).lower()) in CHAVES_NORMALIZADAS
-            else valor_exportavel(item) for chave, item in valor.items()
+            texto_exportavel(chave): valor_exportavel(item) for chave, item in valor.items()
         }
     if isinstance(valor, (list, tuple)):
         return [valor_exportavel(item) for item in valor]
@@ -40,3 +21,19 @@ def valor_exportavel(valor):
     if hasattr(valor, "isoformat"):
         return valor.isoformat()
     return texto_exportavel(valor)
+
+
+
+PRIVATE_FIELDS = {'access_hash', 'auth_key', 'api_hash', 'bot_token', 'token', 'phone', 'file_reference', 'file_id', 'file_unique_id', 'session', 'string_session'}
+
+
+def disclosure(value):
+    """Copy for export; keep the acquired source objects untouched."""
+    if isinstance(value, dict):
+        return {key: '[REDACTED]' if key.lower() in PRIVATE_FIELDS or key.lower().endswith(('file_id', 'file_unique_id')) else disclosure(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [disclosure(item) for item in value]
+    if isinstance(value, str):
+        from bot_api import redact
+        return redact(value)
+    return value

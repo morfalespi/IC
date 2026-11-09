@@ -1,0 +1,5 @@
+# Tested on Python 3.12. Telethon 1.45.0 uses MTProto layer 229.
+telethon==1.45.0
+pyaes==1.6.1
+pyasn1==0.6.5
+rsa==4.9.1
