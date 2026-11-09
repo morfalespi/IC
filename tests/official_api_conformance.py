@@ -66,7 +66,7 @@ def official():
     type_index = read_page("https://core.telegram.org/bots/api/types.md")
     documents = {"_official_index": root}
     references = active_bot_api_references()
-    required_types = set(RETURNS.values()) | {"Chat", "AcceptedGiftTypes"}
+    required_types = set(RETURNS.values()) | {"Chat", "AcceptedGiftTypes", "Document", "PhotoSize"}
     for name in sorted(set(RETURNS) | required_types | set(references)):
         index = root if name in RETURNS or name in references else type_index
         match = re.search(r"\[" + re.escape(name) + r"\]\((/bots/api/(?:methods|types)/[^)\s]+\.md)\)", index)
@@ -96,7 +96,7 @@ def ok_type(value, typ):
         return type(value) in (float, int)
     if normalized == "InputFile or String":
         return isinstance(value, (bytes, str))
-    if normalized in {"Chat", "ChatFullInfo", "Message", "User", "File", "AcceptedGiftTypes"}:
+    if normalized in {"Chat", "ChatFullInfo", "Message", "User", "File", "AcceptedGiftTypes", "Document", "PhotoSize"}:
         return isinstance(value, dict)
     if normalized.startswith("Array of "):
         return isinstance(value, list)
@@ -157,8 +157,11 @@ def response_violations(obj, kind, docs, stack=()):
         if not valid:
             errors.append("Tipo de campo incompativel: " + kind + "." + key)
         normalized = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", row["Type"]).strip()
-        if valid and normalized in {"Chat", "AcceptedGiftTypes"}:
+        if valid and normalized in {"Chat", "AcceptedGiftTypes", "Document", "PhotoSize"}:
             errors += response_violations(obj[key], normalized, docs, stack + (kind,))
+        if valid and normalized == "Array of PhotoSize":
+            for item in obj[key]:
+                errors += response_violations(item, "PhotoSize", docs, stack + (kind,))
     return errors
 
 
