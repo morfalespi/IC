@@ -8,6 +8,8 @@ from pathlib import Path
 import re
 import sys
 import tempfile
+import struct
+import zlib
 from urllib.request import Request, urlopen
 
 sys.path[:0] = [str(Path(__file__).resolve().parents[1] / "scripts"), str(Path(__file__).resolve().parent)]
@@ -156,7 +158,13 @@ def exercise():
                 responses["getMe"] = bot.get_me()
                 responses["getChat"] = bot.get_chat(42)
                 responses["sendMessage"] = bot.send_message(42, "synthetic content")
-                responses["sendPhoto"] = bot.send_photo(42, b"synthetic-photo")
+                def png_chunk(kind, body):
+                    return struct.pack("!I", len(body)) + kind + body + struct.pack("!I", zlib.crc32(kind + body) & 0xffffffff)
+                png = (b"\x89PNG\r\n\x1a\n" +
+                       png_chunk(b"IHDR", struct.pack("!IIBBBBB", 64, 64, 8, 2, 0, 0, 0)) +
+                       png_chunk(b"IDAT", zlib.compress((b"\0" + b"\x30\x80\xc0" * 64) * 64)) +
+                       png_chunk(b"IEND", b""))
+                responses["sendPhoto"] = bot.send_photo(42, png, filename="fixture.png", content_type="image/png")
                 responses["sendDocument"] = bot.send_document(42, b"synthetic-document", "fixture.txt")
                 responses["getFile"] = bot.get_file(responses["sendDocument"]["document"]["file_id"])
             finally:
@@ -182,7 +190,14 @@ def main():
         errors += response_violations(responses[method], kind, docs)
         if not re.search(r"\b" + kind + r"\b", docs[method].split("Parameter")[0]):
             errors.append("Official method does not document this response kind")
-        print(("FALHOU" if errors else "PASSOU") + ":", method, "[" + transport + "]", "campos=", sorted(params))
+        official_params = parse_table(docs[method], ["Parameter", "Type", "Required", "Description"]) or []
+        mandatory_params = sorted(row["Parameter"] for row in official_params if row["Required"].lower().startswith("yes"))
+        official_fields = parse_table(docs[kind], ["Field", "Type", "Description"]) or []
+        mandatory_fields = sorted(row["Field"] for row in official_fields
+                                  if not row["Description"].lstrip(" *_").lower().startswith("optional"))
+        print("  REGRA DA API:", method, "parametros obrigatorios=", mandatory_params,
+              "|", kind, "campos obrigatorios=", mandatory_fields)
+        print(("FALHOU" if errors else "PASSOU") + ":", method, "[" + transport + "]", "campos enviados=", sorted(params))
         for error in errors:
             print("  DIVERGENCIA:", error)
         failures += errors
