@@ -8,7 +8,9 @@ import tempfile
 import urllib.request
 import zlib
 
-from official_api_conformance import official, capture, request_violations, response_violations
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from official_bot_api_contract import official, capture, request_violations, response_violations
 from bot_api import BotClient, authorized_destination
 
 

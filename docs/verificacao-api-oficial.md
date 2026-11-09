@@ -2,7 +2,7 @@
 
 ## Fonte
 
-A referência deste projeto é a documentação **atual publicada pelo Telegram no momento de cada execução**, não uma versão anterior do código nem o próprio teste. O verificador baixa os índices oficiais e os arquivos Markdown individuais em `https://core.telegram.org/bots/api.md` e `https://core.telegram.org/bots/api/types.md`, registra URL e SHA-256 no log e lê os requisitos dos métodos observados. Uma mudança no texto pode exigir ajuste do interpretador; nunca deve ser convertida automaticamente em aprovação.
+A referência deste projeto é a documentação **atual publicada pelo Telegram no momento de cada execução**, não uma versão anterior do código nem o próprio teste. O comparador em `scripts/official_bot_api_contract.py` (independente dos módulos de teste) baixa os índices oficiais e os arquivos Markdown individuais em `https://core.telegram.org/bots/api.md` e `https://core.telegram.org/bots/api/types.md`, registra URL e SHA-256 no log e lê os requisitos dos métodos observados. Uma mudança no texto pode exigir ajuste do interpretador; nunca deve ser convertida automaticamente em aprovação.
 
 A Bot API 10.4, publicada em 9 de novembro de 2026, tornou `chat_id` opcional **somente para certos envios efêmeros**. A operação normal do IC exige um destino explícito. O IC rejeita `ephemeral_message_parameters` porque não implementa esse modo; isso não é uma proibição da API.
 
@@ -25,4 +25,4 @@ Esse teste real não executou automaticamente por ter sido criado na branch do P
 
 ## Interpretação
 
-A API determina as regras oficiais. O código implementa operações dentro da visibilidade e permissões concedidas pelo Telegram. O teste somente identifica evidências observadas, divergências e lacunas. A documentação não executa o programa nem certifica automaticamente a aplicação.
+A API determina as regras oficiais. O código implementa operações dentro da visibilidade e permissões concedidas pelo Telegram. O teste local importa regras do comparador, não das fixtures. A aprovação operacional depende de chamadas reais, e o comparador continua podendo deixar regras fora de cobertura; essas lacunas impedem uma conclusão integral. A documentação não executa o programa nem certifica automaticamente a aplicação.

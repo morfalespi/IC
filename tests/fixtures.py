@@ -1,8 +1,4 @@
-"""Local-only deterministic HTTP and Telethon fixtures; never contacts Telegram.
-
-These models intentionally represent test inputs, not normative API schemas.
-The official docs fetched by official_api_conformance.py set validation rules.
-"""
+"""Controlled test transport and stand-in MTProto requests."""
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import threading

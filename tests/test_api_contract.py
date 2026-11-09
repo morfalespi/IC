@@ -1,8 +1,4 @@
-"""Negative tests whose required fields come from official tables, not IC code.
-
-This is a limited contract check authored by the same agent. It does not claim
-independent review, full-schema validation, or live Telegram execution.
-"""
+"""Regression checks against a pinned local snapshot; this does not verify the current Telegram API."""
 import copy
 import json
 from pathlib import Path
