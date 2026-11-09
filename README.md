@@ -2,6 +2,10 @@
 
 An authorization-aware Telegram bot and local export runner. IC uses the official HTTPS Bot API and Telethon 1.45.0 (MTProto layer 229). Python 3.12+ is supported; Node is needed only for the optional TgCloud host and JavaScript checks.
 
+## Proveniência da colaboração
+
+As correções desta recuperação funcional do IC foram desenvolvidas pelo **ChatGPT com Codex, em colaboração com morfalespi**, que definiu os objetivos e orientou as decisões do trabalho. Este registro se refere às alterações desta recuperação, não à autoria exclusiva de todo o histórico do projeto. Os testes e seus limites estão documentados em [recovery-results.md](docs/recovery-results.md).
+
 ## Install and run
 
 ```bash
