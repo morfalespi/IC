@@ -2,10 +2,25 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const crypto = require('node:crypto');
+const pair = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+const publicJwk = pair.publicKey.export({ format: 'jwk' });
+function decryptDispatch(call) {
+  const body = JSON.parse(call[2].body);
+  assert.deepEqual(Object.keys(body.inputs), ['payload']);
+  assert.equal(body.inputs.payload.includes('alice'), false);
+  const envelope = JSON.parse(body.inputs.payload);
+  const key = crypto.privateDecrypt({ key: pair.privateKey, padding: crypto.constants.RSA_PKCS1_OAEP_PADDING, oaepHash: 'sha256' }, Buffer.from(envelope.key, 'base64url'));
+  const ciphertext = Buffer.from(envelope.data, 'base64url');
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(envelope.iv, 'base64url'));
+  decipher.setAAD(Buffer.from('IC-dispatch-v1'));
+  decipher.setAuthTag(ciphertext.subarray(-16));
+  return JSON.parse(Buffer.concat([decipher.update(ciphertext.subarray(0, -16)), decipher.final()]).toString());
+}
 
 async function setup({ status = 204, authorized = true, duplicate = false } = {}) {
   const calls = [];
-  const context = vm.createContext({ console: { error() {} }, Date, Number, String, Error, Array });
+  const context = vm.createContext({ console: { error() {} }, Date, Number, String, Error, Array, crypto: crypto.webcrypto, TextEncoder, Uint8Array });
   const fetch = async (url, options) => { calls.push(['dispatch', url, options]); return { status }; };
   fetch.body = { json: value => JSON.stringify(value) };
   const api = new Proxy({}, { get: (_, method) => async value => { calls.push([method, value]); return { message_id: 7 }; } });
@@ -23,7 +38,7 @@ async function setup({ status = 204, authorized = true, duplicate = false } = {}
     file = path.resolve(file);
     if (cache.has(file)) return cache.get(file);
     let source = fs.readFileSync(file, 'utf8');
-    if (file.endsWith('/segredos.js')) source = "export const GH_DISPATCH_TOKEN = 'synthetic'; export const GH_REPOSITORY = 'fixture/IC';";
+    if (file.endsWith('/segredos.js')) source = "export const GH_DISPATCH_TOKEN = 'synthetic'; export const GH_REPOSITORY = 'fixture/IC'; export const IC_DISPATCH_PUBLIC_KEY = " + JSON.stringify(publicJwk) + ';';
     if (authorized && file.endsWith('/autorizacao.js')) source = source.replace('ALLOWED_USER_IDS = []', "ALLOWED_USER_IDS = ['42']").replace('ALLOWED_CHAT_IDS = []', "ALLOWED_CHAT_IDS = ['42']");
     const module = new vm.SourceTextModule(source, { context, identifier: file });
     cache.set(file, module);
@@ -65,9 +80,9 @@ async function setup({ status = 204, authorized = true, duplicate = false } = {}
   handler = await app.module('tgcloud/handlers/message.js');
   await handler.default({ from: { id: 42 }, chat: { id: 42 }, text: '42 @alice' }, { update: { update_id: 3 } });
   const dispatch = app.calls.find(c => c[0] === 'dispatch');
-  assert.equal(JSON.parse(dispatch[2].body).inputs.expected_id, '42');
-  assert.equal(JSON.parse(dispatch[2].body).inputs.chat, '42');
-  assert.equal(JSON.parse(dispatch[2].body).inputs.formato, 'html');
+  assert.equal(decryptDispatch(dispatch).expected_id, '42');
+  assert.equal(decryptDispatch(dispatch).chat, '42');
+  assert.equal(decryptDispatch(dispatch).alvo, 'alice');
 
   app = await setup();
   handler = await app.module('tgcloud/handlers/inline_query.js');

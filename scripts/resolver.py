@@ -510,7 +510,7 @@ async def workflow(bot=None, client=None):
             await collect_bot_media(bot, data, directory)
         archives = build_media_archives(data.media, directory)
         files, report_identity, safe = export(data, directory)
-        print(json.dumps({'state': 'exported', 'directory': str(directory), 'files': len(files) + len(archives), 'completeness': safe['completeness']}), flush=True)
+        print(json.dumps({'state': 'exported', 'run_id': directory.name, 'files': len(files) + len(archives), 'completeness': safe['completeness']}), flush=True)
         receipts = []
         persist_state(state='exported', completeness=safe['completeness'])
         def receipt(message):

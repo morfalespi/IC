@@ -9,7 +9,7 @@ python -m compileall -q scripts tests
 
 python - <<'PY'
 from pathlib import Path
-esperado = "export const GH_DISPATCH_TOKEN = '';\nexport const GH_REPOSITORY = '';\n"
+esperado = "export const GH_DISPATCH_TOKEN = '';\nexport const GH_REPOSITORY = '';\nexport const IC_DISPATCH_PUBLIC_KEY = null;\n"
 atual = Path('tgcloud/lib/segredos.js').read_text()
 auth = Path('tgcloud/lib/autorizacao.js').read_text()
 if 'ALLOWED_USER_IDS = []' not in auth or 'ALLOWED_CHAT_IDS = []' not in auth:
