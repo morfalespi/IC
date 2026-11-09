@@ -1,5 +1,6 @@
 """Exercise IC code against controlled inputs; report evidence and missing coverage."""
 import os
+import re
 from pathlib import Path
 import sys
 import tempfile
