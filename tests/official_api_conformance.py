@@ -47,20 +47,27 @@ def parse_table(section, columns):
 
 
 def official():
-    with urlopen(Request(SOURCE, headers={"User-Agent": "IC-Conformance-Check/1.0"}), timeout=35) as response:
-        if response.status != 200:
-            raise RuntimeError("Official source did not return 200")
-        raw = response.read(8_000_001)
-    if len(raw) > 8_000_000 or len(raw) < 10000:
-        raise RuntimeError("Official source is truncated or oversized")
-    sections = parse_sections(raw.decode("utf-8"))
-    needed = set(RETURNS) | set(RETURNS.values())
-    if needed - sections.keys():
-        print("FONTE HEAD:", repr(raw[:700]))
-        print("FONTE TITULOS:", repr([x[:160] for x in raw.decode("utf-8").splitlines() if ("getChat" in x or x.startswith("#"))][:25]))
-        raise RuntimeError("Official Markdown structure not recognized: " + ", ".join(sorted(needed - sections.keys())))
-    print("FONTE OFICIAL:", SOURCE, "SHA256:", hashlib.sha256(raw).hexdigest(), "BYTES:", len(raw))
-    return sections
+    def read_page(url):
+        with urlopen(Request(url, headers={"User-Agent": "IC-Conformance-Check/1.0"}), timeout=35) as response:
+            if response.status != 200:
+                raise RuntimeError("Official page failed: " + url)
+            raw = response.read(2_000_001)
+        if not raw or len(raw) > 2_000_000:
+            raise RuntimeError("Official page empty/oversized: " + url)
+        print("FONTE OFICIAL:", url, "SHA256:", hashlib.sha256(raw).hexdigest())
+        return raw.decode("utf-8")
+
+    from urllib.parse import urljoin
+    root = read_page(SOURCE)
+    type_index = read_page("https://core.telegram.org/bots/api/types.md")
+    documents = {}
+    for name in set(RETURNS) | set(RETURNS.values()):
+        index = root if name in RETURNS else type_index
+        match = re.search(r"\[" + re.escape(name) + r"\]\((/bots/api/(?:methods|types)/[^)\s]+\.md)\)", index)
+        if not match:
+            raise RuntimeError("No official indexed page for " + name)
+        documents[name] = read_page(urljoin(SOURCE, match.group(1)))
+    return documents
 
 
 def ok_type(value, typ):
