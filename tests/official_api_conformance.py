@@ -108,7 +108,7 @@ def response_violations(obj, kind, docs):
         key = row["Field"]
         if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
             continue
-        optional = row["Description"].lower().startswith("optional.")
+        optional = row["Description"].lstrip(" *_").lower().startswith("optional")
         if key not in obj and not optional:
             errors.append("Missing official " + kind + " field: " + key)
         if key in obj and not ok_type(obj[key], row["Type"]):
