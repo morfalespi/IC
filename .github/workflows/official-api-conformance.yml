@@ -1,0 +1,27 @@
+name: IC - Contrato da Bot API oficial
+on:
+  push:
+    branches:
+      - fix/verified-core-2026-11-09
+    paths:
+      - ".github/workflows/official-api-conformance.yml"
+      - "tests/official_api_conformance.py"
+      - "scripts/bot_api.py"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  conferencia:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: scripts/requirements-lock.txt
+      - name: Preparar dependencias do fixture local
+        run: python -m pip install -r scripts/requirements-lock.txt
+      - name: Executar codigo IC e comparar com a API oficial atual
+        run: python tests/official_api_conformance.py
