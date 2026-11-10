@@ -38,21 +38,4 @@ export function enviarCartao(chatId, richHtml) {
 }
 export function editarCartao(chatId, messageId, richHtml) {
   return api.editMessageText({ chat_id: chatId, message_id: messageId, text: plainCard(richHtml) });
-export async function enviarCartao(chatId, richHtml) {
-  try {
-    return await api.sendRichMessage({ chat_id: chatId, rich_message: { html: richHtml } });
-  } catch (erro) {
-    console.error('sendRichMessage:', diagnosticoErro(erro));
-    return api.sendMessage({ chat_id: chatId, text: richHtml.replace(/<[^>]*>/g, '') });
-  }
 }
-
-export async function editarCartao(chatId, messageId, richHtml) {
-  try {
-    return await api.editMessageText({ chat_id: chatId, message_id: messageId, rich_message: { html: richHtml } });
-  } catch (erro) {
-    console.error('editMessageText:', diagnosticoErro(erro));
-    return api.sendMessage({ chat_id: chatId, text: richHtml.replace(/<[^>]*>/g, '') });
-  }
-}
-

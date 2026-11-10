@@ -15,7 +15,7 @@ from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from test_ic import FakeMTProto, TelegramFixture
+from fixtures import FakeMTProto, TelegramFixture
 from bot_api import BotClient, diagnostico_excecao
 from workflow import decrypt_request, main
 

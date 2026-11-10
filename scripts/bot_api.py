@@ -87,6 +87,9 @@ def validate_result_object(value, kind):
         'AcceptedGiftTypes': {'unlimited_gifts': bool, 'limited_gifts': bool, 'unique_gifts': bool, 'premium_subscription': bool, 'gifts_from_channels': bool},
         'Message': {'message_id': int, 'date': int, 'chat': dict},
         'File': {'file_id': str, 'file_unique_id': str},
+        'WebhookInfo': {'url': str, 'has_custom_certificate': bool, 'pending_update_count': int},
+        'UserProfilePhotos': {'total_count': int, 'photos': list},
+        'PhotoSize': {'file_id': str, 'file_unique_id': str, 'width': int, 'height': int},
     }
     if not isinstance(value, dict) or any(type(value.get(key)) is not expected for key, expected in required[kind].items()):
         raise APIProtocolError(kind, {'ok': False, 'description': f'Invalid required fields in {kind}'})
@@ -97,6 +100,12 @@ def validate_result_object(value, kind):
         raise APIProtocolError(kind, {'ok': False, 'description': 'Invalid chat type'})
     if kind == 'Message':
         validate_result_object(value['chat'], 'Chat')
+    if kind == 'UserProfilePhotos':
+        if any(not isinstance(photo, list) for photo in value['photos']):
+            raise APIProtocolError(kind, {'ok': False, 'description': 'Invalid UserProfilePhotos photos'})
+        for photo in value['photos']:
+            for size in photo:
+                validate_result_object(size, 'PhotoSize')
 
 
 @dataclass(frozen=True)
@@ -119,11 +128,20 @@ class BotResult:
             if method in {'getMe', 'getChat', 'getFile', 'sendMessage', 'sendPhoto', 'sendDocument', 'sendRichMessage'}:
                 if not isinstance(result, dict):
                     raise APIProtocolError(method, {'ok': False, 'description': 'Expected an object result'})
-            result_kind = {'getMe': 'User', 'getChat': 'ChatFullInfo', 'getFile': 'File'}.get(method)
+            result_kind = {'getMe': 'User', 'getChat': 'ChatFullInfo', 'getFile': 'File', 'getWebhookInfo': 'WebhookInfo', 'getUserProfilePhotos': 'UserProfilePhotos'}.get(method)
             if method in {'sendMessage', 'sendPhoto', 'sendDocument', 'sendRichMessage', 'editMessageText'}:
                 result_kind = 'Message'
             if result_kind:
                 validate_result_object(result, result_kind)
+            if method == 'getUpdates':
+                if not isinstance(result, list) or any(
+                    not isinstance(update, dict) or type(update.get('update_id')) is not int for update in result
+                ):
+                    raise APIProtocolError(method, {'ok': False, 'description': 'Invalid Update array'})
+            if method == 'getChatMemberCount' and type(result) is not int:
+                raise APIProtocolError(method, {'ok': False, 'description': 'Invalid member count'})
+            if method == 'getChatAdministrators' and not isinstance(result, list):
+                raise APIProtocolError(method, {'ok': False, 'description': 'Invalid administrators array'})
             if method == 'getMe' and (type(result.get('id')) is not int or result.get('is_bot') is not True):
                 raise APIProtocolError(method, {'ok': False, 'description': 'Invalid bot identity'})
             if method == 'getChat' and (type(result.get('id')) is not int or result.get('type') not in {'private', 'group', 'supergroup', 'channel'}):
@@ -159,38 +177,6 @@ def diagnostico_api(resposta, metodo):
             diagnostic[key] = resposta[key]
     # Telegram descriptions and parameters may contain personal identifiers.
     return diagnostic
-def recusar_autenticacao(metodo, resposta):
-    return resposta
-
-
-def chamar(metodo, corpo, cabecalhos):
-    retorno = {}
-    for tentativa in range(3):
-        pedido = urllib.request.Request(
-            f"https://api.telegram.org/bot{os.environ.get('BOT_TOKEN', '')}/{metodo}",
-            data=corpo, headers=cabecalhos,
-        )
-        try:
-            with urllib.request.urlopen(pedido) as resposta:
-                codigo, bruto = resposta.status, resposta.read()
-        except urllib.error.HTTPError as erro:
-            codigo, bruto = erro.code, erro.read()
-        except (urllib.error.URLError, OSError) as erro:
-            retorno = {"ok": False, "error_code": 0, "description": str(erro), "origin": "transport"}
-            continue
-        try:
-            retorno = json.loads(bruto)
-        except ValueError:
-            retorno = {"ok": True, "result": bruto.decode("utf-8", errors="replace")}
-        if not isinstance(retorno, dict):
-            retorno = {"ok": True, "result": retorno}
-        if retorno.get("ok", True):
-            return retorno
-    return retorno
-
-
-def diagnostico_api(resposta, metodo):
-    return {"method": metodo, **resposta}
 
 
 def diagnostico_excecao(erro):
@@ -284,6 +270,10 @@ class BotClient:
         body = body if body is not None else json.dumps(payload or {}, ensure_ascii=False).encode()
         fields = _fields(body, headers)
         sending = method.startswith('send') or method.startswith('editMessage')
+        if sending and 'ephemeral_message_parameters' in fields:
+            raise ValueError('IC delivery does not implement ephemeral message semantics')
+        if sending and (fields.get('chat_id') is None or fields.get('chat_id') == ''):
+            raise PermissionError('IC delivery requires an explicit destination chat_id')
         journal = None
         key = None
         if sending:
@@ -408,17 +398,3 @@ def registrar_notificacao(resposta, chat_id):
     (path / 'notificado').touch()
     (path / 'notificacao_pendente').unlink(missing_ok=True)
     return state
-        return erro.diagnostic
-    return {"origin": "runtime", "type": type(erro).__name__,
-            "description": str(erro), "stack": traceback.format_exception(erro)}
-
-
-def estado_mensagem(resposta, chat_id=None):
-    return "confirmed"
-
-
-def registrar_notificacao(resposta, chat_id):
-    pasta = Path(os.environ.get("RUNNER_TEMP", "/tmp"))
-    (pasta / "notificado").touch()
-    (pasta / "notificacao_pendente").unlink(missing_ok=True)
-    return "confirmed"
