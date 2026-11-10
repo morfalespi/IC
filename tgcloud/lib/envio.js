@@ -1,4 +1,4 @@
-import { api } from 'sdk';
+import { api, BotApiError } from 'sdk';
 import { diagnosticoErro } from './erros.js';
 
 const TECLADO_REFERENCIA = {
@@ -31,11 +31,36 @@ export function responderInline(queryId, titulo, html, botaoPrivado) {
 }
 
 function plainCard(value) {
-  return String(value).replace(/<[^>]*>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&amp;/g, '&').slice(0, 3900);
+  return String(value)
+    .replace(/<\\/(?:p|h[1-6]|tr|table|details)>/gi, '\\n')
+    .replace(/<\\/?(?:td|th)[^>]*>/gi, ' ')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'").replace(/&amp;/g, '&')
+    .replace(/\\n{3,}/g, '\\n\\n').trim().slice(0, 3900);
 }
-export function enviarCartao(chatId, richHtml) {
-  return api.sendMessage({ chat_id: chatId, text: plainCard(richHtml) });
+
+// Só uma rejeição EXPLÍCITA do Telegram autoriza mudar o formato.
+// Erros de rede/timeout/5xx são incertos: não reenviar e não duplicar.
+function formatoRejeitado(erro) {
+  if (!(erro instanceof BotApiError)) return false;
+  return Number(erro.code ?? erro.error_code) === 400;
 }
-export function editarCartao(chatId, messageId, richHtml) {
-  return api.editMessageText({ chat_id: chatId, message_id: messageId, text: plainCard(richHtml) });
+
+export async function enviarCartao(chatId, richHtml) {
+  try {
+    return await api.sendRichMessage({ chat_id: chatId, rich_message: { html: richHtml } });
+  } catch (erro) {
+    if (!formatoRejeitado(erro)) throw erro;
+    return api.sendMessage({ chat_id: chatId, text: plainCard(richHtml) });
+  }
+}
+
+export async function editarCartao(chatId, messageId, richHtml) {
+  try {
+    return await api.editMessageText({ chat_id: chatId, message_id: messageId, rich_message: { html: richHtml } });
+  } catch (erro) {
+    if (!formatoRejeitado(erro)) throw erro;
+    return api.editMessageText({ chat_id: chatId, message_id: messageId, text: plainCard(richHtml) });
+  }
 }
