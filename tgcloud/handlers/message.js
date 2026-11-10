@@ -16,7 +16,11 @@ function reduzir(valor, limite = 160) {
 function referencia(objeto, origem, tipo = 'usuario') {
   const idBruto = tipo === 'chat' ? objeto?.chat_id ?? objeto?.id : objeto?.user_id ?? objeto?.id;
   const id = Number(idBruto);
+  if (!Number.isSafeInteger(id) || id === 0) return null;
   const username = objeto?.username ?? null;
+  const fotos = Array.isArray(objeto?.photo) ? objeto.photo : [];
+  const maiorFoto = fotos.filter(p => typeof p?.file_id === 'string')
+    .sort((a, b) => (b.width || 0) * (b.height || 0) - (a.width || 0) * (a.height || 0))[0];
   const nome = tipo === 'chat'
     ? objeto?.title
     : [objeto?.first_name, objeto?.last_name].filter(v => typeof v === 'string' && v.trim()).join(' ');
@@ -26,7 +30,8 @@ function referencia(objeto, origem, tipo = 'usuario') {
     username,
     nome: nome ? reduzir(nome) : null,
     origem,
-    fotoInformada: Array.isArray(objeto?.photo) && objeto.photo.length > 0,
+    fotoInformada: fotos.length > 0,
+    fotoId: maiorFoto?.file_id ?? null,
   };
 }
 
@@ -35,7 +40,8 @@ function referenciaCompartilhada(message) {
     return referencia(message.users_shared.users?.[0], 'Seleção de usuário no Telegram');
   }
   if (message.chat_shared) {
-    return referencia(message.chat_shared, 'Seleção de chat no Telegram', 'chat');
+    const especie = message.chat_shared.request_id === 2 ? 'canal' : message.chat_shared.request_id === 3 ? 'grupo' : 'chat';
+    return referencia(message.chat_shared, 'Seleção de ' + especie + ' no Telegram', 'chat');
   }
   if (message.forward_origin) {
     const origem = message.forward_origin;
@@ -83,10 +89,13 @@ export default async function (message, ctx) {
     } else {
       const texto = message.text || '';
       const inicio = /^\/start(?:@\w+)?(?:\s+(\S+))?\s*$/.exec(texto);
-      const ajuda = /^\/help(?:@\w+)?\s*$/.test(texto);
+      const ajuda = /^\\/help(?:@\\w+)?\\s*$/.test(texto);
+      const comando = /^\\/(info|export)(?:@\\w+)?\\s+(.+)$/i.exec(texto);
+      const entrada = comando ? comando[2] : (inicio?.[1] ?? texto);
+      const modo = comando?.[1]?.toLowerCase() === 'export' ? 'completo' : 'resumo';
       resposta = ((inicio && !inicio[1]) || ajuda)
         ? relatorioAjuda()
-        : await consultar(inicio?.[1] ?? texto, { canal: 'privado', userId: message.from?.id, chatId: message.chat.id, chatType: message.chat?.type, isBot: message.from?.is_bot });
+        : await consultar(entrada, { canal: 'privado', userId: message.from?.id, chatId: message.chat.id, chatType: message.chat?.type, isBot: message.from?.is_bot, modo });
     }
   } catch (erro) {
     console.error('falha ao montar a resposta:', diagnosticoErro(erro));
