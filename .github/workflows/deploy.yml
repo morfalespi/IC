@@ -59,8 +59,6 @@ jobs:
           API_HASH: ${{ secrets.API_HASH }}
           IC_DISPATCH_PRIVATE_KEY: ${{ secrets.IC_DISPATCH_PRIVATE_KEY }}
           IC_DISPATCH_PUBLIC_KEY: ${{ vars.IC_DISPATCH_PUBLIC_KEY }}
-          ALLOWED_USER_IDS: ${{ secrets.ALLOWED_USER_IDS }}
-          ALLOWED_CHAT_IDS: ${{ secrets.ALLOWED_CHAT_IDS }}
         run: |
           node <<'NODE'
           const { createPrivateKey, createPublicKey } = require('node:crypto');
@@ -71,8 +69,6 @@ jobs:
             API_HASH: 'secret',
             IC_DISPATCH_PRIVATE_KEY: 'secret',
             IC_DISPATCH_PUBLIC_KEY: 'variable',
-            ALLOWED_USER_IDS: 'secret',
-            ALLOWED_CHAT_IDS: 'secret',
           };
           let failed = false;
           for (const [name, type] of Object.entries(required)) {
@@ -100,14 +96,6 @@ jobs:
           } catch {
             console.error('::error::IC_DISPATCH_PUBLIC_KEY (variable) e IC_DISPATCH_PRIVATE_KEY (secret) devem formar o mesmo par RSA de pelo menos 2048 bits.');
             failed = true;
-          }
-
-          for (const name of ['ALLOWED_USER_IDS', 'ALLOWED_CHAT_IDS']) {
-            const ids = process.env[name].split(',').map(s => s.trim()).filter(Boolean);
-            if (!ids.length || ids.some(id => !/^-?[1-9]\d{0,15}$/.test(id))) {
-              console.error('::error::' + name + ': informe IDs numéricos separados por vírgula no secret correspondente.');
-              failed = true;
-            }
           }
 
           if (failed) process.exit(1);
@@ -160,8 +148,6 @@ jobs:
           GH_DISPATCH_TOKEN: ${{ secrets.GH_DISPATCH_TOKEN }}
           GH_REPOSITORY: ${{ github.repository }}
           IC_DISPATCH_PUBLIC_KEY: ${{ vars.IC_DISPATCH_PUBLIC_KEY }}
-          ALLOWED_USER_IDS: ${{ secrets.ALLOWED_USER_IDS }}
-          ALLOWED_CHAT_IDS: ${{ secrets.ALLOWED_CHAT_IDS }}
         run: |
           if [ -z "$GH_DISPATCH_TOKEN" ]; then
             echo "::error::Defina o secret GH_DISPATCH_TOKEN (Settings → Secrets and variables → Actions)."
@@ -177,16 +163,6 @@ jobs:
             `export const IC_DISPATCH_PUBLIC_KEY = ${JSON.stringify(publicKey)};`,
             '',
           ].join('\n');
-          const ids = key => (process.env[key] || '').split(',').map(v => v.trim()).filter(Boolean);
-          const users = ids('ALLOWED_USER_IDS'), chats = ids('ALLOWED_CHAT_IDS');
-          if (!users.length || !chats.length || [...users, ...chats].some(v => !/^-?[1-9]\d{0,15}$/.test(v))) {
-            throw new Error('Configure ALLOWED_USER_IDS e ALLOWED_CHAT_IDS nos secrets do repositório.');
-          }
-          fs.writeFileSync('tgcloud/lib/segredos.js', conteudo);
-          const auth = fs.readFileSync('tgcloud/lib/autorizacao.js', 'utf8')
-            .replace('ALLOWED_USER_IDS = []', 'ALLOWED_USER_IDS = ' + JSON.stringify(users))
-            .replace('ALLOWED_CHAT_IDS = []', 'ALLOWED_CHAT_IDS = ' + JSON.stringify(chats));
-          fs.writeFileSync('tgcloud/lib/autorizacao.js', auth);
           NODE
 
       - name: Publicar módulos
