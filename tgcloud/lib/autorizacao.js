@@ -1,7 +1,9 @@
-// Deployment supplies explicit IDs. Empty lists deny all application operations.
-export const ALLOWED_USER_IDS = [];
-export const ALLOWED_CHAT_IDS = [];
-
-export function autorizado(userId, chatId) {
-  return ALLOWED_USER_IDS.includes(String(userId)) && ALLOWED_CHAT_IDS.includes(String(chatId));
+// O BotFather restringe o acesso do bot gerenciado ao proprietário.
+// Este módulo apenas impõe que comandos ocorram em uma conversa privada
+// entre o remetente e o próprio bot, sem manter listas de IDs no código.
+export function autorizado(userId, chatId, chatType, isBot = false) {
+  if (chatType !== 'private' || isBot) return false;
+  const user = String(userId ?? '');
+  const chat = String(chatId ?? '');
+  return /^\d+$/.test(user) && user === chat;
 }

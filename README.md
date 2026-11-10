@@ -2,6 +2,20 @@
 
 An authorization-aware Telegram bot and local export runner. IC uses the official HTTPS Bot API and Telethon 1.45.0 (MTProto layer 229). Python 3.12+ is supported; Node is needed only for the optional TgCloud host and JavaScript checks.
 
+## Ficha curta no chat privado (proposta em validação)
+
+O teclado oferece **Escolher usuário**, **Escolher canal** e **Escolher grupo**. Esses três botões usam o seletor nativo do Telegram para enviar uma referência ao IC: o alvo pode ser um perfil, canal ou grupo, mas **a conversa de controle e o recebimento do resultado continuam apenas no chat privado do proprietário**. Selecionar um grupo ou canal não instala o IC nele nem autoriza acesso a dados restritos. Referências com apenas um ID podem não ser resolvidas pelo MTProto.
+
+A consulta simples (`/info ALVO` ou uma referência selecionada) procura entregar **uma ficha curta** com nome/título, @username, ID, outros usernames ativos, descrição disponível, canal pessoal vinculado quando retornado e foto quando a Bot API disponibilizar um `file_id` reutilizável. Um detalhe recolhível identifica as fontes e os limites. A ausência de um campo significa apenas que ele **não foi comprovado nesta execução**, não que não exista.
+
+O formato preferencial é Rich Message. Depois de uma **rejeição explícita 400**, o IC tenta Rich sem foto, e depois texto comum; resultados de envio incertos, timeouts e outros erros não permitem reenvio automático. Quando houver uma mensagem inicial com ID confirmado, a ficha final **edita essa mesma mensagem**. O comando `/export` conserva a entrega detalhada e de arquivos como operação separada. A implementação ainda precisa de teste real autorizado com a Bot API, TgCloud e MTProto para demonstrar comportamento e aparência em produção.
+
+## Primeiro sucesso a comprovar
+
+Antes de ampliar funcionalidades, a meta mínima é **uma consulta de identificação confiável**: o proprietário seleciona usuário, grupo ou canal no teclado do Telegram ou informa um username público acessível, e a resposta é exibida na conversa privada com o bot. O IC deve devolver apenas os dados disponíveis, conferir a identidade quando houver ID esperado e indicar claramente qualquer limitação. Nada deve ser inventado para preencher lacunas.
+
+Esse objetivo é **uma meta de validação real, não uma declaração de que já funciona em produção**. O primeiro aceite exige uma execução no Telegram real e conferência humana dos resultados com as fontes acessíveis. `/export`, mídia e categorias extras permanecem no código, mas não são critérios para esse primeiro sucesso. O histórico do Git preserva o trabalho anterior.
+
 ## Evidência, alcance e documentação normativa
 
 A fonte de referência para a Bot API é a [documentação oficial atual](https://core.telegram.org/bots/api), lida novamente em cada verificação. O código deste repositório é objeto de auditoria; commits anteriores não são a regra do comportamento esperado.
@@ -33,7 +47,7 @@ set +a
 
 Supply `BOT_TOKEN` from BotFather and your own `API_ID`/`API_HASH` from https://my.telegram.org. Put secrets in environment settings or your local ignored `.env`; do not put them in commands, source, reports or chat. The check command lists missing variable **names**, never values. No credentials are included in the repository.
 
-The bot requires explicit comma-separated `ALLOWED_USER_IDS` and `ALLOWED_CHAT_IDS`. Both the requesting sender and destination chat must be allowed. Collection requests are limited to one per chat per 30 seconds. Empty lists deny access. Commands:
+O modo **local de polling** em Python continua exigindo `ALLOWED_USER_IDS` e `ALLOWED_CHAT_IDS` no ambiente local, pois esse executor pode operar fora da hospedagem Serverless. O bot **hospedado no TgCloud** não exige esses IDs no GitHub: o acesso deve estar configurado como **restrito ao proprietário** no BotFather, e os handlers só aceitam chats privados. Consultas são limitadas a uma por conversa a cada 30 segundos. Comandos:
 
 - `/info TARGET [EXPECTED_ID]`: resolve the entity and collect full metadata.
 - `/export TARGET [EXPECTED_ID]`: collect metadata, accessible messages, participants, user profile photos and available media; export and send the report to the same authorized chat.
@@ -91,9 +105,31 @@ Media is SHA-256 verified before packaging and checked against the ZIP contents.
 
 ## Hosted TgCloud workflow
 
-The optional hosted handlers dispatch `.github/workflows/resolver.yml`. They deny unlisted users/chats, enforce callback validation, suppress repeated update IDs and bound dispatch frequency. Inline queries return a private-chat link and never initiate collection or disclose reports inline.
+Os handlers hospedados no TgCloud despacham `.github/workflows/resolver.yml`. **Pré-condição obrigatória:** no BotFather, manter ativado o acesso restrito ao proprietário deste bot. O Telegram controla quem pode iniciar a conversa; o IC verifica o tipo de chat privado e a correspondência entre o usuário e o chat, valida callbacks, evita reprocessar IDs e limita a frequência de consultas. Grupos, canais e consultas inline não executam pesquisas. **Se a restrição for desativada no BotFather, o IC deixa de ter uma segunda lista de proprietários para bloquear usuários**, portanto revalide a configuração antes de publicar. A aplicação não consegue confirmar essa configuração do Telegram pelos testes locais.
 
-Configure repository secrets `BOT_TOKEN`, `API_ID`, `API_HASH`, `TGCLOUD_TOKEN`, `GH_DISPATCH_TOKEN`, plus repository variables `ALLOWED_USER_IDS` and `ALLOWED_CHAT_IDS`. The dispatch token needs **Actions: write** for this repository. The deployment workflow validates allowlists and injects configuration into the private deployed modules; committed placeholders remain empty. TgCloud account access and migration/deployment authorization are required. No deployment or GitHub push is performed by local validation. GitHub logs contain status summaries, not report payloads; reports are not uploaded as workflow artifacts automatically. Without a destination, hosted runner exports disappear when its workspace is removed.
+Configure os **Secrets** do repositório `BOT_TOKEN`, `API_ID`, `API_HASH`, `TGCLOUD_TOKEN`, `GH_DISPATCH_TOKEN` e `IC_DISPATCH_PRIVATE_KEY`. Configure como **Variable** do repositório `IC_DISPATCH_PUBLIC_KEY`, contendo o JSON JWK da chave pública RSA. **Não é necessário cadastrar IDs de usuários/chats no GitHub para o TgCloud.** A chave pública e a privada precisam ser do mesmo par RSA (mínimo 2048 bits). A ausência ou inconsistência desses valores é informada por nome **antes da migração**; valores privados não são impressos. As regras de restrição nativa do Telegram estão em https://core.telegram.org/api/bots/managed-bots .
+
+Para gerar um par novo localmente, em um computador confiável (não no log do GitHub Actions):
+
+```bash
+node <<'NODE'
+const { generateKeyPairSync } = require('node:crypto');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const dir = path.join(os.homedir(), '.ic-keys');
+fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+fs.chmodSync(dir, 0o700);
+const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 3072 });
+fs.writeFileSync(path.join(dir, 'private.pem'),
+  privateKey.export({ type: 'pkcs8', format: 'pem' }), { mode: 0o600 });
+fs.writeFileSync(path.join(dir, 'public.jwk.json'),
+  JSON.stringify(publicKey.export({ format: 'jwk' })), { mode: 0o600 });
+console.log('Chaves salvas em:', dir);
+NODE
+```
+
+Copie o conteúdo de `private.pem` para o **Secret** `IC_DISPATCH_PRIVATE_KEY` e o de `public.jwk.json` para a **Variable** `IC_DISPATCH_PUBLIC_KEY`. **Não faça commit de nenhuma chave.** Se já existir um par válido, mantenha-o em vez de substituí-lo unilateralmente. O token de dispatch deve ter permissão **Actions: write** neste repositório. O deploy injeta a configuração nos módulos publicados; os arquivos versionados mantêm placeholders vazios. A conta TgCloud e a autorização de migração/publicação também são necessárias. Testes locais e um dispatch HTTP aceito não provam a execução no Telegram real. Sem destino de entrega, os relatórios temporários do runner são perdidos ao final da execução.
 
 Telethon requires outbound MTProto connectivity to Telegram data centers; ordinary HTTPS proxy access alone does not provide that TCP route. Configure the execution environment's permitted TCP path before live MTProto runs. Never disable TLS verification for Bot API access.
 

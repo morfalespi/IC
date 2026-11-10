@@ -1,4 +1,4 @@
-import { api } from 'sdk';
+import { api, BotApiError } from 'sdk';
 import { diagnosticoErro } from './erros.js';
 
 const TECLADO_REFERENCIA = {
@@ -31,11 +31,61 @@ export function responderInline(queryId, titulo, html, botaoPrivado) {
 }
 
 function plainCard(value) {
-  return String(value).replace(/<[^>]*>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&amp;/g, '&').slice(0, 3900);
+  return String(value)
+    .replace(/<\/?(?:p|h[1-6]|tr|table|details)\b[^>]*>/gi, '\n')
+    .replace(/<\/?(?:td|th)\b[^>]*>/gi, ' ')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'").replace(/&amp;/g, '&')
+    .replace(/\n{3,}/g, '\n\n').trim().slice(0, 3900);
 }
-export function enviarCartao(chatId, richHtml) {
-  return api.sendMessage({ chat_id: chatId, text: plainCard(richHtml) });
+
+// Só uma rejeição EXPLÍCITA do Telegram autoriza mudar o formato.
+// Erros de rede/timeout/5xx são incertos: não reenviar e não duplicar.
+function formatoRejeitado(erro) {
+  if (!(erro instanceof BotApiError)) return false;
+  return Number(erro.code ?? erro.error_code) === 400;
 }
-export function editarCartao(chatId, messageId, richHtml) {
-  return api.editMessageText({ chat_id: chatId, message_id: messageId, text: plainCard(richHtml) });
+
+function fotoValida(id) {
+  return typeof id === 'string' && id.length > 8 && id.length < 512;
+}
+
+async function enviarOuEditarRico(metodo, args, richHtml, fotoId) {
+  // Usar a foto que o seletor do Telegram compartilhou, quando disponível.
+  // A imagem é um bloco separado, dentro da MESMA Rich Message.
+  if (fotoValida(fotoId)) {
+    const htmlComFoto = richHtml.replace('</h2>', '</h2><img src="tg://photo?id=perfil"/>');
+    if (htmlComFoto !== richHtml) {
+      try {
+        return await api[metodo]({
+          ...args,
+          rich_message: {
+            html: htmlComFoto,
+            media: [{ id: 'perfil', media: { type: 'photo', media: fotoId } }],
+          },
+        });
+      } catch (erro) {
+        if (!formatoRejeitado(erro)) throw erro;
+      }
+    }
+  }
+  try {
+    return await api[metodo]({ ...args, rich_message: { html: richHtml } });
+  } catch (erro) {
+    if (!formatoRejeitado(erro)) throw erro;
+    // Só após rejeição definitiva da API. Não reenvia após timeout ou erro 5xx.
+    const texto = plainCard(richHtml);
+    return metodo === 'sendRichMessage'
+      ? api.sendMessage({ ...args, text: texto })
+      : api.editMessageText({ ...args, text: texto });
+  }
+}
+
+export function enviarCartao(chatId, richHtml, fotoId = null) {
+  return enviarOuEditarRico('sendRichMessage', { chat_id: chatId }, richHtml, fotoId);
+}
+
+export function editarCartao(chatId, messageId, richHtml, fotoId = null) {
+  return enviarOuEditarRico('editMessageText', { chat_id: chatId, message_id: messageId }, richHtml, fotoId);
 }
