@@ -89,8 +89,8 @@ export default async function (message, ctx) {
     } else {
       const texto = message.text || '';
       const inicio = /^\/start(?:@\w+)?(?:\s+(\S+))?\s*$/.exec(texto);
-      const ajuda = /^\\/help(?:@\\w+)?\\s*$/.test(texto);
-      const comando = /^\\/(info|export)(?:@\\w+)?\\s+(.+)$/i.exec(texto);
+      const ajuda = /^\/help(?:@\w+)?\s*$/.test(texto);
+      const comando = /^\/(info|export)(?:@\w+)?\s+(.+)$/i.exec(texto);
       const entrada = comando ? comando[2] : (inicio?.[1] ?? texto);
       const modo = comando?.[1]?.toLowerCase() === 'export' ? 'completo' : 'resumo';
       resposta = ((inicio && !inicio[1]) || ajuda)
