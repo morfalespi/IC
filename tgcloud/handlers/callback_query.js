@@ -8,7 +8,7 @@ import { enviarMensagem } from '../lib/envio.js';
 
 export default async function (callback, ctx) {
   const chat = callback.message?.chat ?? callback.from;
-  if (!autorizado(callback.from?.id, chat?.id)) {
+  if (!autorizado(callback.from?.id, chat?.id, chat?.type, callback.from?.is_bot)) {
     await api.answerCallbackQuery({ callback_query_id: callback.id, text: 'Operação não autorizada.' });
     return;
   }
