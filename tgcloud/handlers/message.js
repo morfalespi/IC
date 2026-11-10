@@ -67,7 +67,7 @@ function adicionarDadosCompartilhados(resposta, dados) {
 }
 
 export default async function (message, ctx) {
-  if (!autorizado(message.from?.id, message.chat?.id)) return;
+  if (!autorizado(message.from?.id, message.chat?.id, message.chat?.type, message.from?.is_bot)) return;
   if (!await reservarAtualizacao(ctx?.update?.update_id)) return;
   let resposta;
   try {
