@@ -47,20 +47,45 @@ function formatoRejeitado(erro) {
   return Number(erro.code ?? erro.error_code) === 400;
 }
 
-export async function enviarCartao(chatId, richHtml) {
+function fotoValida(id) {
+  return typeof id === 'string' && id.length > 8 && id.length < 512;
+}
+
+async function enviarOuEditarRico(metodo, args, richHtml, fotoId) {
+  // Usar a foto que o seletor do Telegram compartilhou, quando disponível.
+  // A imagem é um bloco separado, dentro da MESMA Rich Message.
+  if (fotoValida(fotoId)) {
+    const htmlComFoto = richHtml.replace('</h2>', '</h2><img src="tg://photo?id=perfil"/>');
+    if (htmlComFoto !== richHtml) {
+      try {
+        return await api[metodo]({
+          ...args,
+          rich_message: {
+            html: htmlComFoto,
+            media: [{ id: 'perfil', media: { type: 'photo', media: fotoId } }],
+          },
+        });
+      } catch (erro) {
+        if (!formatoRejeitado(erro)) throw erro;
+      }
+    }
+  }
   try {
-    return await api.sendRichMessage({ chat_id: chatId, rich_message: { html: richHtml } });
+    return await api[metodo]({ ...args, rich_message: { html: richHtml } });
   } catch (erro) {
     if (!formatoRejeitado(erro)) throw erro;
-    return api.sendMessage({ chat_id: chatId, text: plainCard(richHtml) });
+    // Só após rejeição definitiva da API. Não reenvia após timeout ou erro 5xx.
+    const texto = plainCard(richHtml);
+    return metodo === 'sendRichMessage'
+      ? api.sendMessage({ ...args, text: texto })
+      : api.editMessageText({ ...args, text: texto });
   }
 }
 
-export async function editarCartao(chatId, messageId, richHtml) {
-  try {
-    return await api.editMessageText({ chat_id: chatId, message_id: messageId, rich_message: { html: richHtml } });
-  } catch (erro) {
-    if (!formatoRejeitado(erro)) throw erro;
-    return api.editMessageText({ chat_id: chatId, message_id: messageId, text: plainCard(richHtml) });
-  }
+export function enviarCartao(chatId, richHtml, fotoId = null) {
+  return enviarOuEditarRico('sendRichMessage', { chat_id: chatId }, richHtml, fotoId);
+}
+
+export function editarCartao(chatId, messageId, richHtml, fotoId = null) {
+  return enviarOuEditarRico('editMessageText', { chat_id: chatId, message_id: messageId }, richHtml, fotoId);
 }
