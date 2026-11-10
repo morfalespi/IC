@@ -22,6 +22,7 @@ from telethon.tl.types import User, Chat, Channel, ChannelParticipantsRecent, Ch
 from bot_api import BotClient, BotAPIRequestError, BotAPIAuthenticationError, diagnostico_excecao, authorized_destination, registrar_notificacao
 from exportacao import valor_exportavel, disclosure
 from ficha_completa import basic_pages, markdown_files, jsonl_files
+from ficha_resumo import entregar_ficha
 from mtproto_export import build_media_archives
 
 
@@ -526,21 +527,26 @@ async def workflow(bot=None, client=None):
             message_id = os.environ.get('MESSAGE_ID', '').strip()
             if message_id and (not message_id.isdigit() or int(message_id) <= 0):
                 raise ValueError('MESSAGE_ID must be a positive integer')
-            for index, page in enumerate(basic_pages(report_identity, [], [])):
-                if index == 0 and message_id:
-                    response = await asyncio.to_thread(bot.call, 'editMessageText', {'chat_id': int(destination), 'message_id': int(message_id), 'text': page, 'parse_mode': 'HTML'})
-                    message = response.require()
-                else:
-                    message = await asyncio.to_thread(bot.send_message, int(destination), page, parse_mode='HTML')
+            if os.environ.get('MODO', 'completo') == 'resumo':
+                # Uma ficha é o produto principal. O operador pode pedir exportação separadamente.
+                message = await entregar_ficha(bot, destination, data, message_id or None)
                 receipt(message)
-            for media in data.media:
-                if media.get('category') == 'profile' and media.get('status') == 'downloaded':
-                    message = await asyncio.to_thread(bot.upload, 'sendPhoto', int(destination), Path(media['path']).read_bytes(), 'profile.jpg', 'image/jpeg')
+            else:
+                for index, page in enumerate(basic_pages(report_identity, [], [])):
+                    if index == 0 and message_id:
+                        response = await asyncio.to_thread(bot.call, 'editMessageText', {'chat_id': int(destination), 'message_id': int(message_id), 'text': page, 'parse_mode': 'HTML'})
+                        message = response.require()
+                    else:
+                        message = await asyncio.to_thread(bot.send_message, int(destination), page, parse_mode='HTML')
                     receipt(message)
-            for path in files + [Path(p) for p in archives]:
-                content = path.read_bytes()
-                message = await asyncio.to_thread(bot.upload, 'sendDocument', int(destination), content, path.name, 'application/octet-stream', caption='SHA-256: ' + hashlib.sha256(content).hexdigest())
-                receipt(message)
+                for media in data.media:
+                    if media.get('category') == 'profile' and media.get('status') == 'downloaded':
+                        message = await asyncio.to_thread(bot.upload, 'sendPhoto', int(destination), Path(media['path']).read_bytes(), 'profile.jpg', 'image/jpeg')
+                        receipt(message)
+                for path in files + [Path(p) for p in archives]:
+                    content = path.read_bytes()
+                    message = await asyncio.to_thread(bot.upload, 'sendDocument', int(destination), content, path.name, 'application/octet-stream', caption='SHA-256: ' + hashlib.sha256(content).hexdigest())
+                    receipt(message)
             (directory / 'delivery.json').write_text(json.dumps(receipts, indent=2))
             registrar_notificacao({'ok': True, 'result': {'message_id': receipts[-1]['message_id'], 'chat': {'id': int(destination)}}}, destination)
         persist_state(state='partial' if data.partial else 'completed', delivery='api_accepted' if receipts else 'not_requested')
