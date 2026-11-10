@@ -8,7 +8,7 @@ import { cartaoPesquisa } from './cartao.js';
 import { diagnosticoErro } from './erros.js';
 
 export async function consultar(texto, contexto) {
-  if (!autorizado(contexto.userId, contexto.chatId)) throw new Error('Operação não autorizada.');
+  if (!autorizado(contexto.userId, contexto.chatId, contexto.chatType, contexto.isBot)) throw new Error('Operação não autorizada.');
   const entrada = typeof texto === 'string' ? lerEntrada(texto) : texto;
   if (!(await reservarDisparo(contexto.chatId)).permitido) throw new Error('Aguarde 30 segundos antes de outra consulta.');
   const modo = contexto.modo === 'resumo' ? 'resumo' : 'completo';
