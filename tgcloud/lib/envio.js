@@ -32,12 +32,12 @@ export function responderInline(queryId, titulo, html, botaoPrivado) {
 
 function plainCard(value) {
   return String(value)
-    .replace(/<\\/(?:p|h[1-6]|tr|table|details)>/gi, '\\n')
-    .replace(/<\\/?(?:td|th)[^>]*>/gi, ' ')
+    .replace(/<\/?(?:p|h[1-6]|tr|table|details)\b[^>]*>/gi, '\n')
+    .replace(/<\/?(?:td|th)\b[^>]*>/gi, ' ')
     .replace(/<[^>]*>/g, '')
     .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
     .replace(/&#x27;/g, "'").replace(/&amp;/g, '&')
-    .replace(/\\n{3,}/g, '\\n\\n').trim().slice(0, 3900);
+    .replace(/\n{3,}/g, '\n\n').trim().slice(0, 3900);
 }
 
 // Só uma rejeição EXPLÍCITA do Telegram autoriza mudar o formato.
