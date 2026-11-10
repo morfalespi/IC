@@ -18,7 +18,7 @@ function decryptDispatch(call) {
   return JSON.parse(Buffer.concat([decipher.update(ciphertext.subarray(0, -16)), decipher.final()]).toString());
 }
 
-async function setup({ status = 204, authorized = true, duplicate = false } = {}) {
+async function setup({ status = 204, duplicate = false } = {}) {
   const calls = [];
   const context = vm.createContext({ console: { error() {} }, Date, Number, String, Error, Array, crypto: crypto.webcrypto, TextEncoder, Uint8Array });
   const fetch = async (url, options) => { calls.push(['dispatch', url, options]); return { status }; };
@@ -39,7 +39,6 @@ async function setup({ status = 204, authorized = true, duplicate = false } = {}
     if (cache.has(file)) return cache.get(file);
     let source = fs.readFileSync(file, 'utf8');
     if (file.endsWith('/segredos.js')) source = "export const GH_DISPATCH_TOKEN = 'synthetic'; export const GH_REPOSITORY = 'fixture/IC'; export const IC_DISPATCH_PUBLIC_KEY = " + JSON.stringify(publicJwk) + ';';
-    if (authorized && file.endsWith('/autorizacao.js')) source = source.replace('ALLOWED_USER_IDS = []', "ALLOWED_USER_IDS = ['42']").replace('ALLOWED_CHAT_IDS = []', "ALLOWED_CHAT_IDS = ['42']");
     const module = new vm.SourceTextModule(source, { context, identifier: file });
     cache.set(file, module);
     return module;
@@ -60,25 +59,41 @@ async function setup({ status = 204, authorized = true, duplicate = false } = {}
   assert.equal(app.calls[0][1].text, 'Header');
   assert.equal(app.calls[0][1].rich_message, undefined);
 
-  app = await setup({ authorized: false });
+  const auth = await app.module('tgcloud/lib/autorizacao.js');
+  assert.equal(auth.autorizado(42, 42, 'private'), true);
+  assert.equal(auth.autorizado(43, 42, 'private'), false);
+  assert.equal(auth.autorizado(42, 42, 'supergroup'), false);
+  assert.equal(auth.autorizado(42, 42, 'private', true), false);
+  assert.equal(auth.autorizado(undefined, 42, 'private'), false);
+
+  app = await setup();
   let handler = await app.module('tgcloud/handlers/message.js');
-  await handler.default({ from: { id: 42 }, chat: { id: 42 }, text: '@alice' }, { update: { update_id: 1 } });
+  await handler.default({ from: { id: 43 }, chat: { id: 42, type: 'private' }, text: '@alice' }, { update: { update_id: 1 } });
+  await handler.default({ from: { id: 42 }, chat: { id: -100123, type: 'supergroup' }, text: '@alice' }, { update: { update_id: 9 } });
   assert.equal(app.calls.length, 0);
+  const callbacks = await app.module('tgcloud/handlers/callback_query.js');
+  await callbacks.default({
+    id: 'cb-group', from: { id: 42 },
+    message: { chat: { id: -100123, type: 'supergroup' }, message_id: 6 },
+    data: 'r:n:alice',
+  }, { update: { update_id: 10 } });
+  assert.equal(app.calls.filter(c => c[0] === 'dispatch').length, 0);
+  assert.equal(app.calls.at(-1)[0], 'answerCallbackQuery');
 
   app = await setup({ duplicate: true });
   handler = await app.module('tgcloud/handlers/message.js');
-  await handler.default({ from: { id: 42 }, chat: { id: 42 }, text: '@alice' }, { update: { update_id: 1 } });
+  await handler.default({ from: { id: 42 }, chat: { id: 42, type: 'private' }, text: '@alice' }, { update: { update_id: 1 } });
   assert.equal(app.calls.length, 0);
 
   app = await setup({ status: 503 });
   handler = await app.module('tgcloud/handlers/message.js');
-  await handler.default({ from: { id: 42 }, chat: { id: 42 }, text: '@alice' }, { update: { update_id: 2 } });
+  await handler.default({ from: { id: 42 }, chat: { id: 42, type: 'private' }, text: '@alice' }, { update: { update_id: 2 } });
   assert.equal(app.calls.filter(c => c[0] === 'dispatch').length, 1, 'Uncertain dispatch must not be retried');
   assert.match(app.calls.at(-1)[1].text, /Falha/);
 
   app = await setup();
   handler = await app.module('tgcloud/handlers/message.js');
-  await handler.default({ from: { id: 42 }, chat: { id: 42 }, text: '42 @alice' }, { update: { update_id: 3 } });
+  await handler.default({ from: { id: 42 }, chat: { id: 42, type: 'private' }, text: '42 @alice' }, { update: { update_id: 3 } });
   const dispatch = app.calls.find(c => c[0] === 'dispatch');
   assert.equal(decryptDispatch(dispatch).expected_id, '42');
   assert.equal(decryptDispatch(dispatch).chat, '42');
