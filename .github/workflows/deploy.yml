@@ -163,6 +163,7 @@ jobs:
             `export const IC_DISPATCH_PUBLIC_KEY = ${JSON.stringify(publicKey)};`,
             '',
           ].join('\n');
+          fs.writeFileSync('tgcloud/lib/segredos.js', conteudo);
           NODE
 
       - name: Publicar módulos
