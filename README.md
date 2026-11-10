@@ -4,7 +4,7 @@ An authorization-aware Telegram bot and local export runner. IC uses the officia
 
 ## Primeiro sucesso a comprovar
 
-Antes de ampliar funcionalidades, a meta mínima é **um único `/info` confiável**: um usuário e um chat explicitamente autorizados fazem uma consulta a um username público que a sessão realmente consegue acessar. O IC deve devolver apenas os dados disponíveis, conferir a identidade quando houver ID esperado e indicar claramente qualquer limitação. Nada deve ser inventado para preencher lacunas.
+Antes de ampliar funcionalidades, a meta mínima é **um único `/info` confiável**: o proprietário do bot faz uma consulta em conversa privada a um username público que a sessão realmente consegue acessar. O IC deve devolver apenas os dados disponíveis, conferir a identidade quando houver ID esperado e indicar claramente qualquer limitação. Nada deve ser inventado para preencher lacunas.
 
 Esse objetivo é **uma meta de validação real, não uma declaração de que já funciona em produção**. O primeiro aceite exige uma execução no Telegram real e conferência humana dos resultados com as fontes acessíveis. `/export`, mídia e categorias extras permanecem no código, mas não são critérios para esse primeiro sucesso. O histórico do Git preserva o trabalho anterior.
 
@@ -39,7 +39,7 @@ set +a
 
 Supply `BOT_TOKEN` from BotFather and your own `API_ID`/`API_HASH` from https://my.telegram.org. Put secrets in environment settings or your local ignored `.env`; do not put them in commands, source, reports or chat. The check command lists missing variable **names**, never values. No credentials are included in the repository.
 
-The bot requires explicit comma-separated `ALLOWED_USER_IDS` and `ALLOWED_CHAT_IDS`. Both the requesting sender and destination chat must be allowed. Collection requests are limited to one per chat per 30 seconds. Empty lists deny access. Commands:
+O modo **local de polling** em Python continua exigindo `ALLOWED_USER_IDS` e `ALLOWED_CHAT_IDS` no ambiente local, pois esse executor pode operar fora da hospedagem Serverless. O bot **hospedado no TgCloud** não exige esses IDs no GitHub: o acesso deve estar configurado como **restrito ao proprietário** no BotFather, e os handlers só aceitam chats privados. Consultas são limitadas a uma por conversa a cada 30 segundos. Comandos:
 
 - `/info TARGET [EXPECTED_ID]`: resolve the entity and collect full metadata.
 - `/export TARGET [EXPECTED_ID]`: collect metadata, accessible messages, participants, user profile photos and available media; export and send the report to the same authorized chat.
@@ -97,9 +97,9 @@ Media is SHA-256 verified before packaging and checked against the ZIP contents.
 
 ## Hosted TgCloud workflow
 
-The optional hosted handlers dispatch `.github/workflows/resolver.yml`. They deny unlisted users/chats, enforce callback validation, suppress repeated update IDs and bound dispatch frequency. Inline queries return a private-chat link and never initiate collection or disclose reports inline.
+Os handlers hospedados no TgCloud despacham `.github/workflows/resolver.yml`. **Pré-condição obrigatória:** no BotFather, manter ativado o acesso restrito ao proprietário deste bot. O Telegram controla quem pode iniciar a conversa; o IC verifica o tipo de chat privado e a correspondência entre o usuário e o chat, valida callbacks, evita reprocessar IDs e limita a frequência de consultas. Grupos, canais e consultas inline não executam pesquisas. **Se a restrição for desativada no BotFather, o IC deixa de ter uma segunda lista de proprietários para bloquear usuários**, portanto revalide a configuração antes de publicar. A aplicação não consegue confirmar essa configuração do Telegram pelos testes locais.
 
-Configure os **Secrets** do repositório `BOT_TOKEN`, `API_ID`, `API_HASH`, `TGCLOUD_TOKEN`, `GH_DISPATCH_TOKEN`, `IC_DISPATCH_PRIVATE_KEY`, `ALLOWED_USER_IDS` e `ALLOWED_CHAT_IDS`. Configure como **Variable** do repositório `IC_DISPATCH_PUBLIC_KEY`, contendo o JSON JWK da chave pública RSA. Os dois `ALLOWED_*` recebem IDs numéricos separados por vírgula, não arrays JSON. Um usuário **e** um chat precisam estar explicitamente na lista para o bot aceitar a consulta. A chave pública e a privada precisam ser do mesmo par RSA (mínimo 2048 bits). A ausência ou inconsistência desses valores é informada por nome **antes da migração**; valores privados não são impressos.
+Configure os **Secrets** do repositório `BOT_TOKEN`, `API_ID`, `API_HASH`, `TGCLOUD_TOKEN`, `GH_DISPATCH_TOKEN` e `IC_DISPATCH_PRIVATE_KEY`. Configure como **Variable** do repositório `IC_DISPATCH_PUBLIC_KEY`, contendo o JSON JWK da chave pública RSA. **Não é necessário cadastrar IDs de usuários/chats no GitHub para o TgCloud.** A chave pública e a privada precisam ser do mesmo par RSA (mínimo 2048 bits). A ausência ou inconsistência desses valores é informada por nome **antes da migração**; valores privados não são impressos. As regras de restrição nativa do Telegram estão em https://core.telegram.org/api/bots/managed-bots .
 
 Para gerar um par novo localmente, em um computador confiável (não no log do GitHub Actions):
 
