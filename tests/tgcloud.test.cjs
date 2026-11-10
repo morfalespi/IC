@@ -70,7 +70,7 @@ async function setup({ status = 204, duplicate = false, rejectRich = false, reje
   // Teclado nativo: os três botões selecionam o alvo, não o destino do IC.
   await envio.enviarMensagem(42, 'Menu', true);
   const keyboard = app.calls.at(-1)[1].reply_markup.keyboard;
-  assert.deepEqual(keyboard.map(row => row[0].text),
+  assert.deepEqual(JSON.parse(JSON.stringify(keyboard.map(row => row[0].text))),
     ['Escolher usuário', 'Escolher canal', 'Escolher grupo']);
 
   // Rejeição explícita 400: entregar a mesma informação em texto comum.
