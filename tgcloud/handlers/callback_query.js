@@ -22,8 +22,8 @@ export default async function (callback, ctx) {
   });
   try {
     const contexto = completo
-      ? { canal: 'privado', userId: callback.from?.id, chatId: chat.id, modo: 'completo', origemMensagemId: messageId }
-      : { canal: 'privado', userId: callback.from?.id, chatId: chat.id, mensagemId: messageId };
+      ? { canal: 'privado', userId: callback.from?.id, chatId: chat.id, chatType: chat?.type, isBot: callback.from?.is_bot, modo: 'completo', origemMensagemId: messageId }
+      : { canal: 'privado', userId: callback.from?.id, chatId: chat.id, chatType: chat?.type, isBot: callback.from?.is_bot, mensagemId: messageId };
     const resposta = await consultar(pedido.entrada, contexto);
     if (!resposta?.enviado) await enviarMensagem(chat.id, resposta.html, resposta.teclado);
   } catch (erro) {
