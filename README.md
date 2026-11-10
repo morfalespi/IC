@@ -2,6 +2,12 @@
 
 An authorization-aware Telegram bot and local export runner. IC uses the official HTTPS Bot API and Telethon 1.45.0 (MTProto layer 229). Python 3.12+ is supported; Node is needed only for the optional TgCloud host and JavaScript checks.
 
+## Primeiro sucesso a comprovar
+
+Antes de ampliar funcionalidades, a meta mínima é **um único `/info` confiável**: um usuário e um chat explicitamente autorizados fazem uma consulta a um username público que a sessão realmente consegue acessar. O IC deve devolver apenas os dados disponíveis, conferir a identidade quando houver ID esperado e indicar claramente qualquer limitação. Nada deve ser inventado para preencher lacunas.
+
+Esse objetivo é **uma meta de validação real, não uma declaração de que já funciona em produção**. O primeiro aceite exige uma execução no Telegram real e conferência humana dos resultados com as fontes acessíveis. `/export`, mídia e categorias extras permanecem no código, mas não são critérios para esse primeiro sucesso. O histórico do Git preserva o trabalho anterior.
+
 ## Evidência, alcance e documentação normativa
 
 A fonte de referência para a Bot API é a [documentação oficial atual](https://core.telegram.org/bots/api), lida novamente em cada verificação. O código deste repositório é objeto de auditoria; commits anteriores não são a regra do comportamento esperado.
@@ -93,7 +99,29 @@ Media is SHA-256 verified before packaging and checked against the ZIP contents.
 
 The optional hosted handlers dispatch `.github/workflows/resolver.yml`. They deny unlisted users/chats, enforce callback validation, suppress repeated update IDs and bound dispatch frequency. Inline queries return a private-chat link and never initiate collection or disclose reports inline.
 
-Configure repository secrets `BOT_TOKEN`, `API_ID`, `API_HASH`, `TGCLOUD_TOKEN`, `GH_DISPATCH_TOKEN`, plus repository variables `ALLOWED_USER_IDS` and `ALLOWED_CHAT_IDS`. The dispatch token needs **Actions: write** for this repository. The deployment workflow validates allowlists and injects configuration into the private deployed modules; committed placeholders remain empty. TgCloud account access and migration/deployment authorization are required. No deployment or GitHub push is performed by local validation. GitHub logs contain status summaries, not report payloads; reports are not uploaded as workflow artifacts automatically. Without a destination, hosted runner exports disappear when its workspace is removed.
+Configure os **Secrets** do repositório `BOT_TOKEN`, `API_ID`, `API_HASH`, `TGCLOUD_TOKEN`, `GH_DISPATCH_TOKEN`, `IC_DISPATCH_PRIVATE_KEY`, `ALLOWED_USER_IDS` e `ALLOWED_CHAT_IDS`. Configure como **Variable** do repositório `IC_DISPATCH_PUBLIC_KEY`, contendo o JSON JWK da chave pública RSA. Os dois `ALLOWED_*` recebem IDs numéricos separados por vírgula, não arrays JSON. Um usuário **e** um chat precisam estar explicitamente na lista para o bot aceitar a consulta. A chave pública e a privada precisam ser do mesmo par RSA (mínimo 2048 bits). A ausência ou inconsistência desses valores é informada por nome **antes da migração**; valores privados não são impressos.
+
+Para gerar um par novo localmente, em um computador confiável (não no log do GitHub Actions):
+
+```bash
+node <<'NODE'
+const { generateKeyPairSync } = require('node:crypto');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const dir = path.join(os.homedir(), '.ic-keys');
+fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+fs.chmodSync(dir, 0o700);
+const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 3072 });
+fs.writeFileSync(path.join(dir, 'private.pem'),
+  privateKey.export({ type: 'pkcs8', format: 'pem' }), { mode: 0o600 });
+fs.writeFileSync(path.join(dir, 'public.jwk.json'),
+  JSON.stringify(publicKey.export({ format: 'jwk' })), { mode: 0o600 });
+console.log('Chaves salvas em:', dir);
+NODE
+```
+
+Copie o conteúdo de `private.pem` para o **Secret** `IC_DISPATCH_PRIVATE_KEY` e o de `public.jwk.json` para a **Variable** `IC_DISPATCH_PUBLIC_KEY`. **Não faça commit de nenhuma chave.** Se já existir um par válido, mantenha-o em vez de substituí-lo unilateralmente. O token de dispatch deve ter permissão **Actions: write** neste repositório. O deploy injeta a configuração nos módulos publicados; os arquivos versionados mantêm placeholders vazios. A conta TgCloud e a autorização de migração/publicação também são necessárias. Testes locais e um dispatch HTTP aceito não provam a execução no Telegram real. Sem destino de entrega, os relatórios temporários do runner são perdidos ao final da execução.
 
 Telethon requires outbound MTProto connectivity to Telegram data centers; ordinary HTTPS proxy access alone does not provide that TCP route. Configure the execution environment's permitted TCP path before live MTProto runs. Never disable TLS verification for Bot API access.
 
