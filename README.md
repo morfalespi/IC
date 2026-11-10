@@ -2,9 +2,17 @@
 
 An authorization-aware Telegram bot and local export runner. IC uses the official HTTPS Bot API and Telethon 1.45.0 (MTProto layer 229). Python 3.12+ is supported; Node is needed only for the optional TgCloud host and JavaScript checks.
 
+## Ficha curta no chat privado (proposta em validação)
+
+O teclado oferece **Escolher usuário**, **Escolher canal** e **Escolher grupo**. Esses três botões usam o seletor nativo do Telegram para enviar uma referência ao IC: o alvo pode ser um perfil, canal ou grupo, mas **a conversa de controle e o recebimento do resultado continuam apenas no chat privado do proprietário**. Selecionar um grupo ou canal não instala o IC nele nem autoriza acesso a dados restritos. Referências com apenas um ID podem não ser resolvidas pelo MTProto.
+
+A consulta simples (`/info ALVO` ou uma referência selecionada) procura entregar **uma ficha curta** com nome/título, @username, ID, outros usernames ativos, descrição disponível, canal pessoal vinculado quando retornado e foto quando a Bot API disponibilizar um `file_id` reutilizável. Um detalhe recolhível identifica as fontes e os limites. A ausência de um campo significa apenas que ele **não foi comprovado nesta execução**, não que não exista.
+
+O formato preferencial é Rich Message. Depois de uma **rejeição explícita 400**, o IC tenta Rich sem foto, e depois texto comum; resultados de envio incertos, timeouts e outros erros não permitem reenvio automático. Quando houver uma mensagem inicial com ID confirmado, a ficha final **edita essa mesma mensagem**. O comando `/export` conserva a entrega detalhada e de arquivos como operação separada. A implementação ainda precisa de teste real autorizado com a Bot API, TgCloud e MTProto para demonstrar comportamento e aparência em produção.
+
 ## Primeiro sucesso a comprovar
 
-Antes de ampliar funcionalidades, a meta mínima é **um único `/info` confiável**: o proprietário do bot faz uma consulta em conversa privada a um username público que a sessão realmente consegue acessar. O IC deve devolver apenas os dados disponíveis, conferir a identidade quando houver ID esperado e indicar claramente qualquer limitação. Nada deve ser inventado para preencher lacunas.
+Antes de ampliar funcionalidades, a meta mínima é **uma consulta de identificação confiável**: o proprietário seleciona usuário, grupo ou canal no teclado do Telegram ou informa um username público acessível, e a resposta é exibida na conversa privada com o bot. O IC deve devolver apenas os dados disponíveis, conferir a identidade quando houver ID esperado e indicar claramente qualquer limitação. Nada deve ser inventado para preencher lacunas.
 
 Esse objetivo é **uma meta de validação real, não uma declaração de que já funciona em produção**. O primeiro aceite exige uma execução no Telegram real e conferência humana dos resultados com as fontes acessíveis. `/export`, mídia e categorias extras permanecem no código, mas não são critérios para esse primeiro sucesso. O histórico do Git preserva o trabalho anterior.
 
