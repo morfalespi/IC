@@ -50,6 +50,70 @@ jobs:
 
       - run: npm run check
 
+      - name: Validar configuração antes de alterar a nuvem
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.migrate_mode != 'dry-run' }}
+        env:
+          GH_DISPATCH_TOKEN: ${{ secrets.GH_DISPATCH_TOKEN }}
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          API_ID: ${{ secrets.API_ID }}
+          API_HASH: ${{ secrets.API_HASH }}
+          IC_DISPATCH_PRIVATE_KEY: ${{ secrets.IC_DISPATCH_PRIVATE_KEY }}
+          IC_DISPATCH_PUBLIC_KEY: ${{ vars.IC_DISPATCH_PUBLIC_KEY }}
+          ALLOWED_USER_IDS: ${{ secrets.ALLOWED_USER_IDS }}
+          ALLOWED_CHAT_IDS: ${{ secrets.ALLOWED_CHAT_IDS }}
+        run: |
+          node <<'NODE'
+          const { createPrivateKey, createPublicKey } = require('node:crypto');
+          const required = {
+            GH_DISPATCH_TOKEN: 'secret',
+            BOT_TOKEN: 'secret',
+            API_ID: 'secret',
+            API_HASH: 'secret',
+            IC_DISPATCH_PRIVATE_KEY: 'secret',
+            IC_DISPATCH_PUBLIC_KEY: 'variable',
+            ALLOWED_USER_IDS: 'secret',
+            ALLOWED_CHAT_IDS: 'secret',
+          };
+          let failed = false;
+          for (const [name, type] of Object.entries(required)) {
+            if (!process.env[name]?.trim()) {
+              console.error('::error::Configuração ausente: ' + name + ' (' + type + ').');
+              failed = true;
+            }
+          }
+          if (failed) process.exit(1);
+
+          try {
+            const jwk = JSON.parse(process.env.IC_DISPATCH_PUBLIC_KEY);
+            if (!jwk || jwk.kty !== 'RSA' || typeof jwk.n !== 'string' ||
+                typeof jwk.e !== 'string' || Object.hasOwn(jwk, 'd')) {
+              throw new Error('JWK pública RSA inválida');
+            }
+            const pub = createPublicKey({ key: jwk, format: 'jwk' });
+            const priv = createPrivateKey(process.env.IC_DISPATCH_PRIVATE_KEY);
+            const derived = createPublicKey(priv).export({ format: 'jwk' });
+            if (pub.asymmetricKeyDetails?.modulusLength < 2048 ||
+                priv.asymmetricKeyType !== 'rsa' ||
+                jwk.n !== derived.n || jwk.e !== derived.e) {
+              throw new Error('Chaves não correspondentes ou insuficientes');
+            }
+          } catch {
+            console.error('::error::IC_DISPATCH_PUBLIC_KEY (variable) e IC_DISPATCH_PRIVATE_KEY (secret) devem formar o mesmo par RSA de pelo menos 2048 bits.');
+            failed = true;
+          }
+
+          for (const name of ['ALLOWED_USER_IDS', 'ALLOWED_CHAT_IDS']) {
+            const ids = process.env[name].split(',').map(s => s.trim()).filter(Boolean);
+            if (!ids.length || ids.some(id => !/^-?[1-9]\d{0,15}$/.test(id))) {
+              console.error('::error::' + name + ': informe IDs numéricos separados por vírgula no secret correspondente.');
+              failed = true;
+            }
+          }
+
+          if (failed) process.exit(1);
+          console.log('Pré-validação concluída; nenhum segredo foi exibido.');
+          NODE
+
       - name: Validar a permissão do GH_DISPATCH_TOKEN
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.migrate_mode != 'dry-run' }}
         env:
@@ -116,7 +180,7 @@ jobs:
           const ids = key => (process.env[key] || '').split(',').map(v => v.trim()).filter(Boolean);
           const users = ids('ALLOWED_USER_IDS'), chats = ids('ALLOWED_CHAT_IDS');
           if (!users.length || !chats.length || [...users, ...chats].some(v => !/^-?[1-9]\d{0,15}$/.test(v))) {
-            throw new Error('Configure ALLOWED_USER_IDS e ALLOWED_CHAT_IDS nas variáveis do repositório.');
+            throw new Error('Configure ALLOWED_USER_IDS e ALLOWED_CHAT_IDS nos secrets do repositório.');
           }
           fs.writeFileSync('tgcloud/lib/segredos.js', conteudo);
           const auth = fs.readFileSync('tgcloud/lib/autorizacao.js', 'utf8')
